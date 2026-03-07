@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg: #f7f7f5;
+  --color-surface: #ffffff;
+  --color-text: #111827;
+  --color-muted: #4b5563;
+  --color-accent: #0f766e;
+}
+
+.dark {
+  --color-bg: #0f172a;
+  --color-surface: #111827;
+  --color-text: #f3f4f6;
+  --color-muted: #cbd5e1;
+  --color-accent: #2dd4bf;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(
+      circle at 10% 0%,
+      rgba(15, 118, 110, 0.12),
+      transparent 42%
+    ),
+    linear-gradient(
+      180deg,
+      var(--color-bg) 0%,
+      color-mix(in srgb, var(--color-bg), black 3%) 100%
+    );
+  color: var(--color-text);
+}
