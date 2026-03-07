@@ -9,16 +9,6 @@ pub async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, String>
 }
 
 #[tauri::command]
-pub async fn set_modpack_url(url: String, state: State<'_, AppState>) -> Result<(), String> {
-    state
-        .update_config(|config| {
-            config.modpack_url = Some(url);
-        })
-        .map(|_| ())
-        .map_err(Into::into)
-}
-
-#[tauri::command]
 pub async fn set_theme(theme: String, state: State<'_, AppState>) -> Result<(), String> {
     state
         .update_config(|config| {
