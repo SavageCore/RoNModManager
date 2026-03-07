@@ -88,9 +88,8 @@ pub async fn install_mods(app: AppHandle, state: State<'_, AppState>) -> Result<
             e.to_string()
         })?;
     let manifest = manifest.ok_or_else(|| {
-        let err_msg =
-            "No modpack manifest found and HTML fallback did not discover any mod files"
-                .to_string();
+        let err_msg = "No modpack manifest found and HTML fallback did not discover any mod files"
+            .to_string();
         let _ = app.emit(
             "install_progress",
             &ProgressEvent::new_error(err_msg.clone()),

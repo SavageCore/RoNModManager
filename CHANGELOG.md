@@ -14,6 +14,7 @@ All notable changes to the RoN Mod Manager project are documented in this file.
   - Mod.io OAuth authentication
   - Mod installation with archive extraction and file routing
   - Modpack collection management
+  - HTML directory fallback for modpack discovery (if manifest.json not available)
 
 - **Backend Services** (Phase 2)
   - File hashing (MD5, CRC32) for duplicate detection
@@ -22,12 +23,13 @@ All notable changes to the RoN Mod Manager project are documented in this file.
   - mod.io API client with rate-limiting
   - Archive extraction with automatic file classification
   - Modpack manifest parsing and download
+  - HTML directory listing parser for fallback file discovery
   - Thread-safe config persistence with atomic writes
 
 - **Command Layer** (Phase 3)
   - Game path detection and configuration
   - Modpack configuration and sync
-  - Mod installation/uninstallation
+  - Mod installation/uninstallation with progress events
   - Collection toggles
   - mod.io authentication
   - Config management
@@ -35,18 +37,19 @@ All notable changes to the RoN Mod Manager project are documented in this file.
 - **Frontend**
   - Multi-page app shell with navigation sidebar
   - Dashboard with game path detection and modpack sync
-  - Mods page with install/uninstall buttons
-  - Collections management page
+  - Mods page with install/uninstall buttons and progress modal
+  - Collections management page with toggles
   - Settings page with config, auth, and theme options
-  - Progress modal for long-running operations
-  - Real-time progress events during mod installation
+  - Real-time progress events during mod installation with detailed status updates
+  - Responsive design with Tailwind CSS 4
 
 - **Build & Testing**
-  - Comprehensive unit test suite (28 backend tests)
+  - Comprehensive unit test suite (29 backend tests)
   - Frontend unit tests with Vitest
   - GitHub Actions CI/CD with lint and test verification
-  - Multi-platform automated builds (Windows NSIS, Linux AppImage/deb)
+  - Multi-platform automated builds (Windows NSIS+MSI, Linux AppImage+deb)
   - Automated release workflow with GitHub Releases
+  - Build configuration for multiple installer formats
 
 ### Technical Details
 

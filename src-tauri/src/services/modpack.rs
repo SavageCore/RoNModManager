@@ -64,55 +64,59 @@ pub async fn fetch_manifest_if_exists(
 }
 
 /// Fallback: Try to discover mod files from HTML directory listing
-async fn fetch_manifest_from_html(client: &Client, base_url: &str) -> Result<Option<ModpackManifest>> {
+async fn fetch_manifest_from_html(
+    client: &Client,
+    base_url: &str,
+) -> Result<Option<ModpackManifest>> {
     let mods_url = format!("{}/mods", base_url.trim_end_matches('/'));
-    
+
     let response = client.get(&mods_url).send().await?;
-    
+
     // If mods directory doesn't exist, no fallback possible
     if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Ok(None);
     }
-    
+
     let response = response.error_for_status()?;
     let html = response.text().await?;
-    
+
     // Parse HTML directory listing for mod files
     // Look for href attributes pointing to .pak, .zip, .sav files
     let files = extract_files_from_html(&html, &mods_url);
-    
+
     if files.is_empty() {
         return Ok(None);
     }
-    
+
     Ok(Some(ModpackManifest { files }))
 }
 
 /// Extract downloadable files from HTML directory listing
 fn extract_files_from_html(html: &str, _base_url: &str) -> Vec<ManifestFileEntry> {
     let mut files = Vec::new();
-    
+
     // Find all href attributes in HTML
     for line in html.lines() {
         // Look for href patterns in <a> tags
         if let Some(href_start) = line.find("href=\"") {
             if let Some(href_end) = line[href_start + 6..].find('"') {
                 let href = &line[href_start + 6..href_start + 6 + href_end];
-                
+
                 // Filter for mod files (skip parent directory references)
                 if (href.ends_with(".pak") || href.ends_with(".zip") || href.ends_with(".sav"))
-                    && !href.starts_with('/') && !href.contains("..")
+                    && !href.starts_with('/')
+                    && !href.contains("..")
                 {
                     files.push(ManifestFileEntry {
                         path: href.to_string(),
                         sha256: String::new(), // unknown sha256 from HTML fallback
-                        size: 0, // unknown size from HTML fallback
+                        size: 0,               // unknown size from HTML fallback
                     });
                 }
             }
         }
     }
-    
+
     files
 }
 
