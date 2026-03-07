@@ -66,7 +66,7 @@
             <div
               class="bg-blue-500 h-full transition-all duration-300"
               style={`width: ${Math.min(progress.percent, 100)}%`}
-            />
+            ></div>
           </div>
           <p class="text-xs text-slate-600 dark:text-slate-400 mt-2 text-right">
             {Math.round(progress.percent)}%
