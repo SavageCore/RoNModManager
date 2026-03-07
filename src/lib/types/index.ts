@@ -56,10 +56,12 @@ export interface ModInfo {
 }
 
 export interface ProgressEvent {
-  task: string;
-  current: number;
-  total: number;
+  operation: string;
+  file: string;
+  percent: number;
   message: string;
+  total_bytes: number | null;
+  processed_bytes: number | null;
 }
 
 export interface ShareCodeResponse {

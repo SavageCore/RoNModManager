@@ -26,4 +26,5 @@ export const validateToken = () => invoke<boolean>("validate_token");
 export const logout = () => invoke<void>("logout");
 
 export const getModList = () => invoke<ModInfo[]>("get_mod_list");
+export const installMods = () => invoke<void>("install_mods");
 export const uninstallMods = () => invoke<void>("uninstall_mods");
