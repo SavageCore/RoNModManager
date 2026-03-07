@@ -30,3 +30,22 @@ jobs:
         with:
           name: ronmodmanager-${{ matrix.os }}
           path: src-tauri/target/release/bundle
+
+  flatpak:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install -y flathub org.gnome.Platform//47 org.gnome.Sdk//47 org.freedesktop.Sdk.Extension.node22//24.08 org.freedesktop.Sdk.Extension.rust-stable//24.08
+      - name: Build Flatpak
+        run: |
+          flatpak-builder --force-clean --user --install-deps-from=flathub --repo=flatpak-repo build-dir packaging/flatpak/com.savagecore.ronmodmanager.yml
+          flatpak build-bundle flatpak-repo ronmodmanager.flatpak com.savagecore.ronmodmanager
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ronmodmanager-flatpak
+          path: ronmodmanager.flatpak

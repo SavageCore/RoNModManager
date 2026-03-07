@@ -38,9 +38,7 @@
   "plugins": {
     "updater": {
       "pubkey": "REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY",
-      "endpoints": [
-        "https://github.com/savagecore/RoNModManager/releases/latest/download/latest.json"
-      ],
+      "endpoints": ["https://savagecore.uk/ronmodmanager/latest.json"],
       "windows": {
         "installMode": "passive"
       }
