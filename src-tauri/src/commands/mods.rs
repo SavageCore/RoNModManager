@@ -69,14 +69,17 @@ pub async fn install_mods(app: AppHandle, state: State<'_, AppState>) -> Result<
     let backup_path = game_path.join(".ronmod_backups");
 
     // Emit: fetching manifest
-    let _ = app.emit("install_progress", &ProgressEvent {
-        operation: "fetch".to_string(),
-        file: "ronmod.manifest".to_string(),
-        percent: 5.0,
-        message: "Fetching modpack manifest...".to_string(),
-        total_bytes: None,
-        processed_bytes: None,
-    });
+    let _ = app.emit(
+        "install_progress",
+        &ProgressEvent {
+            operation: "fetch".to_string(),
+            file: "ronmod.manifest".to_string(),
+            percent: 5.0,
+            message: "Fetching modpack manifest...".to_string(),
+            total_bytes: None,
+            processed_bytes: None,
+        },
+    );
 
     let manifest = modpack_service::fetch_manifest_if_exists(&state.client, &modpack_url)
         .await
@@ -88,7 +91,10 @@ pub async fn install_mods(app: AppHandle, state: State<'_, AppState>) -> Result<
         let err_msg =
             "ronmod.manifest not found on modpack host (HTML crawl fallback not implemented yet)"
                 .to_string();
-        let _ = app.emit("install_progress", &ProgressEvent::new_error(err_msg.clone()));
+        let _ = app.emit(
+            "install_progress",
+            &ProgressEvent::new_error(err_msg.clone()),
+        );
         err_msg
     })?;
 
@@ -96,20 +102,25 @@ pub async fn install_mods(app: AppHandle, state: State<'_, AppState>) -> Result<
         .join("ronmodmanager")
         .join("modpack_downloads");
     fs::create_dir_all(&download_root).map_err(|error| {
-        let _ = app
-            .emit("install_progress", &ProgressEvent::new_error(error.to_string()));
+        let _ = app.emit(
+            "install_progress",
+            &ProgressEvent::new_error(error.to_string()),
+        );
         error.to_string()
     })?;
 
     // Emit: downloading files
-    let _ = app.emit("install_progress", &ProgressEvent {
-        operation: "download_start".to_string(),
-        file: format!("{} files", manifest.files.len()),
-        percent: 10.0,
-        message: format!("Downloading {} files...", manifest.files.len()),
-        total_bytes: None,
-        processed_bytes: None,
-    });
+    let _ = app.emit(
+        "install_progress",
+        &ProgressEvent {
+            operation: "download_start".to_string(),
+            file: format!("{} files", manifest.files.len()),
+            percent: 10.0,
+            message: format!("Downloading {} files...", manifest.files.len()),
+            total_bytes: None,
+            processed_bytes: None,
+        },
+    );
 
     let downloaded_files = modpack_service::download_manifest_files(
         &state.client,
@@ -119,20 +130,22 @@ pub async fn install_mods(app: AppHandle, state: State<'_, AppState>) -> Result<
     )
     .await
     .map_err(|e| {
-        let _ = app
-            .emit("install_progress", &ProgressEvent::new_error(e.to_string()));
+        let _ = app.emit("install_progress", &ProgressEvent::new_error(e.to_string()));
         e.to_string()
     })?;
 
     // Emit: installing files
-    let _ = app.emit("install_progress", &ProgressEvent {
-        operation: "install_start".to_string(),
-        file: String::new(),
-        percent: 50.0,
-        message: format!("Installing {} mods...", downloaded_files.len()),
-        total_bytes: None,
-        processed_bytes: None,
-    });
+    let _ = app.emit(
+        "install_progress",
+        &ProgressEvent {
+            operation: "install_start".to_string(),
+            file: String::new(),
+            percent: 50.0,
+            message: format!("Installing {} mods...", downloaded_files.len()),
+            total_bytes: None,
+            processed_bytes: None,
+        },
+    );
 
     let install_context = installer::InstallContext {
         game_path: game_path.clone(),
@@ -158,10 +171,7 @@ pub async fn install_mods(app: AppHandle, state: State<'_, AppState>) -> Result<
         install_downloaded_file(file, &install_context).map_err(|e| {
             let _ = app.emit(
                 "install_progress",
-                &ProgressEvent::new_error(format!(
-                    "Failed to install {}: {}",
-                    file_name, e
-                )),
+                &ProgressEvent::new_error(format!("Failed to install {}: {}", file_name, e)),
             );
             e.to_string()
         })?;
