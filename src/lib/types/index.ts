@@ -83,3 +83,9 @@ export interface Profile {
   enabled_collections: string[];
   created_at: string;
 }
+
+export interface UpdateInfo {
+  available: boolean;
+  version: string | null;
+  notes: string | null;
+}

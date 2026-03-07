@@ -7,6 +7,7 @@
     { href: "/", label: "Dashboard" },
     { href: "/mods", label: "Mods" },
     { href: "/collections", label: "Collections" },
+    { href: "/profiles", label: "Profiles" },
     { href: "/settings", label: "Settings" },
   ];
 </script>

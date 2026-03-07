@@ -5,6 +5,7 @@ import type {
   ModInfo,
   ModPack,
   Profile,
+  UpdateInfo,
 } from "../types";
 
 export const getConfig = () => invoke<AppConfig>("get_config");
@@ -64,3 +65,6 @@ export const applyProfile = (name: string) =>
   invoke<Profile>("apply_profile", { name });
 
 export const launchGame = () => invoke<void>("launch_game");
+
+export const checkForUpdate = () => invoke<UpdateInfo>("check_for_update");
+export const installUpdate = () => invoke<UpdateInfo>("install_update");

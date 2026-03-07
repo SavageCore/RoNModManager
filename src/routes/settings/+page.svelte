@@ -3,7 +3,9 @@
   import {
     applyIntroSkip,
     buildModpackFromInstalled,
+    checkForUpdate,
     detectGamePath,
+    installUpdate,
     exportModpackToFile,
     getAuthStatus,
     getConfig,
@@ -23,6 +25,11 @@
   let authConnected = false;
   let theme: "light" | "dark" | "system" = "system";
   let message = "";
+  let introSkipApplied = false;
+  let applyingIntroSkip = false;
+  let updateCheckInProgress = false;
+  let updateInstallInProgress = false;
+  let updateVersion: string | null = null;
 
   async function refresh() {
     const config = await getConfig();
@@ -96,6 +103,41 @@
       message = `Modpack exported successfully! Filename: ${filename}`;
     } catch (error) {
       message = `Failed to export modpack: ${error}`;
+    }
+  }
+
+  async function checkUpdates() {
+    updateCheckInProgress = true;
+    try {
+      const info = await checkForUpdate();
+      if (info.available) {
+        updateVersion = info.version;
+        message = `Update available: ${info.version}`;
+      } else {
+        updateVersion = null;
+        message = "No updates available.";
+      }
+    } catch (error) {
+      message = `Failed to check updates: ${error}`;
+    } finally {
+      updateCheckInProgress = false;
+    }
+  }
+
+  async function installAvailableUpdate() {
+    updateInstallInProgress = true;
+    try {
+      const info = await installUpdate();
+      if (info.available) {
+        message =
+          "Update installed. The app may close automatically on Windows; otherwise restart to use the new version.";
+      } else {
+        message = "No update available to install.";
+      }
+    } catch (error) {
+      message = `Failed to install update: ${error}`;
+    } finally {
+      updateInstallInProgress = false;
     }
   }
 
@@ -224,6 +266,37 @@
       >
         Export
       </button>
+    </div>
+  </div>
+
+  <div class="mt-6 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <h3 class="font-semibold text-zinc-900">App Updates</h3>
+        <p class="text-sm text-[var(--color-muted)]">
+          {#if updateVersion}
+            Update ready: {updateVersion}
+          {:else}
+            Check GitHub Releases for signed updates
+          {/if}
+        </p>
+      </div>
+      <div class="flex gap-2">
+        <button
+          class="rounded-lg bg-zinc-700 px-3 py-2 text-xs text-white disabled:opacity-50"
+          disabled={updateCheckInProgress}
+          on:click={checkUpdates}
+        >
+          {updateCheckInProgress ? "Checking..." : "Check"}
+        </button>
+        <button
+          class="rounded-lg bg-teal-700 px-3 py-2 text-xs text-white disabled:opacity-50"
+          disabled={updateInstallInProgress || !updateVersion}
+          on:click={installAvailableUpdate}
+        >
+          {updateInstallInProgress ? "Installing..." : "Install"}
+        </button>
+      </div>
     </div>
   </div>
 </section>

@@ -3,13 +3,14 @@ pub mod models;
 pub mod services;
 pub mod state;
 
-use crate::commands::{auth, collections, config, game, modpack, mods, profiles, sharing};
+use crate::commands::{auth, collections, config, game, modpack, mods, profiles, sharing, updater};
 use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             config::get_config,
@@ -39,6 +40,8 @@ pub fn run() {
             profiles::save_profile,
             profiles::delete_profile,
             profiles::apply_profile,
+            updater::check_for_update,
+            updater::install_update,
             sharing::share_modpack_via_code,
             sharing::import_from_code,
             sharing::push_modpack_update,
