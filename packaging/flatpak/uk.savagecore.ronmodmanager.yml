@@ -1,4 +1,4 @@
-app-id: com.savagecore.ronmodmanager
+app-id: uk.savagecore.ronmodmanager
 runtime: org.gnome.Platform
 runtime-version: "47"
 sdk: org.gnome.Sdk
@@ -23,9 +23,9 @@ modules:
       - pnpm install --frozen-lockfile
       - pnpm tauri build -- --bundles none
       - install -Dm755 src-tauri/target/release/ronmodmanager /app/bin/ronmodmanager
-      - install -Dm644 packaging/flatpak/com.savagecore.ronmodmanager.desktop /app/share/applications/com.savagecore.ronmodmanager.desktop
-      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.savagecore.ronmodmanager.png
-      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/com.savagecore.ronmodmanager.png
+      - install -Dm644 packaging/flatpak/uk.savagecore.ronmodmanager.desktop /app/share/applications/uk.savagecore.ronmodmanager.desktop
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/uk.savagecore.ronmodmanager.png
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/uk.savagecore.ronmodmanager.png
     sources:
       - type: dir
         path: ../..

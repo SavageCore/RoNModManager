@@ -43,8 +43,8 @@ jobs:
           flatpak install -y flathub org.gnome.Platform//47 org.gnome.Sdk//47 org.freedesktop.Sdk.Extension.node22//24.08 org.freedesktop.Sdk.Extension.rust-stable//24.08
       - name: Build Flatpak
         run: |
-          flatpak-builder --force-clean --user --install-deps-from=flathub --repo=flatpak-repo build-dir packaging/flatpak/com.savagecore.ronmodmanager.yml
-          flatpak build-bundle flatpak-repo ronmodmanager.flatpak com.savagecore.ronmodmanager
+          flatpak-builder --force-clean --user --install-deps-from=flathub --repo=flatpak-repo build-dir packaging/flatpak/uk.savagecore.ronmodmanager.yml
+          flatpak build-bundle flatpak-repo ronmodmanager.flatpak uk.savagecore.ronmodmanager
       - uses: actions/upload-artifact@v4
         with:
           name: ronmodmanager-flatpak

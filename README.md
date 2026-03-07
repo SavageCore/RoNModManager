@@ -34,7 +34,8 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 This project is configured for Tauri updater using:
 
-- `src-tauri/tauri.conf.json` updater endpoint: `https://savagecore.uk/ronmodmanager/latest.json`
+- `src-tauri/tauri.conf.json` updater endpoint: `https://github.com/savagecore/RoNModManager/releases/latest/download/latest.json`
+- `src-tauri/tauri.conf.json` application identifier: `uk.savagecore.ronmodmanager`
 - `bundle.createUpdaterArtifacts = true`
 - GitHub Actions release workflow signing env vars
 
@@ -57,8 +58,8 @@ Without the correct public key and signing secrets, update checks/install will f
 
 Flatpak support is defined in:
 
-- `packaging/flatpak/com.savagecore.ronmodmanager.yml`
-- `packaging/flatpak/com.savagecore.ronmodmanager.desktop`
+- `packaging/flatpak/uk.savagecore.ronmodmanager.yml`
+- `packaging/flatpak/uk.savagecore.ronmodmanager.desktop`
 
 CI and release workflows build a `.flatpak` bundle and publish it as an artifact (and release asset on tags).
 
@@ -70,15 +71,15 @@ sudo apt-get install -y flatpak flatpak-builder
 flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 flatpak install -y flathub org.gnome.Platform//47 org.gnome.Sdk//47 org.freedesktop.Sdk.Extension.node22//24.08 org.freedesktop.Sdk.Extension.rust-stable//24.08
 
-flatpak-builder --force-clean --user --install-deps-from=flathub --repo=flatpak-repo build-dir packaging/flatpak/com.savagecore.ronmodmanager.yml
-flatpak build-bundle flatpak-repo ronmodmanager.flatpak com.savagecore.ronmodmanager
+flatpak-builder --force-clean --user --install-deps-from=flathub --repo=flatpak-repo build-dir packaging/flatpak/uk.savagecore.ronmodmanager.yml
+flatpak build-bundle flatpak-repo ronmodmanager.flatpak uk.savagecore.ronmodmanager
 ```
 
 Install and run local bundle:
 
 ```bash
 flatpak install --user --bundle ronmodmanager.flatpak
-flatpak run com.savagecore.ronmodmanager
+flatpak run uk.savagecore.ronmodmanager
 ```
 
 ## License

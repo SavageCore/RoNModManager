@@ -2,7 +2,7 @@
 Name=RoN Mod Manager
 Comment=Ready or Not mod manager
 Exec=ronmodmanager
-Icon=com.savagecore.ronmodmanager
+Icon=uk.savagecore.ronmodmanager
 Terminal=false
 Type=Application
 Categories=Game;Utility;
