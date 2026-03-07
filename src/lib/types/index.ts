@@ -14,6 +14,7 @@ export interface AppConfig {
   oauth_token: string | null;
   subscribed_mods: Record<string, SubscribedMod>;
   collections: Record<string, boolean>;
+  enabled_collections: string[];
   theme: ThemeMode;
   last_update_check: string | null;
 }
@@ -74,4 +75,11 @@ export interface SharedModpack {
   shared_by: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface Profile {
+  name: string;
+  description: string | null;
+  enabled_collections: string[];
+  created_at: string;
 }

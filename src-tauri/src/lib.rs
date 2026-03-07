@@ -3,7 +3,7 @@ pub mod models;
 pub mod services;
 pub mod state;
 
-use crate::commands::{auth, collections, config, game, modpack, mods, sharing};
+use crate::commands::{auth, collections, config, game, modpack, mods, profiles, sharing};
 use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -18,6 +18,7 @@ pub fn run() {
             config::is_intro_skip_applied,
             game::detect_game_path,
             game::set_game_path,
+            game::launch_game,
             modpack::set_modpack_url,
             modpack::sync_modpack,
             modpack::get_modpack_collections,
@@ -33,6 +34,11 @@ pub fn run() {
             mods::get_mod_list,
             mods::install_mods,
             mods::uninstall_mods,
+            profiles::list_profiles,
+            profiles::get_profile,
+            profiles::save_profile,
+            profiles::delete_profile,
+            profiles::apply_profile,
             sharing::share_modpack_via_code,
             sharing::import_from_code,
             sharing::push_modpack_update,

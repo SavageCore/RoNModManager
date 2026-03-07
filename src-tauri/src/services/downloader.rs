@@ -138,7 +138,7 @@ mod tests {
 
         let url = "https://raw.githubusercontent.com/github/gitignore/main/README.md";
 
-        let result = download_file(&client, &url, &nested_path).await;
+        let result = download_file(&client, url, &nested_path).await;
 
         if result.is_ok() {
             assert!(nested_path.exists());

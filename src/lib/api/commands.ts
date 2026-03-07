@@ -1,5 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppConfig, Collection, ModInfo, ModPack } from "../types";
+import type {
+  AppConfig,
+  Collection,
+  ModInfo,
+  ModPack,
+  Profile,
+} from "../types";
 
 export const getConfig = () => invoke<AppConfig>("get_config");
 export const setTheme = (theme: "light" | "dark" | "system") =>
@@ -38,3 +44,23 @@ export const getModList = () => invoke<ModInfo[]>("get_mod_list");
 export const installMods = (enabledCollections?: string[]) =>
   invoke<void>("install_mods", { enabled_collections: enabledCollections });
 export const uninstallMods = () => invoke<void>("uninstall_mods");
+
+export const listProfiles = () => invoke<Profile[]>("list_profiles");
+export const getProfile = (name: string) =>
+  invoke<Profile | null>("get_profile", { name });
+export const saveProfile = (
+  name: string,
+  description: string | null,
+  enabledCollections: string[],
+) =>
+  invoke<Profile>("save_profile", {
+    name,
+    description,
+    enabled_collections: enabledCollections,
+  });
+export const deleteProfile = (name: string) =>
+  invoke<void>("delete_profile", { name });
+export const applyProfile = (name: string) =>
+  invoke<Profile>("apply_profile", { name });
+
+export const launchGame = () => invoke<void>("launch_game");

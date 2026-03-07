@@ -29,6 +29,7 @@ pub struct AppConfig {
     pub oauth_token: Option<String>,
     pub subscribed_mods: HashMap<String, SubscribedMod>,
     pub collections: HashMap<String, bool>,
+    pub enabled_collections: Vec<String>,
     pub theme: ThemeMode,
     pub last_update_check: Option<DateTime<Utc>>,
 }
@@ -42,6 +43,7 @@ impl Default for AppConfig {
             oauth_token: None,
             subscribed_mods: HashMap::new(),
             collections: HashMap::new(),
+            enabled_collections: Vec::new(),
             theme: ThemeMode::System,
             last_update_check: None,
         }

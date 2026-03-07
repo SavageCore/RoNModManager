@@ -139,9 +139,11 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("nested").join("config.json");
 
-        let mut config = AppConfig::default();
-        config.modpack_url = Some("https://mods.example.com/savagepack".to_string());
-        config.modpack_version = Some("1.2.0".to_string());
+        let config = AppConfig {
+            modpack_url: Some("https://mods.example.com/savagepack".to_string()),
+            modpack_version: Some("1.2.0".to_string()),
+            ..Default::default()
+        };
 
         save_config_to_path(&config_path, &config).unwrap();
         let loaded = load_config_from_path(&config_path).unwrap();
