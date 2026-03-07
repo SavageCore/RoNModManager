@@ -3367,6 +3367,7 @@ dependencies = [
  "md-5",
  "mockito",
  "reqwest 0.12.28",
+ "semver",
  "serde",
  "serde_json",
  "tauri",
