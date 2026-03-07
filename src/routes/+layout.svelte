@@ -1,7 +1,10 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import "../app.css";
   import { resolve } from "$app/paths";
   import { page } from "$app/stores";
+  import { getConfig } from "$lib/api/commands";
+  import { initTheme } from "$lib/theme";
 
   const nav = [
     { href: "/", label: "Dashboard" },
@@ -10,6 +13,21 @@
     { href: "/profiles", label: "Profiles" },
     { href: "/settings", label: "Settings" },
   ];
+
+  onMount(() => {
+    let cleanup = () => {};
+
+    void getConfig()
+      .then((config) => {
+        cleanup();
+        cleanup = initTheme(config.theme);
+      })
+      .catch(() => {
+        cleanup = initTheme("system");
+      });
+
+    return () => cleanup();
+  });
 </script>
 
 <div class="mx-auto flex min-h-screen w-full max-w-7xl gap-4 px-4 py-6 sm:px-6">

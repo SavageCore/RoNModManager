@@ -18,6 +18,7 @@
     setTheme,
     validateToken,
   } from "$lib/api/commands";
+  import { applyThemeClass } from "$lib/theme";
 
   let gamePath = "";
   let modpackUrl = "";
@@ -38,6 +39,7 @@
     gamePath = config.game_path ?? "";
     modpackUrl = config.modpack_url ?? "";
     theme = config.theme;
+    applyThemeClass(theme);
   }
 
   async function autodetect() {
@@ -55,6 +57,7 @@
     await setGamePath(gamePath.trim());
     await setModpackUrl(modpackUrl.trim());
     await setTheme(theme);
+    applyThemeClass(theme);
     message = "Settings saved.";
     await refresh();
   }
@@ -183,6 +186,7 @@
       <select
         class="w-full rounded-lg border border-zinc-300 px-3 py-2"
         bind:value={theme}
+        on:change={() => applyThemeClass(theme)}
       >
         <option value="system">System</option>
         <option value="light">Light</option>
