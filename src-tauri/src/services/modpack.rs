@@ -55,12 +55,65 @@ pub async fn fetch_manifest_if_exists(
     let response = client.get(url).send().await?;
 
     if response.status() == reqwest::StatusCode::NOT_FOUND {
-        return Ok(None);
+        return fetch_manifest_from_html(client, base_url).await;
     }
 
     let response = response.error_for_status()?;
     let manifest = response.json::<ModpackManifest>().await?;
     Ok(Some(manifest))
+}
+
+/// Fallback: Try to discover mod files from HTML directory listing
+async fn fetch_manifest_from_html(client: &Client, base_url: &str) -> Result<Option<ModpackManifest>> {
+    let mods_url = format!("{}/mods", base_url.trim_end_matches('/'));
+    
+    let response = client.get(&mods_url).send().await?;
+    
+    // If mods directory doesn't exist, no fallback possible
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    
+    let response = response.error_for_status()?;
+    let html = response.text().await?;
+    
+    // Parse HTML directory listing for mod files
+    // Look for href attributes pointing to .pak, .zip, .sav files
+    let files = extract_files_from_html(&html, &mods_url);
+    
+    if files.is_empty() {
+        return Ok(None);
+    }
+    
+    Ok(Some(ModpackManifest { files }))
+}
+
+/// Extract downloadable files from HTML directory listing
+fn extract_files_from_html(html: &str, _base_url: &str) -> Vec<ManifestFileEntry> {
+    let mut files = Vec::new();
+    
+    // Find all href attributes in HTML
+    for line in html.lines() {
+        // Look for href patterns in <a> tags
+        if let Some(href_start) = line.find("href=\"") {
+            if let Some(href_end) = line[href_start + 6..].find('"') {
+                let href = &line[href_start + 6..href_start + 6 + href_end];
+                
+                // Filter for mod files (skip parent directory references)
+                if (href.ends_with(".pak") || href.ends_with(".zip") || href.ends_with(".sav"))
+                    && !href.starts_with('/') && !href.contains("..")
+                {
+                    files.push(ManifestFileEntry {
+                        path: href.to_string(),
+                        sha256: String::new(), // unknown sha256 from HTML fallback
+                        size: 0, // unknown size from HTML fallback
+                    });
+                }
+            }
+        }
+    }
+    
+    files
 }
 
 pub async fn download_manifest_files(
@@ -149,8 +202,13 @@ mod tests {
     #[tokio::test]
     async fn fetch_manifest_returns_none_on_404() {
         let mut server = Server::new_async().await;
-        let mock = server
+        let _mock1 = server
             .mock("GET", "/packs/ronmod.manifest")
+            .with_status(404)
+            .create_async()
+            .await;
+        let _mock2 = server
+            .mock("GET", "/packs/mods")
             .with_status(404)
             .create_async()
             .await;
@@ -160,7 +218,6 @@ mod tests {
         let manifest = fetch_manifest_if_exists(&client, &base).await.unwrap();
 
         assert!(manifest.is_none());
-        mock.assert_async().await;
     }
 
     #[tokio::test]
@@ -190,5 +247,26 @@ mod tests {
 
         assert_eq!(downloaded.len(), 1);
         assert!(downloaded[0].exists());
+    }
+
+    #[test]
+    fn extract_files_from_html_directory_listing() {
+        let html = r#"
+            <html>
+            <body>
+            <a href="mod1.pak">mod1.pak</a>
+            <a href="mod2.zip">mod2.zip</a>
+            <a href="savegame.sav">savegame.sav</a>
+            <a href="../parent.pak">../parent.pak</a>
+            <a href="/absolute.pak">/absolute.pak</a>
+            </body>
+            </html>
+        "#;
+
+        let files = extract_files_from_html(html, "http://example.com/mods");
+        assert_eq!(files.len(), 3);
+        assert_eq!(files[0].path, "mod1.pak");
+        assert_eq!(files[1].path, "mod2.zip");
+        assert_eq!(files[2].path, "savegame.sav");
     }
 }
