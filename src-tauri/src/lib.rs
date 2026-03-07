@@ -14,10 +14,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             config::get_config,
             config::set_theme,
+            config::apply_intro_skip,
+            config::is_intro_skip_applied,
             game::detect_game_path,
             game::set_game_path,
             modpack::set_modpack_url,
             modpack::sync_modpack,
+            modpack::get_modpack_collections,
             modpack::build_modpack_from_installed,
             modpack::export_modpack_to_file,
             collections::get_collections,

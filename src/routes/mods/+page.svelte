@@ -1,15 +1,25 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getModList, uninstallMods, installMods } from "$lib/api/commands";
+  import {
+    getModList,
+    uninstallMods,
+    installMods,
+    getModpackCollections,
+  } from "$lib/api/commands";
   import ProgressModal from "$lib/components/ProgressModal.svelte";
+  import CollectionSelector from "$lib/components/CollectionSelector.svelte";
   import { listen } from "@tauri-apps/api/event";
-  import type { ModInfo, ProgressEvent } from "$lib/types";
+  import type { Collection, ModInfo, ProgressEvent } from "$lib/types";
 
   let mods: ModInfo[] = [];
   let message = "";
   let isInstallingMods = false;
   let showProgress = false;
   let currentProgress: ProgressEvent | null = null;
+  let showCollectionSelector = false;
+  let availableCollections: Record<string, Collection> = {};
+  let selectedCollections = new Set<string>();
+  let isLoadingCollections = false;
 
   async function refresh() {
     try {
@@ -26,12 +36,29 @@
   }
 
   async function installModsHandler() {
+    isLoadingCollections = true;
+    try {
+      availableCollections = await getModpackCollections();
+      selectedCollections = new Set(
+        Object.keys(availableCollections).filter(
+          (name) => availableCollections[name].default_enabled,
+        ),
+      );
+      showCollectionSelector = true;
+    } catch (error) {
+      message = `Failed to load collections: ${String(error)}`;
+    } finally {
+      isLoadingCollections = false;
+    }
+  }
+
+  async function performInstall(collections: string[]) {
     showProgress = true;
     isInstallingMods = true;
     message = "";
 
     try {
-      await installMods();
+      await installMods(collections.length > 0 ? collections : undefined);
       message = "Mods installed successfully!";
       await refresh();
     } catch (error) {
@@ -101,3 +128,11 @@
     </ul>
   {/if}
 </section>
+
+<CollectionSelector
+  isVisible={showCollectionSelector}
+  collections={availableCollections}
+  {selectedCollections}
+  isLoading={isLoadingCollections}
+  onConfirm={performInstall}
+/>

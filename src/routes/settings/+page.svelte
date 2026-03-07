@@ -1,9 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
+    applyIntroSkip,
+    buildModpackFromInstalled,
     detectGamePath,
+    exportModpackToFile,
     getAuthStatus,
     getConfig,
+    isIntroSkipApplied,
     logout,
     openModioLogin,
     saveToken,
@@ -23,6 +27,7 @@
   async function refresh() {
     const config = await getConfig();
     authConnected = await getAuthStatus().catch(() => false);
+    introSkipApplied = await isIntroSkipApplied().catch(() => false);
     gamePath = config.game_path ?? "";
     modpackUrl = config.modpack_url ?? "";
     theme = config.theme;
@@ -63,6 +68,35 @@
     await logout();
     message = "Logged out.";
     await refresh();
+  }
+
+  async function applyIntroSkipConfig() {
+    applyingIntroSkip = true;
+    try {
+      await applyIntroSkip();
+      introSkipApplied = true;
+      message = "Intro skip applied successfully!";
+    } catch (error) {
+      message = `Failed to apply intro skip: ${error}`;
+    } finally {
+      applyingIntroSkip = false;
+    }
+  }
+
+  async function exportInstalledMods() {
+    try {
+      const modpack = await buildModpackFromInstalled();
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .split("T")[0];
+      // Save to app config directory with timestamp
+      const filename = `ronmod-export-${timestamp}.json`;
+      await exportModpackToFile(modpack, `./modpacks/${filename}`);
+      message = `Modpack exported successfully! Filename: ${filename}`;
+    } catch (error) {
+      message = `Failed to export modpack: ${error}`;
+    }
   }
 
   onMount(() => {
@@ -147,8 +181,49 @@
     >
   </label>
 
+  <div class="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 class="font-semibold text-zinc-900">Intro Skip</h3>
+        <p class="text-sm text-[var(--color-muted)]">
+          {introSkipApplied
+            ? "✓ Applied"
+            : "Configure Game.ini to skip intro video"}
+        </p>
+      </div>
+      <button
+        class="rounded-lg bg-teal-700 px-3 py-2 text-xs text-white disabled:opacity-50"
+        disabled={applyingIntroSkip || introSkipApplied}
+        on:click={applyIntroSkipConfig}
+      >
+        {applyingIntroSkip
+          ? "Applying..."
+          : introSkipApplied
+            ? "Applied"
+            : "Apply"}
+      </button>
+    </div>
+  </div>
+
   <button
     class="mt-5 rounded-lg bg-teal-800 px-4 py-2 text-sm text-white"
     on:click={save}>Save All Settings</button
   >
+
+  <div class="mt-6 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 class="font-semibold text-zinc-900">Export Modpack</h3>
+        <p class="text-sm text-[var(--color-muted)]">
+          Export currently installed mods as a modpack file
+        </p>
+      </div>
+      <button
+        class="rounded-lg bg-teal-700 px-3 py-2 text-xs text-white hover:bg-teal-800 transition"
+        on:click={exportInstalledMods}
+      >
+        Export
+      </button>
+    </div>
+  </div>
 </section>

@@ -40,6 +40,22 @@ pub async fn sync_modpack(_app: AppHandle, state: State<'_, AppState>) -> Result
 }
 
 #[tauri::command]
+pub async fn get_modpack_collections(
+    state: State<'_, AppState>,
+) -> Result<HashMap<String, Collection>, String> {
+    let config = state.get_config().map_err(String::from)?;
+    let url = config
+        .modpack_url
+        .ok_or_else(|| "Modpack URL is not configured".to_string())?;
+
+    let pack = modpack_service::fetch_modpack(&state.client, &url)
+        .await
+        .map_err(String::from)?;
+
+    Ok(pack.collections)
+}
+
+#[tauri::command]
 pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<ModPack, String> {
     let config = state.get_config().map_err(String::from)?;
     let game_path = config

@@ -1,9 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppConfig, ModInfo, ModPack } from "../types";
+import type { AppConfig, Collection, ModInfo, ModPack } from "../types";
 
 export const getConfig = () => invoke<AppConfig>("get_config");
 export const setTheme = (theme: "light" | "dark" | "system") =>
   invoke<void>("set_theme", { theme });
+export const applyIntroSkip = () => invoke<void>("apply_intro_skip");
+export const isIntroSkipApplied = () =>
+  invoke<boolean>("is_intro_skip_applied");
 
 export const detectGamePath = () => invoke<string | null>("detect_game_path");
 export const setGamePath = (path: string) =>
@@ -12,6 +15,12 @@ export const setGamePath = (path: string) =>
 export const setModpackUrl = (url: string) =>
   invoke<void>("set_modpack_url", { url });
 export const syncModpack = () => invoke<ModPack>("sync_modpack");
+export const getModpackCollections = () =>
+  invoke<Record<string, Collection>>("get_modpack_collections");
+export const buildModpackFromInstalled = () =>
+  invoke<ModPack>("build_modpack_from_installed");
+export const exportModpackToFile = (modpack: ModPack, path: string) =>
+  invoke<void>("export_modpack_to_file", { modpack, path });
 
 export const getCollections = () =>
   invoke<Record<string, boolean>>("get_collections");
@@ -26,5 +35,6 @@ export const validateToken = () => invoke<boolean>("validate_token");
 export const logout = () => invoke<void>("logout");
 
 export const getModList = () => invoke<ModInfo[]>("get_mod_list");
-export const installMods = () => invoke<void>("install_mods");
+export const installMods = (enabledCollections?: string[]) =>
+  invoke<void>("install_mods", { enabled_collections: enabledCollections });
 export const uninstallMods = () => invoke<void>("uninstall_mods");

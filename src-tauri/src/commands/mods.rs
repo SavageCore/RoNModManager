@@ -55,7 +55,11 @@ pub async fn get_mod_list(state: State<'_, AppState>) -> Result<Vec<ModInfo>, St
 }
 
 #[tauri::command]
-pub async fn install_mods(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn install_mods(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    enabled_collections: Option<Vec<String>>,
+) -> Result<(), String> {
     let config = state.get_config().map_err(String::from)?;
     let game_path = config
         .game_path
@@ -88,14 +92,42 @@ pub async fn install_mods(app: AppHandle, state: State<'_, AppState>) -> Result<
             e.to_string()
         })?;
     let manifest = manifest.ok_or_else(|| {
-        let err_msg = "No modpack manifest found and HTML fallback did not discover any mod files"
-            .to_string();
+        let err_msg =
+            "No modpack manifest found. Ensure ronmod.manifest is available at the modpack URL"
+                .to_string();
         let _ = app.emit(
             "install_progress",
             &ProgressEvent::new_error(err_msg.clone()),
         );
         err_msg
     })?;
+
+    // Filter manifest files based on enabled collections if provided
+    let mut filtered_manifest = manifest.clone();
+    if let Some(ref enabled_cols) = enabled_collections {
+        // Fetch modpack metadata to understand collection structure
+        let modpack = modpack_service::fetch_modpack(&state.client, &modpack_url)
+            .await
+            .ok();
+
+        if let Some(modpack) = modpack {
+            filtered_manifest.files.retain(|file| {
+                // Check if file is in an enabled collection
+                for (collection_name, collection) in &modpack.collections {
+                    if enabled_cols.contains(collection_name)
+                        && collection.mods.iter().any(|m| file.path.contains(m))
+                    {
+                        return true;
+                    }
+                }
+                // If file path contains collection folder name or is in _manual, include it
+                file.path.contains("_manual/")
+                    || enabled_cols
+                        .iter()
+                        .any(|c| file.path.contains(&format!("{}/", c)))
+            });
+        }
+    }
 
     let download_root = std::env::temp_dir()
         .join("ronmodmanager")
@@ -113,9 +145,9 @@ pub async fn install_mods(app: AppHandle, state: State<'_, AppState>) -> Result<
         "install_progress",
         &ProgressEvent {
             operation: "download_start".to_string(),
-            file: format!("{} files", manifest.files.len()),
+            file: format!("{} files", filtered_manifest.files.len()),
             percent: 10.0,
-            message: format!("Downloading {} files...", manifest.files.len()),
+            message: format!("Downloading {} files...", filtered_manifest.files.len()),
             total_bytes: None,
             processed_bytes: None,
         },
@@ -125,7 +157,7 @@ pub async fn install_mods(app: AppHandle, state: State<'_, AppState>) -> Result<
         &state.client,
         &modpack_url,
         &download_root,
-        &manifest,
+        &filtered_manifest,
     )
     .await
     .map_err(|e| {
