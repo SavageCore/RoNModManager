@@ -1,39 +1,293 @@
 @import "tailwindcss";
+@import "adwavecss/dist/styles.css";
+@import "$lib/components/toast.css";
 
+/* ADWaveCSS Color Variables for GNOME/Libadwaita Theme */
 :root {
-  --color-bg: #f7f7f5;
-  --color-surface: #ffffff;
-  --color-text: #111827;
-  --color-muted: #4b5563;
-  --color-accent: #0f766e;
+  --adw-font-family: "Cantarell", "Inter", system-ui, -apple-system, sans-serif;
+  color-scheme: light;
+
+  /* ADWaveCSS button colors */
+  --clr-btn: #e0e0e0;
+  --clr-btn-adaptive: #f0f0f0;
+  --clr-btn-adaptive-hover: #e8e8e8;
+  --clr-btn-adaptive-pressed: #d0d0d0;
+  --clr-btn-adaptive-toggled: #c0c0c0;
+
+  /* Primary accent color (Blue for GNOME) */
+  --clr-primary-100: #a5d6ff;
+  --clr-primary-200: #6fbdff;
+  --clr-primary-300: #3584e4;
+  --clr-primary-500: #0d47a1;
+  --clr-primary-text: #ffffff;
+
+  /* Danger/destructive color (Red) */
+  --clr-danger-100: #ffb3ba;
+  --clr-danger-300: #ff6b6b;
+  --clr-danger-text: #ffffff;
+
+  /* Success color (Green) */
+  --clr-success-100: #b3ffb3;
+  --clr-success-300: #57e389;
+  --clr-success-text: #1e1e1e;
+
+  /* Neutral grays */
+  --clr-text: #000000;
+  --clr-text-secondary: #606366;
+  --clr-bg: #fafafa;
+  --clr-surface: #ffffff;
+  --clr-surface-variant: #f5f5f5;
+
+  /* Borders */
+  --adw-border-color: #d0d0d0;
+  --border-radius: 8px;
 }
 
-.dark {
-  --color-bg: #0f172a;
-  --color-surface: #111827;
-  --color-text: #f3f4f6;
-  --color-muted: #cbd5e1;
-  --color-accent: #2dd4bf;
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    /* Dark mode button colors */
+    --clr-btn: #424245;
+    --clr-btn-adaptive: #3a3a3d;
+    --clr-btn-adaptive-hover: #484849;
+    --clr-btn-adaptive-pressed: #36363a;
+    --clr-btn-adaptive-toggled: #2d2d30;
+
+    /* Primary accent (Blue, lighter for dark mode) */
+    --clr-primary-100: #8ab4f8;
+    --clr-primary-200: #5b9ef5;
+    --clr-primary-300: #3d88f0;
+    --clr-primary-500: #1e63d7;
+    --clr-primary-text: #ffffff;
+
+    /* Danger color (Red) */
+    --clr-danger-100: #f28482;
+    --clr-danger-300: #e74c3c;
+    --clr-danger-text: #ffffff;
+
+    /* Success color (Green) */
+    --clr-success-100: #8fce00;
+    --clr-success-300: #57e389;
+    --clr-success-text: #1e1e1e;
+
+    /* Neutral colors */
+    --clr-text: #ffffff;
+    --clr-text-secondary: #a0a1a2;
+    --clr-bg: #1e1e1e;
+    --clr-surface: #2d2d30;
+    --clr-surface-variant: #3a3a3d;
+
+    /* Borders */
+    --adw-border-color: #464649;
+  }
+}
+
+[data-theme="wintry"] {
+  color-scheme: light;
+  --clr-btn: #e0e0e0;
+  --clr-btn-adaptive: #f0f0f0;
+  --clr-btn-adaptive-hover: #e8e8e8;
+  --clr-btn-adaptive-pressed: #d0d0d0;
+  --clr-btn-adaptive-toggled: #c0c0c0;
+  --clr-primary-100: #a5d6ff;
+  --clr-primary-200: #6fbdff;
+  --clr-primary-300: #3584e4;
+  --clr-primary-500: #0d47a1;
+  --clr-primary-text: #ffffff;
+  --clr-danger-100: #ffb3ba;
+  --clr-danger-300: #ff6b6b;
+  --clr-danger-text: #ffffff;
+  --clr-success-100: #b3ffb3;
+  --clr-success-300: #57e389;
+  --clr-success-text: #1e1e1e;
+  --clr-text: #000000;
+  --clr-text-secondary: #606366;
+  --clr-bg: #fafafa;
+  --clr-surface: #ffffff;
+  --clr-surface-variant: #f5f5f5;
+  --adw-border-color: #d0d0d0;
+}
+
+[data-theme="cerberus"] {
+  color-scheme: dark;
+  --clr-btn: #424245;
+  --clr-btn-adaptive: #3a3a3d;
+  --clr-btn-adaptive-hover: #484849;
+  --clr-btn-adaptive-pressed: #36363a;
+  --clr-btn-adaptive-toggled: #2d2d30;
+  --clr-primary-100: #8ab4f8;
+  --clr-primary-200: #5b9ef5;
+  --clr-primary-300: #3d88f0;
+  --clr-primary-500: #1e63d7;
+  --clr-primary-text: #ffffff;
+  --clr-danger-100: #f28482;
+  --clr-danger-300: #e74c3c;
+  --clr-danger-text: #ffffff;
+  --clr-success-100: #8fce00;
+  --clr-success-300: #57e389;
+  --clr-success-text: #1e1e1e;
+  --clr-text: #ffffff;
+  --clr-text-secondary: #a0a1a2;
+  --clr-bg: #1e1e1e;
+  --clr-surface: #2d2d30;
+  --clr-surface-variant: #3a3a3d;
+  --adw-border-color: #464649;
 }
 
 html,
 body {
   min-height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  margin: 0;
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-  background:
-    radial-gradient(
-      circle at 10% 0%,
-      rgba(15, 118, 110, 0.12),
-      transparent 42%
-    ),
-    linear-gradient(
-      180deg,
-      var(--color-bg) 0%,
-      color-mix(in srgb, var(--color-bg), black 3%) 100%
-    );
-  color: var(--color-text);
+  font-family: var(--adw-font-family);
+  background: var(--clr-bg);
+  color: var(--clr-text);
+}
+
+/* Utility classes for compatibility */
+.card {
+  background: var(--clr-surface);
+  border: 1px solid var(--adw-border-color);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+/* ADWaveCSS provides .btn, .btn.primary, .btn.danger, .btn.flat */
+/* Add minimal size utilities without overriding ADWave styles */
+.btn-sm {
+  min-height: 2em;
+  padding: 0px 0.75em;
+  font-size: 0.875rem;
+}
+
+/* Ensure disabled buttons have visible disabled state */
+.btn.disabled,
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Input and select styling */
+.input,
+.select,
+.textarea {
+  font-family: var(--adw-font-family);
+  background: var(--clr-surface);
+  color: var(--clr-text);
+  border: 1px solid var(--adw-border-color);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9375rem;
+  width: 100%;
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: 2px solid var(--clr-primary-300);
+  outline-offset: -1px;
+  border-color: var(--clr-primary-300);
+}
+
+/* Toast notification styling */
+.message-box {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  max-width: 400px;
+  border-radius: 8px;
+  padding: 0.875rem 1.25rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  animation: slideInRight 0.3s ease-out;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.message-box.error {
+  background: var(--clr-danger-300);
+  color: var(--clr-danger-text);
+}
+
+.message-box.success {
+  background: var(--clr-success-300);
+  color: var(--clr-success-text);
+}
+
+/* Gale-style switch for mod rows */
+.gale-switch {
+  position: relative;
+  display: inline-flex;
+  width: 38px;
+  height: 22px;
+  cursor: pointer;
+}
+
+.gale-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.gale-switch-track {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--clr-btn-adaptive-pressed);
+  border: 1px solid var(--adw-border-color);
+  transition: background 120ms ease;
+}
+
+.gale-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--clr-surface);
+  transition: transform 120ms ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.gale-switch input:checked + .gale-switch-track {
+  background: var(--clr-primary-300);
+  border-color: var(--clr-primary-300);
+}
+
+.gale-switch input:checked + .gale-switch-track::after {
+  transform: translateX(16px);
+}
+
+.icon-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--adw-border-color);
+  background: transparent;
+  color: var(--clr-danger-300);
+  cursor: pointer;
+}
+
+.icon-btn-danger:hover {
+  background: color-mix(in srgb, var(--clr-danger-300) 16%, transparent);
 }

@@ -1,8 +1,9 @@
 use std::fs;
-use std::io;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use zip::ZipArchive;
+use unrar::Archive as RarArchive;
 
 use crate::models::{AppError, Result};
 use crate::services::hasher;
@@ -28,6 +29,15 @@ pub struct InstallReport {
     pub installed: usize,
     pub skipped: usize,
     pub overrides_backed_up: usize,
+    pub installed_files: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArchiveProgress {
+    pub file: String,
+    pub processed_bytes: u64,
+    pub total_bytes: u64,
+    pub percent: f32,
 }
 
 pub fn classify_archive_entry(path: &Path) -> ModFileType {
@@ -48,15 +58,56 @@ pub fn classify_archive_entry(path: &Path) -> ModFileType {
 }
 
 pub fn install_archive(archive_path: &Path, context: &InstallContext) -> Result<InstallReport> {
+    install_archive_with_progress(archive_path, context, |_| {})
+}
+
+pub fn install_archive_with_progress<F>(
+    archive_path: &Path,
+    context: &InstallContext,
+    mut on_progress: F,
+) -> Result<InstallReport>
+where
+    F: FnMut(ArchiveProgress),
+{
     fs::create_dir_all(&context.mods_path)?;
-    fs::create_dir_all(&context.savegames_path)?;
-    fs::create_dir_all(&context.backup_path)?;
 
     let file = fs::File::open(archive_path)?;
     let mut archive = ZipArchive::new(file)
         .map_err(|error| AppError::Validation(format!("invalid zip archive: {error}")))?;
 
     let mut report = InstallReport::default();
+    let mut total_bytes = 0u64;
+
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index).map_err(|error| {
+            AppError::Validation(format!("invalid zip entry at {index}: {error}"))
+        })?;
+
+        if entry.is_dir() {
+            continue;
+        }
+
+        let entry_path = PathBuf::from(entry.name());
+        if classify_archive_entry(&entry_path) != ModFileType::Unknown {
+            total_bytes = total_bytes.saturating_add(entry.size());
+        }
+    }
+
+    let mut processed_bytes = 0u64;
+
+    let mut emit_progress = |file: &str, processed: u64| {
+        let percent = if total_bytes == 0 {
+            100.0
+        } else {
+            (processed as f32 / total_bytes as f32 * 100.0).min(100.0)
+        };
+        on_progress(ArchiveProgress {
+            file: file.to_string(),
+            processed_bytes: processed,
+            total_bytes,
+            percent,
+        });
+    };
 
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(|error| {
@@ -68,16 +119,24 @@ pub fn install_archive(archive_path: &Path, context: &InstallContext) -> Result<
         }
 
         let entry_path = PathBuf::from(entry.name());
+        let entry_name = entry.name().to_string();
         match classify_archive_entry(&entry_path) {
             ModFileType::PakMod => {
                 let file_name = entry_path.file_name().ok_or_else(|| {
                     AppError::Validation(format!("invalid pak path in archive: {}", entry.name()))
                 })?;
                 let destination = context.mods_path.join(file_name);
-                if copy_entry_if_changed(&mut entry, &destination)? {
+                let entry_size = entry.size();
+                if copy_entry_if_changed_with_progress(&mut entry, &destination, |chunk| {
+                    processed_bytes = processed_bytes.saturating_add(chunk);
+                    emit_progress(&entry_name, processed_bytes);
+                })? {
                     report.installed += 1;
+                    report.installed_files.push(destination);
                 } else {
                     report.skipped += 1;
+                    processed_bytes = processed_bytes.saturating_add(entry_size);
+                    emit_progress(&entry_name, processed_bytes);
                 }
             }
             ModFileType::WorldGenSave => {
@@ -85,10 +144,17 @@ pub fn install_archive(archive_path: &Path, context: &InstallContext) -> Result<
                     AppError::Validation(format!("invalid save path in archive: {}", entry.name()))
                 })?;
                 let destination = context.savegames_path.join(file_name);
-                if copy_entry_if_changed(&mut entry, &destination)? {
+                let entry_size = entry.size();
+                if copy_entry_if_changed_with_progress(&mut entry, &destination, |chunk| {
+                    processed_bytes = processed_bytes.saturating_add(chunk);
+                    emit_progress(&entry_name, processed_bytes);
+                })? {
                     report.installed += 1;
+                    report.installed_files.push(destination);
                 } else {
                     report.skipped += 1;
+                    processed_bytes = processed_bytes.saturating_add(entry_size);
+                    emit_progress(&entry_name, processed_bytes);
                 }
             }
             ModFileType::Override => {
@@ -110,8 +176,121 @@ pub fn install_archive(archive_path: &Path, context: &InstallContext) -> Result<
                     report.overrides_backed_up += 1;
                 }
 
-                if copy_entry_if_changed(&mut entry, &destination)? {
+                let entry_size = entry.size();
+                if copy_entry_if_changed_with_progress(&mut entry, &destination, |chunk| {
+                    processed_bytes = processed_bytes.saturating_add(chunk);
+                    emit_progress(&entry_name, processed_bytes);
+                })? {
                     report.installed += 1;
+                    report.installed_files.push(destination);
+                } else {
+                    report.skipped += 1;
+                    processed_bytes = processed_bytes.saturating_add(entry_size);
+                    emit_progress(&entry_name, processed_bytes);
+                }
+            }
+            ModFileType::Unknown => {
+                report.skipped += 1;
+            }
+        }
+    }
+
+    emit_progress("Archive complete", total_bytes);
+
+    Ok(report)
+}
+
+pub fn install_rar_archive(archive_path: &Path, context: &InstallContext) -> Result<InstallReport> {
+    fs::create_dir_all(&context.mods_path)?;
+
+    let mut report = InstallReport::default();
+
+    // Create temporary directory for extraction
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ronmod_{}_{}", 
+        std::process::id(), 
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    ));
+    fs::create_dir_all(&temp_dir)?;
+
+    // Extract RAR archive to temp directory
+    let mut archive = RarArchive::new(archive_path)
+        .open_for_processing()
+        .map_err(|e| AppError::Validation(format!("Failed to open RAR archive: {:?}", e)))?;
+
+    while let Some(header) = archive.read_header()
+        .map_err(|e| AppError::Validation(format!("Failed to read RAR header: {:?}", e)))? 
+    {
+        let entry_name = header.entry().filename.to_string_lossy().to_string();
+        
+        if header.entry().is_directory() {
+            archive = header.skip()
+                .map_err(|e| AppError::Validation(format!("Failed to skip RAR entry: {:?}", e)))?;
+            continue;
+        }
+
+        let entry_path = PathBuf::from(&entry_name);
+        let temp_file = temp_dir.join(&entry_path);
+        
+        if let Some(parent) = temp_file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        // Extract file to temp location
+        archive = header.extract_to(&temp_file)
+            .map_err(|e| AppError::Validation(format!("Failed to extract RAR entry '{}': {:?}", entry_name, e)))?;
+
+        // Process the extracted file based on type
+        match classify_archive_entry(&entry_path) {
+            ModFileType::PakMod => {
+                let file_name = entry_path.file_name().ok_or_else(|| {
+                    AppError::Validation(format!("invalid pak path in archive: {}", entry_name))
+                })?;
+                let destination = context.mods_path.join(file_name);
+                if copy_file_if_changed(&temp_file, &destination)? {
+                    report.installed += 1;
+                    report.installed_files.push(destination);
+                } else {
+                    report.skipped += 1;
+                }
+            }
+            ModFileType::WorldGenSave => {
+                let file_name = entry_path.file_name().ok_or_else(|| {
+                    AppError::Validation(format!("invalid save path in archive: {}", entry_name))
+                })?;
+                let destination = context.savegames_path.join(file_name);
+                if copy_file_if_changed(&temp_file, &destination)? {
+                    report.installed += 1;
+                    report.installed_files.push(destination);
+                } else {
+                    report.skipped += 1;
+                }
+            }
+            ModFileType::Override => {
+                let override_relative = entry_path.strip_prefix("_overrides").map_err(|_| {
+                    AppError::Validation(format!(
+                        "invalid override path in archive: {}",
+                        entry_name
+                    ))
+                })?;
+
+                if override_relative.as_os_str().is_empty() {
+                    report.skipped += 1;
+                    continue;
+                }
+
+                let destination = context.game_path.join(override_relative);
+                if destination.exists() {
+                    backup_existing_file(&destination, &context.backup_path)?;
+                    report.overrides_backed_up += 1;
+                }
+
+                if copy_file_if_changed(&temp_file, &destination)? {
+                    report.installed += 1;
+                    report.installed_files.push(destination);
                 } else {
                     report.skipped += 1;
                 }
@@ -122,10 +301,40 @@ pub fn install_archive(archive_path: &Path, context: &InstallContext) -> Result<
         }
     }
 
+    // Clean up temp directory
+    let _ = fs::remove_dir_all(temp_dir);
+
     Ok(report)
 }
 
-fn copy_entry_if_changed(entry: &mut zip::read::ZipFile<'_>, destination: &Path) -> Result<bool> {
+fn copy_file_if_changed(source: &Path, destination: &Path) -> Result<bool> {
+    let needs_copy = if destination.exists() {
+        let source_crc = hasher::crc32_file(source)?;
+        let dest_crc = hasher::crc32_file(destination)?;
+        source_crc != dest_crc
+    } else {
+        true
+    };
+
+    if needs_copy {
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(source, destination)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+fn copy_entry_if_changed_with_progress<F>(
+    entry: &mut zip::read::ZipFile<'_>,
+    destination: &Path,
+    mut on_chunk: F,
+) -> Result<bool>
+where
+    F: FnMut(u64),
+{
     if destination.exists() {
         let current_crc = hasher::crc32_file(destination)?;
         if current_crc == entry.crc32() {
@@ -138,7 +347,15 @@ fn copy_entry_if_changed(entry: &mut zip::read::ZipFile<'_>, destination: &Path)
     }
 
     let mut output = fs::File::create(destination)?;
-    io::copy(entry, &mut output)?;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = entry.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        output.write_all(&buffer[..read])?;
+        on_chunk(read as u64);
+    }
     Ok(true)
 }
 

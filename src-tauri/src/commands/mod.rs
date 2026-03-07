@@ -7,3 +7,4 @@ pub mod mods;
 pub mod profiles;
 pub mod sharing;
 pub mod updater;
+pub mod window;

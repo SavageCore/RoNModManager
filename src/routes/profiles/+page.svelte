@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import type { Profile } from "$lib/types";
   import * as commands from "$lib/api/commands";
+  import { toastStore } from "$lib/stores/toast";
 
   let profiles: Profile[] = [];
   let loading = false;
@@ -9,13 +10,11 @@
   let showForm = false;
   let formName = "";
   let formDescription = "";
-  let formCollections: string[] = [];
-  let availableCollections: string[] = [];
+  let formEnabledGroups: string[] = [];
   let editingProfile: Profile | null = null;
 
   onMount(async () => {
     await loadProfiles();
-    await loadAvailableCollections();
   });
 
   async function loadProfiles() {
@@ -30,26 +29,17 @@
     }
   }
 
-  async function loadAvailableCollections() {
-    try {
-      const collections = await commands.getModpackCollections();
-      availableCollections = Object.keys(collections);
-    } catch (err) {
-      console.warn("Failed to load collections:", err);
-    }
-  }
-
   function openForm(profile?: Profile) {
     if (profile) {
       editingProfile = profile;
       formName = profile.name;
       formDescription = profile.description || "";
-      formCollections = [...profile.enabled_collections];
+      formEnabledGroups = [...profile.installed_mod_names];
     } else {
       editingProfile = null;
       formName = "";
       formDescription = "";
-      formCollections = [];
+      formEnabledGroups = [];
     }
     showForm = true;
   }
@@ -59,7 +49,7 @@
     editingProfile = null;
     formName = "";
     formDescription = "";
-    formCollections = [];
+    formEnabledGroups = [];
   }
 
   async function handleSubmit() {
@@ -70,14 +60,34 @@
         return;
       }
 
+      const isNewProfile = !editingProfile;
       await commands.saveProfile(
         formName,
         formDescription || null,
-        formCollections,
+        formEnabledGroups,
       );
+
+      if (isNewProfile) {
+        const profile = await commands.applyProfile(formName);
+        const config = await commands.getConfig();
+        if (config.game_path) {
+          await commands.syncModLinks(profile.installed_mod_names);
+        }
+
+        window.dispatchEvent(
+          new CustomEvent("ron:profile-changed", {
+            detail: { name: formName },
+          }),
+        );
+      }
 
       await loadProfiles();
       closeForm();
+      toastStore.success(
+        isNewProfile
+          ? `Profile created and switched: ${formName}`
+          : "Profile updated successfully.",
+      );
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
@@ -89,6 +99,7 @@
         error = null;
         await commands.deleteProfile(name);
         await loadProfiles();
+        toastStore.success(`Profile "${name}" deleted successfully.`);
       } catch (err) {
         error = err instanceof Error ? err.message : String(err);
       }
@@ -99,138 +110,134 @@
     try {
       error = null;
       const profile = await commands.applyProfile(name);
-      // Update local state or show confirmation
-      console.log("Applied profile:", profile);
-      // Optionally reload profiles to show updated state
+
+      const config = await commands.getConfig();
+      if (config.game_path) {
+        await commands.syncModLinks(profile.installed_mod_names);
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("ron:profile-changed", { detail: { name } }),
+      );
+
+      toastStore.success(
+        `Applied profile: ${name} (${profile.installed_mod_names.length} mod group${profile.installed_mod_names.length === 1 ? "" : "s"} enabled)`,
+      );
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
   }
-
-  function toggleCollection(name: string) {
-    if (formCollections.includes(name)) {
-      formCollections = formCollections.filter((c) => c !== name);
-    } else {
-      formCollections = [...formCollections, name];
-    }
-  }
 </script>
 
-<div class="container mx-auto px-4 py-8 max-w-2xl">
+<div class="mx-auto max-w-3xl px-4 py-8">
   <div class="mb-6">
-    <h1 class="text-3xl font-bold mb-2">Mod Profiles</h1>
-    <p class="text-gray-600">
-      Save and load different mod collection configurations
+    <h1 style="color: var(--clr-text);" class="text-3xl font-bold mb-2">
+      Mod Profiles
+    </h1>
+    <p style="color: var(--clr-text-secondary);">
+      Save and load different installed-mod configurations.
+    </p>
+    <p style="color: var(--clr-text-secondary);" class="text-sm mt-1">
+      Profiles share one mod archive/file store, so switching profiles does not
+      duplicate data.
     </p>
   </div>
 
   {#if error}
-    <div
-      class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"
-    >
+    <div class="message-box mb-4 rounded-lg px-4 py-3">
       {error}
     </div>
   {/if}
 
   {#if !showForm}
-    <button
-      on:click={() => openForm()}
-      class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-6"
-    >
+    <button on:click={() => openForm()} class="btn primary mb-6">
       + Create New Profile
     </button>
   {/if}
 
   {#if showForm}
-    <div class="bg-gray-100 p-6 rounded-lg mb-6">
-      <h2 class="text-2xl font-bold mb-4">
+    <div
+      style="background: var(--clr-surface); border-color: var(--adw-border-color);"
+      class="card mb-6 rounded-lg border p-6"
+    >
+      <h2 style="color: var(--clr-text);" class="text-2xl font-bold mb-4">
         {editingProfile ? "Edit Profile" : "Create New Profile"}
       </h2>
 
       <div class="mb-4">
-        <label class="block text-gray-700 font-bold mb-2">Name</label>
+        <label
+          for="profile-name"
+          style="color: var(--clr-text);"
+          class="mb-2 block font-semibold">Name</label
+        >
         <input
+          id="profile-name"
           type="text"
           bind:value={formName}
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+          class="input"
           placeholder="Profile name"
         />
       </div>
 
       <div class="mb-4">
-        <label class="block text-gray-700 font-bold mb-2">
+        <label
+          for="profile-description"
+          style="color: var(--clr-text);"
+          class="mb-2 block font-semibold"
+        >
           Description (optional)
         </label>
         <textarea
+          id="profile-description"
           bind:value={formDescription}
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+          class="textarea"
           placeholder="Profile description"
           rows="3"
-        />
-      </div>
-
-      <div class="mb-4">
-        <label class="block text-gray-700 font-bold mb-2">Collections</label>
-        <div class="space-y-2">
-          {#each availableCollections as collection (collection)}
-            <label class="flex items-center">
-              <input
-                type="checkbox"
-                checked={formCollections.includes(collection)}
-                on:change={() => toggleCollection(collection)}
-                class="mr-2"
-              />
-              <span>{collection}</span>
-            </label>
-          {/each}
-        </div>
+        ></textarea>
       </div>
 
       <div class="flex gap-2">
-        <button
-          on:click={handleSubmit}
-          class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
-        >
+        <button on:click={handleSubmit} class="btn primary">
           Save Profile
         </button>
-        <button
-          on:click={closeForm}
-          class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
-        >
-          Cancel
-        </button>
+        <button on:click={closeForm} class="btn"> Cancel </button>
       </div>
     </div>
   {/if}
 
   <div class="space-y-3">
     {#if loading}
-      <p class="text-gray-600">Loading profiles...</p>
+      <p style="color: var(--clr-text-secondary);">Loading profiles...</p>
     {:else if profiles.length === 0}
-      <p class="text-gray-600">
+      <p style="color: var(--clr-text-secondary);">
         No profiles created yet. Create one to get started!
       </p>
     {:else}
       {#each profiles as profile (profile.name)}
         <div
-          class="bg-white border border-gray-300 rounded-lg p-4 hover:shadow-lg transition-shadow"
+          style="background: var(--clr-surface); border-color: var(--adw-border-color);color:var(--clr-text);"
+          class="card rounded-lg border p-4"
         >
           <div class="flex justify-between items-start mb-2">
             <div>
-              <h3 class="text-lg font-bold">{profile.name}</h3>
+              <h3 style="color: var(--clr-text);" class="text-lg font-bold">
+                {profile.name}
+              </h3>
               {#if profile.description}
-                <p class="text-gray-600 text-sm">{profile.description}</p>
+                <p style="color: var(--clr-text-secondary);" class="text-sm">
+                  {profile.description}
+                </p>
               {/if}
             </div>
-            <span class="text-xs text-gray-500">
+            <span style="color: var(--clr-text-secondary);" class="text-xs">
               {new Date(profile.created_at).toLocaleDateString()}
             </span>
           </div>
 
           <div class="mb-3">
-            <p class="text-sm text-gray-600">
-              Collections: {profile.enabled_collections.length > 0
-                ? profile.enabled_collections.join(", ")
+            <p style="color: var(--clr-text-secondary);" class="text-sm">
+              Enabled mods: {profile.installed_mod_names.length > 0
+                ? profile.installed_mod_names.join(", ")
                 : "None"}
             </p>
           </div>
@@ -238,19 +245,16 @@
           <div class="flex gap-2">
             <button
               on:click={() => handleApply(profile.name)}
-              class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm"
+              class="btn btn-sm primary"
             >
               Apply
             </button>
-            <button
-              on:click={() => openForm(profile)}
-              class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded text-sm"
-            >
+            <button on:click={() => openForm(profile)} class="btn btn-sm">
               Edit
             </button>
             <button
               on:click={() => handleDelete(profile.name)}
-              class="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded text-sm"
+              class="btn btn-sm danger"
             >
               Delete
             </button>
@@ -260,9 +264,3 @@
     {/if}
   </div>
 </div>
-
-<style>
-  :global(body) {
-    @apply bg-gray-50;
-  }
-</style>

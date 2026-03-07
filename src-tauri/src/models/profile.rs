@@ -4,17 +4,19 @@ use serde::{Deserialize, Serialize};
 pub struct Profile {
     pub name: String,
     pub description: Option<String>,
-    pub enabled_collections: Vec<String>,
+    /// Archive names of mods installed to this profile
+    #[serde(alias = "enabled_collections")]
+    pub installed_mod_names: Vec<String>,
     #[serde(default)]
     pub created_at: String,
 }
 
 impl Profile {
-    pub fn new(name: String, enabled_collections: Vec<String>) -> Self {
+    pub fn new(name: String, installed_mod_names: Vec<String>) -> Self {
         Self {
             name,
             description: None,
-            enabled_collections,
+            installed_mod_names,
             created_at: chrono::Utc::now().to_rfc3339(),
         }
     }

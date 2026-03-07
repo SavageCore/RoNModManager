@@ -1,6 +1,8 @@
 import type { ThemeMode } from "$lib/types";
 
 const DARK_QUERY = "(prefers-color-scheme: dark)";
+const SKELETON_LIGHT_THEME = "wintry";
+const SKELETON_DARK_THEME = "cerberus";
 
 function resolveTheme(mode: ThemeMode): "light" | "dark" {
   if (mode !== "system") {
@@ -17,6 +19,10 @@ export function applyThemeClass(mode: ThemeMode): void {
     return;
   }
   const effectiveTheme = resolveTheme(mode);
+  document.documentElement.setAttribute(
+    "data-theme",
+    effectiveTheme === "dark" ? SKELETON_DARK_THEME : SKELETON_LIGHT_THEME,
+  );
   document.documentElement.classList.toggle("dark", effectiveTheme === "dark");
 }
 

@@ -1,0 +1,15 @@
+# Reference desktop file for manual installation
+# Copy to ~/.local/share/applications/ronmodmanager.desktop for XWayland mode
+# This enables full window state persistence (size + position) on Wayland
+# See docs/LINUX_WINDOW_PERSISTENCE.md for details
+
+[Desktop Entry]
+Name=RoN Mod Manager
+Comment=Ready or Not mod manager
+Exec=env GDK_BACKEND=x11 ronmodmanager %U
+Icon=ronmodmanager
+Terminal=false
+Type=Application
+Categories=Game;Utility;
+StartupNotify=true
+MimeType=x-scheme-handler/ronmodmanager;

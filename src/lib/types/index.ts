@@ -12,10 +12,16 @@ export interface AppConfig {
   modpack_url: string | null;
   modpack_version: string | null;
   oauth_token: string | null;
+  nexus_api_key: string | null;
   subscribed_mods: Record<string, SubscribedMod>;
   collections: Record<string, boolean>;
   enabled_collections: string[];
+  active_profile: string | null;
   theme: ThemeMode;
+  window_width: number | null;
+  window_height: number | null;
+  window_x: number | null;
+  window_y: number | null;
   last_update_check: string | null;
 }
 
@@ -56,7 +62,22 @@ export interface ModInfo {
   filename: string;
 }
 
-export interface ProgressEvent {
+export interface InstalledModFile {
+  name: string;
+  path: string;
+  exists: boolean;
+}
+
+export interface InstalledModGroup {
+  name: string;
+  displayName?: string;
+  sourceUrl?: string;
+  managedByManifest: boolean;
+  installedAt: number | null;
+  files: InstalledModFile[];
+}
+
+export interface ModProgressEvent {
   operation: string;
   file: string;
   percent: number;
@@ -80,7 +101,7 @@ export interface SharedModpack {
 export interface Profile {
   name: string;
   description: string | null;
-  enabled_collections: string[];
+  installed_mod_names: string[];
   created_at: string;
 }
 
@@ -88,4 +109,11 @@ export interface UpdateInfo {
   available: boolean;
   version: string | null;
   notes: string | null;
+}
+
+export interface WindowState {
+  width: number | null;
+  height: number | null;
+  x: number | null;
+  y: number | null;
 }

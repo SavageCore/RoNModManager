@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { ProgressEvent } from "$lib/types";
+  import type { ModProgressEvent } from "$lib/types";
 
   export let isVisible = false;
-  export let progress: ProgressEvent | null = null;
+  export let progress: ModProgressEvent | null = null;
   export let onCancel: (() => void) | null = null;
 
   let autoHideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -29,14 +29,18 @@
   $: isDownloading =
     progress?.operation === "download_start" ||
     progress?.operation?.includes("download");
-  $: isInstalling = progress?.operation === "install";
+  $: isInstalling =
+    progress?.operation === "install" || progress?.operation === "extract";
   $: isComplete = progress?.operation === "complete";
 </script>
 
 {#if isVisible && progress}
   <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div class="bg-white dark:bg-slate-800 rounded-lg shadow-2xl w-96 p-8">
-      <h2 class="text-2xl font-bold mb-6 text-slate-900 dark:text-white">
+    <div
+      style="background: var(--clr-surface); border-color: var(--adw-border-color);"
+      class="border rounded-lg shadow-2xl w-96 p-8"
+    >
+      <h2 style="color: var(--clr-text);" class="text-2xl font-bold mb-6">
         {#if isFetching}
           Fetching Modpack
         {:else if isDownloading}
@@ -53,7 +57,7 @@
       </h2>
 
       {#if progress.file}
-        <p class="text-sm text-slate-600 dark:text-slate-300 mb-4">
+        <p style="color: var(--clr-text-secondary);" class="text-sm mb-4">
           {progress.file}
         </p>
       {/if}
@@ -61,28 +65,33 @@
       {#if !isComplete && !isError}
         <div class="mb-6">
           <div
-            class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden"
+            style="background: var(--clr-surface-variant);"
+            class="w-full rounded-full h-3 overflow-hidden"
           >
             <div
-              class="bg-blue-500 h-full transition-all duration-300"
-              style={`width: ${Math.min(progress.percent, 100)}%`}
+              class="h-full transition-all duration-300"
+              style={`background: var(--clr-primary-300); width: ${Math.min(progress.percent, 100)}%`}
             ></div>
           </div>
-          <p class="text-xs text-slate-600 dark:text-slate-400 mt-2 text-right">
+          <p
+            style="color: var(--clr-text-secondary);"
+            class="text-xs mt-2 text-right"
+          >
             {Math.round(progress.percent)}%
           </p>
         </div>
       {/if}
 
-      <p class="text-sm text-slate-700 dark:text-slate-200 mb-6 h-10">
+      <p style="color: var(--clr-text);" class="text-sm mb-6 h-10">
         {progress.message}
       </p>
 
       {#if isError}
         <div
-          class="bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded p-3 mb-6"
+          style="background: var(--clr-danger-300); border-color: rgba(0,0,0,0.2);"
+          class="border rounded p-3 mb-6"
         >
-          <p class="text-sm text-red-800 dark:text-red-200">
+          <p style="color: var(--clr-danger-text);" class="text-sm">
             {progress.message}
           </p>
         </div>
@@ -90,9 +99,10 @@
 
       {#if isComplete}
         <div
-          class="bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded p-3 mb-6"
+          style="background: var(--clr-primary-300); border-color: rgba(0,0,0,0.2);"
+          class="border rounded p-3 mb-6"
         >
-          <p class="text-sm text-green-800 dark:text-green-200">
+          <p style="color: var(--clr-primary-text);" class="text-sm">
             Mods installed successfully!
           </p>
         </div>
@@ -100,12 +110,7 @@
 
       <div class="flex gap-3">
         {#if !isComplete && onCancel}
-          <button
-            on:click={onCancel}
-            class="flex-1 px-4 py-2 bg-slate-300 dark:bg-slate-700 text-slate-900 dark:text-white rounded hover:bg-slate-400 dark:hover:bg-slate-600 transition"
-          >
-            Cancel
-          </button>
+          <button on:click={onCancel} class="flex-1 btn"> Cancel </button>
         {/if}
 
         {#if isError || isComplete}
@@ -113,7 +118,7 @@
             on:click={() => {
               isVisible = false;
             }}
-            class="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+            class="flex-1 btn primary"
           >
             Close
           </button>
@@ -122,9 +127,3 @@
     </div>
   </div>
 {/if}
-
-<style>
-  :global(.no-scroll) {
-    overflow: hidden;
-  }
-</style>

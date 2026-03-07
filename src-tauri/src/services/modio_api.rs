@@ -24,9 +24,39 @@ pub struct ModioModSummary {
     pub name_id: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct ModioModDownload {
+    pub id: u64,
+    pub name: String,
+    pub name_id: String,
+    pub profile_url: String,
+    pub filename: String,
+    pub download_url: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct ModioListResponse<T> {
     data: Vec<T>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModioDownloadInfo {
+    binary_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModioFileInfo {
+    filename: Option<String>,
+    download: Option<ModioDownloadInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModioModDetailResponse {
+    id: u64,
+    name: String,
+    name_id: String,
+    profile_url: Option<String>,
+    modfile: Option<ModioFileInfo>,
 }
 
 impl ModioApiService {
@@ -98,6 +128,47 @@ impl ModioApiService {
             .first()
             .map(|entry| entry.id)
             .ok_or_else(|| AppError::NotFound(format!("mod slug not found: {slug}")))
+    }
+
+    pub async fn get_mod_download_info(
+        &self,
+        oauth_token: &str,
+        mod_id: u64,
+    ) -> Result<ModioModDownload> {
+        let url = format!("{}/games/{}/mods/{}", self.base_url, self.game_id, mod_id);
+        let response = self
+            .execute_with_retry(|| self.client.get(&url).bearer_auth(oauth_token))
+            .await?;
+
+        let payload: ModioModDetailResponse = response.json().await?;
+        let modfile = payload
+            .modfile
+            .ok_or_else(|| AppError::NotFound(format!("No downloadable file found for mod id {}", mod_id)))?;
+
+        let filename = modfile
+            .filename
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| AppError::NotFound(format!("Missing filename for mod id {}", mod_id)))?;
+
+        let download_url = modfile
+            .download
+            .and_then(|download| download.binary_url)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| AppError::NotFound(format!("Missing download URL for mod id {}", mod_id)))?;
+
+        let name_id = payload.name_id;
+        let profile_url = payload
+            .profile_url
+            .unwrap_or_else(|| format!("https://mod.io/g/readyornot/m/{}", name_id));
+
+        Ok(ModioModDownload {
+            id: payload.id,
+            name: payload.name,
+            name_id,
+            profile_url,
+            filename,
+            download_url,
+        })
     }
 
     async fn execute_with_retry<F>(&self, mut build_request: F) -> Result<reqwest::Response>

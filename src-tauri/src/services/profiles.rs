@@ -2,18 +2,11 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::models::{AppError, Profile, Result};
+use crate::state::app_data_root;
 
 /// Get the profiles directory path
 fn get_profiles_dir() -> Result<PathBuf> {
-    let config_dir = if cfg!(windows) {
-        let local_app_data = std::env::var("LOCALAPPDATA")
-            .map_err(|_| AppError::Validation("LOCALAPPDATA not found".to_string()))?;
-        PathBuf::from(local_app_data).join("ronmodmanager")
-    } else {
-        let home = dirs::home_dir()
-            .ok_or_else(|| AppError::Validation("home directory not found".to_string()))?;
-        home.join(".local/share/ronmodmanager")
-    };
+    let config_dir = app_data_root().map_err(|e| AppError::Validation(e.to_string()))?;
 
     let profiles_dir = config_dir.join("profiles");
     fs::create_dir_all(&profiles_dir)
@@ -112,6 +105,6 @@ mod tests {
             deserialized.description,
             Some("Test Description".to_string())
         );
-        assert_eq!(deserialized.enabled_collections.len(), 1);
+        assert_eq!(deserialized.installed_mod_names.len(), 1);
     }
 }

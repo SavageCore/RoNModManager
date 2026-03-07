@@ -3,11 +3,20 @@ use md5::{Digest, Md5};
 use std::io::{self, Read};
 use std::path::Path;
 
-/// Compute MD5 hash of a file
-pub fn md5_file(path: &Path) -> io::Result<String> {
+/// Compute MD5 hash of a file with progress callback.
+///
+/// The callback receives `(processed_bytes, total_bytes)`.
+pub fn md5_file_with_progress<F>(path: &Path, mut on_progress: F) -> io::Result<String>
+where
+    F: FnMut(u64, u64),
+{
     let mut file = std::fs::File::open(path)?;
+    let total_bytes = file.metadata()?.len();
+    let mut processed_bytes = 0u64;
     let mut hasher = Md5::new();
-    let mut buffer = [0u8; 8192];
+    let mut buffer = [0u8; 256 * 1024];
+
+    on_progress(0, total_bytes);
 
     loop {
         let bytes_read = file.read(&mut buffer)?;
@@ -15,9 +24,16 @@ pub fn md5_file(path: &Path) -> io::Result<String> {
             break;
         }
         hasher.update(&buffer[..bytes_read]);
+        processed_bytes += bytes_read as u64;
+        on_progress(processed_bytes, total_bytes);
     }
 
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Compute MD5 hash of a file
+pub fn md5_file(path: &Path) -> io::Result<String> {
+    md5_file_with_progress(path, |_processed, _total| {})
 }
 
 /// Compute CRC32 hash of a file

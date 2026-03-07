@@ -17,11 +17,22 @@ pnpm dev
 pnpm tauri dev
 ```
 
+### Linux Development
+
+```bash
+# Native Wayland (window position won't persist)
+pnpm run dev:linux
+
+# XWayland mode (full window state persistence)
+pnpm run dev:xwayland
+```
+
+See [docs/LINUX_WINDOW_PERSISTENCE.md](docs/LINUX_WINDOW_PERSISTENCE.md) for details on window state persistence on Linux/Wayland.
+
 ## Quality Checks
 
 ```bash
 pnpm lint
-pnpm format:check
 pnpm check
 pnpm test:unit
 

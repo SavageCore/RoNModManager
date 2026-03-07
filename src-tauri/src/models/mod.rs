@@ -7,7 +7,7 @@ pub mod progress;
 
 pub use config::{AppConfig, SubscribedMod, ThemeMode};
 pub use error::{AppError, Result};
-pub use modinfo::{ModInfo, ModSource, ModStatus};
+pub use modinfo::{InstalledModFile, InstalledModGroup, ModInfo, ModSource, ModStatus};
 pub use modpack::{Collection, ModPack};
 pub use profile::Profile;
 pub use progress::ProgressEvent;

@@ -6,6 +6,60 @@ use reqwest::Client;
 
 use crate::models::{AppConfig, AppError, Result};
 
+pub fn app_directory_name() -> &'static str {
+    if cfg!(debug_assertions) {
+        "ronmodmanager-dev"
+    } else {
+        "ronmodmanager"
+    }
+}
+
+pub fn app_data_root() -> Result<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let local_app_data = std::env::var("LOCALAPPDATA")
+            .map_err(|_| AppError::NotFound("LOCALAPPDATA is not set".to_string()))?;
+        return Ok(PathBuf::from(local_app_data).join(app_directory_name()));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME")
+            .map_err(|_| AppError::NotFound("HOME is not set".to_string()))?;
+        Ok(PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join(app_directory_name()))
+    }
+}
+
+pub fn app_config_root() -> Result<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let appdata = std::env::var("APPDATA")
+            .map_err(|_| AppError::NotFound("APPDATA is not set".to_string()))?;
+        return Ok(PathBuf::from(appdata).join(app_directory_name()));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(xdg_config) = std::env::var("XDG_CONFIG_HOME") {
+            return Ok(PathBuf::from(xdg_config).join(app_directory_name()));
+        }
+
+        let home =
+            std::env::var("HOME").map_err(|_| AppError::NotFound("HOME is not set".to_string()))?;
+
+        Ok(PathBuf::from(home)
+            .join(".config")
+            .join(app_directory_name()))
+    }
+}
+
+pub fn app_temp_root() -> PathBuf {
+    std::env::temp_dir().join(app_directory_name())
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<RwLock<AppConfig>>,
@@ -87,31 +141,7 @@ pub fn save_config_to_path(path: &PathBuf, config: &AppConfig) -> Result<()> {
 }
 
 fn default_config_path() -> Result<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        let appdata = std::env::var("APPDATA")
-            .map_err(|_| AppError::NotFound("APPDATA is not set".to_string()))?;
-        return Ok(PathBuf::from(appdata)
-            .join("ronmodmanager")
-            .join("config.json"));
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Ok(xdg_config) = std::env::var("XDG_CONFIG_HOME") {
-            return Ok(PathBuf::from(xdg_config)
-                .join("ronmodmanager")
-                .join("config.json"));
-        }
-
-        let home =
-            std::env::var("HOME").map_err(|_| AppError::NotFound("HOME is not set".to_string()))?;
-
-        Ok(PathBuf::from(home)
-            .join(".config")
-            .join("ronmodmanager")
-            .join("config.json"))
-    }
+    Ok(app_config_root()?.join("config.json"))
 }
 
 fn fallback_config_path() -> PathBuf {
