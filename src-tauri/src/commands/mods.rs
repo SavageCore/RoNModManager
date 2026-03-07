@@ -1,9 +1,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
-use crate::models::{ModInfo, ModSource, ModStatus};
+use crate::models::{ModInfo, ModSource, ModStatus, ProgressEvent};
 use crate::services::{installer, modpack as modpack_service, steam};
 use crate::state::AppState;
 
@@ -55,7 +55,7 @@ pub async fn get_mod_list(state: State<'_, AppState>) -> Result<Vec<ModInfo>, St
 }
 
 #[tauri::command]
-pub async fn install_mods(_app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn install_mods(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let config = state.get_config().map_err(String::from)?;
     let game_path = config
         .game_path
@@ -68,18 +68,48 @@ pub async fn install_mods(_app: AppHandle, state: State<'_, AppState>) -> Result
     let savegames_path = steam::get_savegames_path().map_err(String::from)?;
     let backup_path = game_path.join(".ronmod_backups");
 
+    // Emit: fetching manifest
+    let _ = app.emit("install_progress", &ProgressEvent {
+        operation: "fetch".to_string(),
+        file: "ronmod.manifest".to_string(),
+        percent: 5.0,
+        message: "Fetching modpack manifest...".to_string(),
+        total_bytes: None,
+        processed_bytes: None,
+    });
+
     let manifest = modpack_service::fetch_manifest_if_exists(&state.client, &modpack_url)
         .await
-        .map_err(String::from)?;
+        .map_err(|e| {
+            let _ = app.emit("install_progress", &ProgressEvent::new_error(e.to_string()));
+            e.to_string()
+        })?;
     let manifest = manifest.ok_or_else(|| {
-        "ronmod.manifest not found on modpack host (HTML crawl fallback not implemented yet)"
-            .to_string()
+        let err_msg =
+            "ronmod.manifest not found on modpack host (HTML crawl fallback not implemented yet)"
+                .to_string();
+        let _ = app.emit("install_progress", &ProgressEvent::new_error(err_msg.clone()));
+        err_msg
     })?;
 
     let download_root = std::env::temp_dir()
         .join("ronmodmanager")
         .join("modpack_downloads");
-    fs::create_dir_all(&download_root).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&download_root).map_err(|error| {
+        let _ = app
+            .emit("install_progress", &ProgressEvent::new_error(error.to_string()));
+        error.to_string()
+    })?;
+
+    // Emit: downloading files
+    let _ = app.emit("install_progress", &ProgressEvent {
+        operation: "download_start".to_string(),
+        file: format!("{} files", manifest.files.len()),
+        percent: 10.0,
+        message: format!("Downloading {} files...", manifest.files.len()),
+        total_bytes: None,
+        processed_bytes: None,
+    });
 
     let downloaded_files = modpack_service::download_manifest_files(
         &state.client,
@@ -88,7 +118,21 @@ pub async fn install_mods(_app: AppHandle, state: State<'_, AppState>) -> Result
         &manifest,
     )
     .await
-    .map_err(String::from)?;
+    .map_err(|e| {
+        let _ = app
+            .emit("install_progress", &ProgressEvent::new_error(e.to_string()));
+        e.to_string()
+    })?;
+
+    // Emit: installing files
+    let _ = app.emit("install_progress", &ProgressEvent {
+        operation: "install_start".to_string(),
+        file: String::new(),
+        percent: 50.0,
+        message: format!("Installing {} mods...", downloaded_files.len()),
+        total_bytes: None,
+        processed_bytes: None,
+    });
 
     let install_context = installer::InstallContext {
         game_path: game_path.clone(),
@@ -97,9 +141,34 @@ pub async fn install_mods(_app: AppHandle, state: State<'_, AppState>) -> Result
         backup_path,
     };
 
-    for file in downloaded_files {
-        install_downloaded_file(&file, &install_context).map_err(String::from)?;
+    for (index, file) in downloaded_files.iter().enumerate() {
+        let file_name = file
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        // Emit: processing current file
+        let progress_pct = 50.0 + (index as f32 / downloaded_files.len() as f32) * 49.0;
+        let _ = app.emit(
+            "install_progress",
+            &ProgressEvent::new_install(&file_name, progress_pct),
+        );
+
+        install_downloaded_file(file, &install_context).map_err(|e| {
+            let _ = app.emit(
+                "install_progress",
+                &ProgressEvent::new_error(format!(
+                    "Failed to install {}: {}",
+                    file_name, e
+                )),
+            );
+            e.to_string()
+        })?;
     }
+
+    // Emit: complete
+    let _ = app.emit("install_progress", &ProgressEvent::new_complete());
 
     Ok(())
 }
