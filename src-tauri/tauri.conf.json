@@ -26,7 +26,7 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": ["msi", "nsis", "deb", "appimage"],
+    "targets": ["msi", "nsis", "deb", "appimage", "rpm"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -37,7 +37,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFDQjczODFDNUI0RDJFNDEKUldSQkxrMWJIRGkzSExNWmRxZ04xQ3lyd3NHQXF0SGxja0E0S0xGQUNoQnV0VHpkd1FpSGJSRGMK",
       "endpoints": [
         "https://github.com/savagecore/RoNModManager/releases/latest/download/latest.json"
       ],

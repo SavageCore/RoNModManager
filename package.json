@@ -7,7 +7,7 @@
     "dev": "vite dev",
     "dev:linux": "WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 pnpm tauri dev",
     "dev:xwayland": "GDK_BACKEND=x11 pnpm tauri dev",
-    "build": "NO_STRIP=true pnpm tauri build",
+    "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -16,10 +16,12 @@
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "tauri": "tauri",
-    "prepare": "husky"
+    "prepare": "husky",
+    "release": "dotenvx run -- pnpm tauri build"
   },
   "license": "MIT",
   "dependencies": {
+    "@dotenvx/dotenvx": "^1.54.1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "adwavecss": "^0.2.6",
