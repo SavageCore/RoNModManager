@@ -33,7 +33,7 @@ futures-util = "0.3"
 zip = "2"
 unrar = "0.5"
 semver = "1"
-dirs = "5"
+dirs = "6"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
