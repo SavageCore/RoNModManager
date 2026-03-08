@@ -30,7 +30,7 @@ md-5 = "0.10"
 crc32fast = "1.5"
 tokio = { version = "1", features = ["fs", "io-util", "time"] }
 futures-util = "0.3"
-zip = "2"
+zip = "4"
 unrar = "0.5"
 semver = "1"
 dirs = "5"
