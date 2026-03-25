@@ -2,6 +2,8 @@
 
 Cross-platform (Linux + Windows) GUI mod manager for Ready or Not.
 
+![Preview](https://github.com/user-attachments/assets/53cda2a4-28bc-47a3-8d08-0dda8254fac4)
+
 ## Stack
 
 - Tauri v2 (Rust backend)
