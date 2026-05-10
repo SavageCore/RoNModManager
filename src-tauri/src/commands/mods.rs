@@ -1,14 +1,19 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use std::collections::HashSet;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 use super::game;
-use crate::models::{InstalledModFile, InstalledModGroup, ModInfo, ModSource, ModStatus, ProgressEvent};
-use crate::services::{downloader, hasher, installer, manifest, modio_api::ModioApiService, modpack as modpack_service, nexus_api, profiles, steam};
+use crate::models::{
+    InstalledModFile, InstalledModGroup, ModInfo, ModSource, ModStatus, ProgressEvent,
+};
+use crate::services::{
+    downloader, hasher, installer, manifest, modio_api::ModioApiService,
+    modpack as modpack_service, nexus_api, profiles, steam,
+};
 use crate::state::{app_data_root, app_temp_root, AppState};
 
 fn bytes_to_mib(bytes: u64) -> f64 {
@@ -49,7 +54,10 @@ fn parse_modio_input_to_slug_or_id(input: &str) -> Result<(Option<u64>, Option<S
     // and plain slugs like:
     // no-stress-for-swat
     let without_fragment = trimmed.split('#').next().unwrap_or(trimmed);
-    let without_query = without_fragment.split('?').next().unwrap_or(without_fragment);
+    let without_query = without_fragment
+        .split('?')
+        .next()
+        .unwrap_or(without_fragment);
     let normalized = without_query.trim_end_matches('/');
 
     let slug = if let Some(idx) = normalized.find("/m/") {
@@ -111,13 +119,18 @@ fn update_manifest_metadata(
         .map_err(|e| e.to_string())
 }
 
-fn remove_mod_from_active_profile(state: &State<'_, AppState>, mod_name: &str) -> Result<(), String> {
+fn remove_mod_from_active_profile(
+    state: &State<'_, AppState>,
+    mod_name: &str,
+) -> Result<(), String> {
     let config = state.get_config().map_err(String::from)?;
     let Some(active_profile_name) = config.active_profile else {
         return Ok(());
     };
 
-    let Some(mut profile) = profiles::get_profile(&active_profile_name).map_err(|e| e.to_string())? else {
+    let Some(mut profile) =
+        profiles::get_profile(&active_profile_name).map_err(|e| e.to_string())?
+    else {
         return Ok(());
     };
 
@@ -139,11 +152,17 @@ fn add_mod_to_active_profile(state: &State<'_, AppState>, mod_name: &str) -> Res
         return Ok(());
     };
 
-    let Some(mut profile) = profiles::get_profile(&active_profile_name).map_err(|e| e.to_string())? else {
+    let Some(mut profile) =
+        profiles::get_profile(&active_profile_name).map_err(|e| e.to_string())?
+    else {
         return Ok(());
     };
 
-    if profile.installed_mod_names.iter().any(|name| name == mod_name) {
+    if profile
+        .installed_mod_names
+        .iter()
+        .any(|name| name == mod_name)
+    {
         return Ok(());
     }
 
@@ -154,9 +173,12 @@ fn add_mod_to_active_profile(state: &State<'_, AppState>, mod_name: &str) -> Res
 
 fn is_mod_used_by_any_profile(mod_name: &str) -> Result<bool, String> {
     let all_profiles = profiles::list_profiles().map_err(|e| e.to_string())?;
-    Ok(all_profiles
-        .iter()
-        .any(|profile| profile.installed_mod_names.iter().any(|name| name == mod_name)))
+    Ok(all_profiles.iter().any(|profile| {
+        profile
+            .installed_mod_names
+            .iter()
+            .any(|name| name == mod_name)
+    }))
 }
 
 fn sync_active_profile_links(state: &State<'_, AppState>) -> Result<(), String> {
@@ -166,7 +188,9 @@ fn sync_active_profile_links(state: &State<'_, AppState>) -> Result<(), String> 
     };
 
     let enabled_groups = if let Some(active_profile_name) = config.active_profile {
-        if let Some(profile) = profiles::get_profile(&active_profile_name).map_err(|e| e.to_string())? {
+        if let Some(profile) =
+            profiles::get_profile(&active_profile_name).map_err(|e| e.to_string())?
+        {
             profile.installed_mod_names
         } else {
             config.enabled_collections
@@ -459,7 +483,9 @@ pub async fn uninstall_mods(_app: AppHandle, state: State<'_, AppState>) -> Resu
         return Ok(());
     };
 
-    let Some(mut active_profile) = profiles::get_profile(&active_profile_name).map_err(|e| e.to_string())? else {
+    let Some(mut active_profile) =
+        profiles::get_profile(&active_profile_name).map_err(|e| e.to_string())?
+    else {
         return Ok(());
     };
 
@@ -479,10 +505,8 @@ pub async fn uninstall_mods(_app: AppHandle, state: State<'_, AppState>) -> Resu
 
         if let Ok(Some(manifest_data)) = manager.load_manifest(&mod_name) {
             for file_path in &manifest_data.installed_files {
-                if file_path.exists() {
-                    if fs::remove_file(file_path).is_ok() {
-                        cleanup_empty_install_dirs(file_path, &staging_root, &mods_path);
-                    }
+                if file_path.exists() && fs::remove_file(file_path).is_ok() {
+                    cleanup_empty_install_dirs(file_path, &staging_root, &mods_path);
                 }
             }
             cleanup_mod_staging_directories(&mod_name, &staging_root);
@@ -491,10 +515,8 @@ pub async fn uninstall_mods(_app: AppHandle, state: State<'_, AppState>) -> Resu
         }
 
         let loose_mod_path = mods_path.join(&mod_name);
-        if loose_mod_path.exists() {
-            if fs::remove_file(&loose_mod_path).is_ok() {
-                cleanup_empty_install_dirs(&loose_mod_path, &staging_root, &mods_path);
-            }
+        if loose_mod_path.exists() && fs::remove_file(&loose_mod_path).is_ok() {
+            cleanup_empty_install_dirs(&loose_mod_path, &staging_root, &mods_path);
         }
     }
 
@@ -508,9 +530,9 @@ pub async fn add_modio_mod(
     input: String,
 ) -> Result<AddModioResult, String> {
     let config = state.get_config().map_err(String::from)?;
-    let token = config
-        .oauth_token
-        .ok_or_else(|| "mod.io token is not configured. Set token in Settings first.".to_string())?;
+    let token = config.oauth_token.ok_or_else(|| {
+        "mod.io token is not configured. Set token in Settings first.".to_string()
+    })?;
 
     let (explicit_id, slug) = parse_modio_input_to_slug_or_id(&input)?;
     let modio_service = ModioApiService::new(state.client.clone());
@@ -574,15 +596,18 @@ pub async fn add_modio_mod(
                     operation: "download".to_string(),
                     file: archive_for_progress.clone(),
                     percent: percent.min(50.0),
-                    message: format!("Downloading {}... {:.1} MiB/s", mod_name_for_progress, mib_per_sec),
+                    message: format!(
+                        "Downloading {}... {:.1} MiB/s",
+                        mod_name_for_progress, mib_per_sec
+                    ),
                     total_bytes: if total > 0 { Some(total) } else { None },
                     processed_bytes: Some(downloaded),
                 },
             );
         })),
     )
-        .await
-        .map_err(String::from)?;
+    .await
+    .map_err(String::from)?;
 
     install_local_mod(app, state, archive_path.to_string_lossy().to_string()).await?;
 
@@ -611,12 +636,12 @@ pub async fn fetch_nexus_mod_info(
     input: String,
 ) -> Result<NexusModInfoResult, String> {
     let config = state.get_config().map_err(String::from)?;
-    let api_key = config
-        .nexus_api_key
-        .ok_or_else(|| "Nexus Mods API key is not configured. Set it in Settings first.".to_string())?;
+    let api_key = config.nexus_api_key.ok_or_else(|| {
+        "Nexus Mods API key is not configured. Set it in Settings first.".to_string()
+    })?;
 
     let mod_id = nexus_api::parse_nexus_url_to_mod_id(&input).map_err(String::from)?;
-    
+
     let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
     let mod_info = nexus_service
         .get_mod_info(&api_key, mod_id)
@@ -632,7 +657,10 @@ pub async fn fetch_nexus_mod_info(
 }
 
 #[tauri::command]
-pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String) -> Result<(), String> {
+pub async fn uninstall_archive(
+    state: State<'_, AppState>,
+    archive_name: String,
+) -> Result<(), String> {
     let config = state.get_config().map_err(String::from)?;
     let game_path = config
         .game_path
@@ -655,10 +683,8 @@ pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String)
         .ok_or_else(|| format!("Archive manifest not found: {}", archive_name))?;
 
     for file_path in &manifest_data.installed_files {
-        if file_path.exists() {
-            if fs::remove_file(file_path).is_ok() {
-                cleanup_empty_install_dirs(file_path, &staging_root, &mods_path);
-            }
+        if file_path.exists() && fs::remove_file(file_path).is_ok() {
+            cleanup_empty_install_dirs(file_path, &staging_root, &mods_path);
         }
     }
 
@@ -734,7 +760,9 @@ pub async fn update_mod_source_url(
 }
 
 #[tauri::command]
-pub async fn get_installed_mod_groups(state: State<'_, AppState>) -> Result<Vec<InstalledModGroup>, String> {
+pub async fn get_installed_mod_groups(
+    state: State<'_, AppState>,
+) -> Result<Vec<InstalledModGroup>, String> {
     let config = state.get_config().map_err(String::from)?;
     let game_path = config
         .game_path
@@ -836,18 +864,22 @@ pub async fn get_installed_mod_groups(state: State<'_, AppState>) -> Result<Vec<
 }
 
 #[tauri::command]
-pub async fn uninstall_mod(state:State<'_, AppState>, filename: String) -> Result<(), String> {
+pub async fn uninstall_mod(state: State<'_, AppState>, filename: String) -> Result<(), String> {
     let config = state.get_config().map_err(String::from)?;
     let game_path = config
         .game_path
         .ok_or_else(|| "Game path is not configured".to_string())?;
     let mods_path = steam::get_mods_path(&game_path);
     let staging_root = get_staging_root().map_err(|e| e.to_string())?;
-    
+
     // Check if this file is part of an archive installation
     let manager = manifest::ManifestManager::new(&staging_root);
     if let Ok(Some((archive_name, manifest))) = manager.get_manifest_for_pak(&filename) {
-        println!("Found manifest for {}: {} files to uninstall", archive_name, manifest.installed_files.len());
+        println!(
+            "Found manifest for {}: {} files to uninstall",
+            archive_name,
+            manifest.installed_files.len()
+        );
 
         // Remove from active profile first.
         remove_mod_from_active_profile(&state, &archive_name)?;
@@ -856,7 +888,7 @@ pub async fn uninstall_mod(state:State<'_, AppState>, filename: String) -> Resul
         if is_mod_used_by_any_profile(&archive_name)? {
             return Ok(());
         }
-        
+
         // Uninstall all files from the archive
         for file_path in &manifest.installed_files {
             if file_path.exists() {
@@ -868,17 +900,17 @@ pub async fn uninstall_mod(state:State<'_, AppState>, filename: String) -> Resul
                 }
             }
         }
-        
+
         cleanup_mod_staging_directories(&archive_name, &staging_root);
-        
+
         // Delete the manifest
         if let Err(e) = manager.delete_manifest(&archive_name) {
             eprintln!("Failed to delete manifest: {}", e);
         }
-        
+
         return Ok(());
     }
-    
+
     // If no manifest found, treat this as a loose file mod.
     remove_mod_from_active_profile(&state, &filename)?;
     if is_mod_used_by_any_profile(&filename)? {
@@ -893,7 +925,7 @@ pub async fn uninstall_mod(state:State<'_, AppState>, filename: String) -> Resul
 
     fs::remove_file(&mod_path).map_err(|error| error.to_string())?;
     cleanup_empty_install_dirs(&mod_path, &staging_root, &mods_path);
-    
+
     Ok(())
 }
 
@@ -904,7 +936,7 @@ pub async fn install_local_mod(
     file_path: String,
 ) -> Result<(), String> {
     println!("install_local_mod called with path: {}", file_path);
-    
+
     let config = state.get_config().map_err(String::from)?;
     let game_path = config
         .game_path
@@ -941,7 +973,7 @@ pub async fn install_local_mod(
     };
 
     println!("Calling install_downloaded_file...");
-    
+
     // Emit preparation progress before analysis/hashing begins.
     let _ = app.emit(
         "install_progress",
@@ -954,7 +986,7 @@ pub async fn install_local_mod(
             processed_bytes: None,
         },
     );
-    
+
     match install_downloaded_file(&path, &context, &app) {
         Ok(_) => {
             if let Some(installed_mod_name) = path.file_name().and_then(|n| n.to_str()) {
@@ -985,14 +1017,17 @@ pub async fn install_local_mod(
         Err(e) => {
             let error_msg = format!("Failed to install mod: {}", e);
             println!("Installation failed: {}", error_msg);
-            let _ = app.emit("install_progress", &ProgressEvent::new_error(error_msg.clone()));
+            let _ = app.emit(
+                "install_progress",
+                &ProgressEvent::new_error(error_msg.clone()),
+            );
             Err(error_msg)
         }
     }
 }
 
 fn save_install_manifest(
-    archive_path: &PathBuf,
+    archive_path: &Path,
     report: &installer::InstallReport,
     _context: &installer::InstallContext,
     content_hash: Option<String>,
@@ -1001,13 +1036,13 @@ fn save_install_manifest(
     if report.installed_files.is_empty() {
         return Ok(());
     }
-    
+
     let archive_name = archive_path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("unknown")
         .to_string();
-    
+
     let manager = manifest::ManifestManager::new(&get_staging_root()?);
     let manifest = manifest::InstallManifest {
         source_archive: archive_name,
@@ -1020,7 +1055,7 @@ fn save_install_manifest(
             .as_secs(),
         content_hash,
     };
-    
+
     manager.save_manifest(&manifest)?;
     println!("Saved manifest with {} files", report.installed_files.len());
     Ok(())
@@ -1078,7 +1113,7 @@ fn install_downloaded_file(
             },
         );
     })
-        .map_err(|e| crate::models::AppError::Validation(format!("Failed to hash file: {}", e)))?;
+    .map_err(|e| crate::models::AppError::Validation(format!("Failed to hash file: {}", e)))?;
     println!("Computed content hash: {}", content_hash);
 
     let _ = app.emit(
@@ -1092,7 +1127,7 @@ fn install_downloaded_file(
             processed_bytes: None,
         },
     );
-    
+
     // Check if this hash already exists.
     // If it does, reuse the existing staged files directly instead of creating
     // another per-profile duplicate folder.
@@ -1148,7 +1183,7 @@ fn install_downloaded_file(
         savegames_path: context.savegames_path.join(&install_key),
         backup_path: context.backup_path.join(&install_key),
     };
-    
+
     let extension = path
         .extension()
         .and_then(|ext| ext.to_str())
@@ -1162,9 +1197,8 @@ fn install_downloaded_file(
         let mut last_emit = Instant::now() - Duration::from_millis(500);
         let report = installer::install_archive_with_progress(path, &staged_context, |progress| {
             let now = Instant::now();
-            let should_emit =
-                now.duration_since(last_emit) >= Duration::from_millis(120)
-                    || progress.processed_bytes >= progress.total_bytes;
+            let should_emit = now.duration_since(last_emit) >= Duration::from_millis(120)
+                || progress.processed_bytes >= progress.total_bytes;
             if !should_emit {
                 return;
             }
@@ -1187,7 +1221,7 @@ fn install_downloaded_file(
                 },
             );
         })?;
-        
+
         // Save manifest for tracking installed files with content hash
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(());
@@ -1207,7 +1241,7 @@ fn install_downloaded_file(
             },
         );
         let report = installer::install_rar_archive(path, &staged_context)?;
-        
+
         // Save manifest for tracking installed files with content hash
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(());

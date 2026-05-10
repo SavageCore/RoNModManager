@@ -29,7 +29,10 @@ impl NexusApiService {
     /// Fetch mod information from Nexus Mods API
     /// Requires a valid API key
     pub async fn get_mod_info(&self, api_key: &str, mod_id: u64) -> Result<NexusModInfo> {
-        let url = format!("{}/games/{}/mods/{}.json", NEXUS_API_BASE, GAME_DOMAIN, mod_id);
+        let url = format!(
+            "{}/games/{}/mods/{}.json",
+            NEXUS_API_BASE, GAME_DOMAIN, mod_id
+        );
 
         let response = self
             .client
@@ -41,7 +44,10 @@ impl NexusApiService {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(AppError::Validation(format!(
                 "Nexus API error ({}): {}",
                 status, error_text
@@ -75,25 +81,22 @@ impl NexusApiService {
 /// - Just the ID: 1234
 pub fn parse_nexus_url_to_mod_id(input: &str) -> Result<u64> {
     let trimmed = input.trim();
-    
+
     // Try parsing as direct ID first
     if let Ok(id) = trimmed.parse::<u64>() {
         return Ok(id);
     }
-    
+
     // Try extracting from URL
     if let Some(mods_idx) = trimmed.find("/mods/") {
         let after_mods = &trimmed[mods_idx + 6..];
-        let id_str = after_mods
-            .split(&['/', '?', '#'][..])
-            .next()
-            .unwrap_or("");
-        
+        let id_str = after_mods.split(&['/', '?', '#'][..]).next().unwrap_or("");
+
         if let Ok(id) = id_str.parse::<u64>() {
             return Ok(id);
         }
     }
-    
+
     Err(AppError::Validation(format!(
         "Could not extract mod ID from Nexus input: {}",
         trimmed
@@ -112,11 +115,13 @@ mod tests {
             1234
         );
         assert_eq!(
-            parse_nexus_url_to_mod_id("https://nexusmods.com/readyornot/mods/5678?tab=files").unwrap(),
+            parse_nexus_url_to_mod_id("https://nexusmods.com/readyornot/mods/5678?tab=files")
+                .unwrap(),
             5678
         );
         assert_eq!(
-            parse_nexus_url_to_mod_id("https://www.nexusmods.com/readyornot/mods/999#description").unwrap(),
+            parse_nexus_url_to_mod_id("https://www.nexusmods.com/readyornot/mods/999#description")
+                .unwrap(),
             999
         );
     }

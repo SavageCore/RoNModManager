@@ -24,8 +24,8 @@ pub fn app_data_root() -> Result<PathBuf> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        let home = std::env::var("HOME")
-            .map_err(|_| AppError::NotFound("HOME is not set".to_string()))?;
+        let home =
+            std::env::var("HOME").map_err(|_| AppError::NotFound("HOME is not set".to_string()))?;
         Ok(PathBuf::from(home)
             .join(".local")
             .join("share")

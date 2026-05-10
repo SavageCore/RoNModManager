@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 
 use crate::models::{AppError, Result};
 
@@ -41,14 +41,14 @@ impl ManifestManager {
 
     pub fn save_manifest(&self, manifest: &InstallManifest) -> Result<()> {
         self.ensure_manifest_dir()?;
-        
+
         // Use source archive name as manifest filename (sanitized)
         let manifest_name = sanitize_filename(&manifest.source_archive);
         let manifest_path = self.manifests_dir.join(format!("{}.json", manifest_name));
-        
+
         let json = serde_json::to_string_pretty(manifest)
             .map_err(|e| AppError::Validation(format!("Failed to serialize manifest: {}", e)))?;
-        
+
         fs::write(&manifest_path, json)?;
         Ok(())
     }
@@ -56,30 +56,33 @@ impl ManifestManager {
     pub fn load_manifest(&self, archive_name: &str) -> Result<Option<InstallManifest>> {
         let manifest_name = sanitize_filename(archive_name);
         let manifest_path = self.manifests_dir.join(format!("{}.json", manifest_name));
-        
+
         if !manifest_path.exists() {
             return Ok(None);
         }
-        
+
         let json = fs::read_to_string(&manifest_path)?;
         let manifest: InstallManifest = serde_json::from_str(&json)
             .map_err(|e| AppError::Validation(format!("Failed to deserialize manifest: {}", e)))?;
-        
+
         Ok(Some(manifest))
     }
 
-    pub fn get_manifest_for_pak(&self, pak_filename: &str) -> Result<Option<(String, InstallManifest)>> {
+    pub fn get_manifest_for_pak(
+        &self,
+        pak_filename: &str,
+    ) -> Result<Option<(String, InstallManifest)>> {
         self.ensure_manifest_dir()?;
-        
+
         // Search through all manifests to find which one contains this pak file
         for entry in fs::read_dir(&self.manifests_dir)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.extension().and_then(|s| s.to_str()) != Some("json") {
                 continue;
             }
-            
+
             let json = fs::read_to_string(&path)?;
             if let Ok(manifest) = serde_json::from_str::<InstallManifest>(&json) {
                 for installed_file in &manifest.installed_files {
@@ -91,14 +94,14 @@ impl ManifestManager {
                 }
             }
         }
-        
+
         Ok(None)
     }
 
     pub fn delete_manifest(&self, archive_name: &str) -> Result<()> {
         let manifest_name = sanitize_filename(archive_name);
         let manifest_path = self.manifests_dir.join(format!("{}.json", manifest_name));
-        
+
         if manifest_path.exists() {
             fs::remove_file(&manifest_path)?;
         }
@@ -107,38 +110,38 @@ impl ManifestManager {
 
     pub fn list_all_manifests(&self) -> Result<HashMap<String, InstallManifest>> {
         self.ensure_manifest_dir()?;
-        
+
         let mut manifests = HashMap::new();
-        
+
         for entry in fs::read_dir(&self.manifests_dir)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.extension().and_then(|s| s.to_str()) != Some("json") {
                 continue;
             }
-            
+
             let json = fs::read_to_string(&path)?;
             if let Ok(manifest) = serde_json::from_str::<InstallManifest>(&json) {
                 manifests.insert(manifest.source_archive.clone(), manifest);
             }
         }
-        
+
         Ok(manifests)
     }
 
     /// Find the first manifest with matching content hash
     pub fn find_by_content_hash(&self, content_hash: &str) -> Result<Option<InstallManifest>> {
         self.ensure_manifest_dir()?;
-        
+
         for entry in fs::read_dir(&self.manifests_dir)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.extension().and_then(|s| s.to_str()) != Some("json") {
                 continue;
             }
-            
+
             let json = fs::read_to_string(&path)?;
             if let Ok(manifest) = serde_json::from_str::<InstallManifest>(&json) {
                 if let Some(hash) = &manifest.content_hash {
@@ -148,7 +151,7 @@ impl ManifestManager {
                 }
             }
         }
-        
+
         Ok(None)
     }
 }

@@ -221,12 +221,10 @@ fn remove_empty_section(content: &mut String, section: &str) {
         return;
     };
 
-    let has_key_lines = lines[start + 1..section_end]
-        .iter()
-        .any(|line| {
-            let trimmed = line.trim();
-            !trimmed.is_empty() && !trimmed.starts_with(';') && trimmed.contains('=')
-        });
+    let has_key_lines = lines[start + 1..section_end].iter().any(|line| {
+        let trimmed = line.trim();
+        !trimmed.is_empty() && !trimmed.starts_with(';') && trimmed.contains('=')
+    });
 
     if has_key_lines {
         return;
@@ -248,7 +246,11 @@ fn remove_empty_section(content: &mut String, section: &str) {
 }
 
 /// Rewrite a section so managed movie-player keys are removed, then add desired lines in exact order.
-fn rewrite_movie_player_settings_section(content: &mut String, section: &str, desired_lines: &[&str]) {
+fn rewrite_movie_player_settings_section(
+    content: &mut String,
+    section: &str,
+    desired_lines: &[&str],
+) {
     let mut output: Vec<String> = Vec::new();
     let mut in_section = false;
     let mut inserted = false;
@@ -281,7 +283,10 @@ fn rewrite_movie_player_settings_section(content: &mut String, section: &str, de
                 "-StartupMovies=",
                 "!StartupMovies=",
             ];
-            if managed_prefixes.iter().any(|prefix| trimmed.starts_with(prefix)) {
+            if managed_prefixes
+                .iter()
+                .any(|prefix| trimmed.starts_with(prefix))
+            {
                 continue;
             }
         }

@@ -2,8 +2,8 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use zip::ZipArchive;
 use unrar::Archive as RarArchive;
+use zip::ZipArchive;
 
 use crate::models::{AppError, Result};
 use crate::services::hasher;
@@ -207,8 +207,8 @@ pub fn install_rar_archive(archive_path: &Path, context: &InstallContext) -> Res
 
     // Create temporary directory for extraction
     let temp_dir = std::env::temp_dir().join(format!(
-        "ronmod_{}_{}", 
-        std::process::id(), 
+        "ronmod_{}_{}",
+        std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -221,27 +221,33 @@ pub fn install_rar_archive(archive_path: &Path, context: &InstallContext) -> Res
         .open_for_processing()
         .map_err(|e| AppError::Validation(format!("Failed to open RAR archive: {:?}", e)))?;
 
-    while let Some(header) = archive.read_header()
-        .map_err(|e| AppError::Validation(format!("Failed to read RAR header: {:?}", e)))? 
+    while let Some(header) = archive
+        .read_header()
+        .map_err(|e| AppError::Validation(format!("Failed to read RAR header: {:?}", e)))?
     {
         let entry_name = header.entry().filename.to_string_lossy().to_string();
-        
+
         if header.entry().is_directory() {
-            archive = header.skip()
+            archive = header
+                .skip()
                 .map_err(|e| AppError::Validation(format!("Failed to skip RAR entry: {:?}", e)))?;
             continue;
         }
 
         let entry_path = PathBuf::from(&entry_name);
         let temp_file = temp_dir.join(&entry_path);
-        
+
         if let Some(parent) = temp_file.parent() {
             fs::create_dir_all(parent)?;
         }
 
         // Extract file to temp location
-        archive = header.extract_to(&temp_file)
-            .map_err(|e| AppError::Validation(format!("Failed to extract RAR entry '{}': {:?}", entry_name, e)))?;
+        archive = header.extract_to(&temp_file).map_err(|e| {
+            AppError::Validation(format!(
+                "Failed to extract RAR entry '{}': {:?}",
+                entry_name, e
+            ))
+        })?;
 
         // Process the extracted file based on type
         match classify_archive_entry(&entry_path) {

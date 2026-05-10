@@ -1,1 +1,16 @@
 pnpm lint-staged
+
+# Lint backend (Rust) when any src-tauri source files are staged
+if git diff --cached --name-only | grep -q '^src-tauri/'; then
+  echo "🦀 Running cargo fmt check..."
+  cargo fmt --manifest-path src-tauri/Cargo.toml -- --check || {
+    echo "❌ cargo fmt failed. Run: cargo fmt --manifest-path src-tauri/Cargo.toml"
+    exit 1
+  }
+
+  echo "🦀 Running cargo clippy..."
+  cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings || {
+    echo "❌ cargo clippy failed. Fix warnings above."
+    exit 1
+  }
+fi

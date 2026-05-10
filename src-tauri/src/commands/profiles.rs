@@ -11,7 +11,10 @@ const DEFAULT_PROFILE_NAME: &str = "Default";
 pub async fn list_profiles(state: State<'_, AppState>) -> Result<Vec<Profile>, String> {
     let mut profiles = services::profiles::list_profiles().map_err(|e| e.to_string())?;
 
-    if !profiles.iter().any(|profile| profile.name == DEFAULT_PROFILE_NAME) {
+    if !profiles
+        .iter()
+        .any(|profile| profile.name == DEFAULT_PROFILE_NAME)
+    {
         let default_profile = Profile::new(DEFAULT_PROFILE_NAME.to_string(), Vec::new());
         services::profiles::save_profile(&default_profile).map_err(|e| e.to_string())?;
         profiles.push(default_profile);

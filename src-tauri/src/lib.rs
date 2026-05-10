@@ -4,7 +4,9 @@ pub mod models;
 pub mod services;
 pub mod state;
 
-use crate::commands::{auth, collections, config, game, modpack, mods, profiles, sharing, updater, window};
+use crate::commands::{
+    auth, collections, config, game, modpack, mods, profiles, sharing, updater, window,
+};
 use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

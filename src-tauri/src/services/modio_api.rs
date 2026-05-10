@@ -141,9 +141,9 @@ impl ModioApiService {
             .await?;
 
         let payload: ModioModDetailResponse = response.json().await?;
-        let modfile = payload
-            .modfile
-            .ok_or_else(|| AppError::NotFound(format!("No downloadable file found for mod id {}", mod_id)))?;
+        let modfile = payload.modfile.ok_or_else(|| {
+            AppError::NotFound(format!("No downloadable file found for mod id {}", mod_id))
+        })?;
 
         let filename = modfile
             .filename
@@ -154,7 +154,9 @@ impl ModioApiService {
             .download
             .and_then(|download| download.binary_url)
             .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| AppError::NotFound(format!("Missing download URL for mod id {}", mod_id)))?;
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Missing download URL for mod id {}", mod_id))
+            })?;
 
         let name_id = payload.name_id;
         let profile_url = payload

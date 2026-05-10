@@ -1,5 +1,5 @@
-use tauri::State;
 use serde::Deserialize;
+use tauri::State;
 
 use crate::models::AppConfig;
 use crate::services;
@@ -26,7 +26,11 @@ pub async fn update_config(
     state
         .update_config(|config| {
             if let Some(key) = updates.nexus_api_key {
-                config.nexus_api_key = if key.trim().is_empty() { None } else { Some(key.trim().to_string()) };
+                config.nexus_api_key = if key.trim().is_empty() {
+                    None
+                } else {
+                    Some(key.trim().to_string())
+                };
             }
             if let Some(enabled) = updates.enabled_collections {
                 config.enabled_collections = enabled;

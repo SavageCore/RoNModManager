@@ -39,7 +39,10 @@ fn target_path_for_staged_file(
     live_savegames_path: &Path,
 ) -> Option<PathBuf> {
     let file_name = staged_path.file_name()?;
-    let ext = staged_path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+    let ext = staged_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default();
 
     if ext.eq_ignore_ascii_case("pak") {
         return Some(live_mods_path.join(file_name));
@@ -71,9 +74,14 @@ fn launch_game_internal(_game_path: &Path) -> Result<(), String> {
         // On Linux, launch through Steam using the app ID for Ready or Not (1144200)
         // This ensures Proton compatibility and proper game initialization
         Command::new("steam")
-            .args(&["steam://rungameid/1144200"])
+            .args(["steam://rungameid/1144200"])
             .spawn()
-            .map_err(|e| format!("Failed to launch game via Steam: {}. Make sure Steam is running.", e))?;
+            .map_err(|e| {
+                format!(
+                    "Failed to launch game via Steam: {}. Make sure Steam is running.",
+                    e
+                )
+            })?;
     }
 
     Ok(())
@@ -148,7 +156,10 @@ fn remove_orphan_symlinks(live_mods_path: &Path, live_savegames_path: &Path) -> 
     Ok(())
 }
 
-pub(crate) fn sync_mod_links_for_game_path(game_path: &Path, enabled_groups: Vec<String>) -> Result<(), String> {
+pub(crate) fn sync_mod_links_for_game_path(
+    game_path: &Path,
+    enabled_groups: Vec<String>,
+) -> Result<(), String> {
     let live_mods_path = steam::get_mods_path(game_path);
     let live_savegames_path = steam::get_savegames_path().map_err(|e| e.to_string())?;
     fs::create_dir_all(&live_mods_path).map_err(|e| e.to_string())?;
@@ -225,4 +236,3 @@ pub async fn launch_game_with_groups(
     sync_mod_links_for_game_path(&game_path, enabled_groups)?;
     launch_game_internal(&game_path)
 }
-
