@@ -670,7 +670,7 @@
   <select
     class="input"
     bind:value={modSourceFilter}
-    style="width: 140px; height: 2.625rem; display: flex; align-items: center;"
+    style="width: 140px;"
     aria-label="Filter by source"
   >
     <option value="all">All Sources</option>
@@ -681,8 +681,7 @@
     on:click={() => {
       showAddModModal = true;
     }}
-    class="btn btn-sm"
-    style="height: 2.625rem; background: var(--clr-success-300); color: var(--clr-success-text);"
+    class="btn btn-sm btn-success"
     title="Add Mod"
   >
     + Add Mod
@@ -953,30 +952,4 @@
 </div>
 
 <style>
-  .btn-success {
-    background-color: var(--clr-success-300);
-    color: var(--clr-success-text);
-    border-color: var(--clr-success-300);
-    transition: all 120ms ease;
-  }
-
-  .btn-success:hover:not(.toggled, .disabled) {
-    background-color: color-mix(in srgb, var(--clr-success-300) 70%, black);
-    border-color: color-mix(in srgb, var(--clr-success-300) 70%, black);
-  }
-
-  .btn-success:active:not(.disabled) {
-    background-color: var(--clr-success-100);
-    border-color: var(--clr-success-100);
-  }
-
-  .btn-success.toggled {
-    background-color: color-mix(in srgb, var(--clr-success-300) 50%, white);
-    border-color: color-mix(in srgb, var(--clr-success-300) 50%, white);
-  }
-
-  .btn-success.disabled {
-    background-color: color-mix(in srgb, var(--clr-success-300) 75%, black);
-    border-color: color-mix(in srgb, var(--clr-success-300) 75%, black);
-  }
 </style>

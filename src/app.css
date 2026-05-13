@@ -29,6 +29,7 @@
   /* Success color (Green) */
   --clr-success-100: #b3ffb3;
   --clr-success-300: #57e389;
+  --clr-success-500: #2a8c3f;
   --clr-success-text: #1e1e1e;
 
   /* Neutral grays */
@@ -69,6 +70,7 @@
     /* Success color (Green) */
     --clr-success-100: #8fce00;
     --clr-success-300: #57e389;
+    --clr-success-500: #2a8c3f;
     --clr-success-text: #1e1e1e;
 
     /* Neutral colors */
@@ -100,6 +102,7 @@
   --clr-danger-text: #ffffff;
   --clr-success-100: #b3ffb3;
   --clr-success-300: #57e389;
+  --clr-success-500: #2a8c3f;
   --clr-success-text: #1e1e1e;
   --clr-text: #000000;
   --clr-text-secondary: #606366;
@@ -126,6 +129,7 @@
   --clr-danger-text: #ffffff;
   --clr-success-100: #8fce00;
   --clr-success-300: #57e389;
+  --clr-success-500: #2a8c3f;
   --clr-success-text: #1e1e1e;
   --clr-text: #ffffff;
   --clr-text-secondary: #a0a1a2;
@@ -158,6 +162,39 @@ body {
 
 /* ADWaveCSS provides .btn, .btn.primary, .btn.danger, .btn.flat */
 /* Add minimal size utilities without overriding ADWave styles */
+
+.btn.success,
+.btn-success {
+  background-color: var(--clr-success-300);
+  color: var(--clr-success-text);
+  border-color: var(--clr-success-300);
+  transition: all 120ms ease;
+}
+
+.btn.success:hover:not(.toggled, .disabled),
+.btn-success:hover:not(.toggled, .disabled) {
+  background-color: var(--clr-success-500);
+  border-color: var(--clr-success-500);
+}
+
+.btn.success:active:not(.disabled),
+.btn-success:active:not(.disabled) {
+  background-color: var(--clr-success-100);
+  border-color: var(--clr-success-100);
+}
+
+.btn.success.toggled,
+.btn-success.toggled {
+  background-color: color-mix(in srgb, var(--clr-success-300) 50%, white);
+  border-color: color-mix(in srgb, var(--clr-success-300) 50%, white);
+}
+
+.btn.success.disabled,
+.btn-success.disabled {
+  background-color: color-mix(in srgb, var(--clr-success-300) 75%, black);
+  border-color: color-mix(in srgb, var(--clr-success-300) 75%, black);
+}
+
 .btn-sm {
   min-height: 2em;
   padding: 0px 0.75em;
