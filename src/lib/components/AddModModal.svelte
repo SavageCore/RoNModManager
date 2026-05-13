@@ -34,32 +34,39 @@
         ? "color: var(--clr-danger-300); background: color-mix(in srgb, var(--clr-danger-300) 18%, transparent);"
         : "color: var(--clr-primary-300); background: color-mix(in srgb, var(--clr-primary-300) 18%, transparent);";
 
+  function cleanModUrl(value: string): string {
+    // Strip hash fragments from URLs
+    return value.replace(/#.*$/, "").trim();
+  }
+
   function parseModInputs(input: string): string[] {
-    // Split by newlines and commas
-    const entries: string[] = [];
+    return input
+      .split(/\r?\n/)
+      .map((line) => cleanModUrl(line))
+      .filter((line) => line.length > 0 && !line.startsWith("#"));
+  }
 
-    // First split by newlines
-    const lines = input.split(/\r?\n/);
+  function handlePaste(event: ClipboardEvent) {
+    const text = event.clipboardData?.getData("text");
+    if (!text) return;
 
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (!trimmedLine || trimmedLine.startsWith("#")) {
-        continue; // Skip empty lines and comments
-      }
+    const cleaned = text
+      .split(/\r?\n/)
+      .map((line) => cleanModUrl(line))
+      .join("\n");
 
-      // Check if line contains commas (CSV format)
-      if (trimmedLine.includes(",")) {
-        const parts = trimmedLine
-          .split(",")
-          .map((p) => p.trim())
-          .filter((p) => p.length > 0);
-        entries.push(...parts);
-      } else {
-        entries.push(trimmedLine);
-      }
+    if (cleaned !== text) {
+      event.preventDefault();
+      const target = event.target as HTMLTextAreaElement;
+      const start = target.selectionStart ?? 0;
+      const end = target.selectionEnd ?? 0;
+      modioInput = modioInput.slice(0, start) + cleaned + modioInput.slice(end);
+      // Restore cursor position after inserted text
+      const newPos = start + cleaned.length;
+      requestAnimationFrame(() => {
+        target.setSelectionRange(newPos, newPos);
+      });
     }
-
-    return entries;
   }
 
   function isNexusUrl(value: string): boolean {
@@ -116,7 +123,7 @@
   async function handleAddViaLink() {
     const input = modioInput.trim();
     if (!input) {
-      alertStore.error("Enter mod.io links, stubs, or mod IDs");
+      alertStore.error("Enter mod.io links");
       return;
     }
 
@@ -255,7 +262,7 @@
   <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
     <div
       style="background: var(--clr-surface); border-color: var(--adw-border-color);"
-      class="border rounded-lg shadow-2xl w-96 p-6"
+      class="border rounded-lg shadow-2xl w-[560px] p-6"
     >
       <div class="flex items-center justify-between mb-4">
         <h2 style="color: var(--clr-text);" class="text-2xl font-bold">
@@ -302,7 +309,7 @@
       </div>
 
       <!-- Content area with fixed min-height -->
-      <div style="min-height: 280px;">
+      <div style="min-height: 180px;">
         {#if activeTab === "link"}
           <div class="space-y-3">
             <div>
@@ -311,18 +318,18 @@
                 style="color: var(--clr-text);"
                 class="block text-sm font-medium mb-1"
               >
-                mod.io Links or IDs (one per line or comma-separated)
+                mod.io Links (one per line)
               </label>
               <textarea
                 id="modio-input"
                 rows="5"
                 class="textarea"
-                placeholder="https://mod.io/g/readyornot/m/mod-name&#10;another-mod-name&#10;or, comma, separated"
+                placeholder="https://mod.io/g/readyornot/m/lustful-remorse&#10;https://mod.io/g/readyornot/m/simple-mod-menu&#10;https://mod.io/g/readyornot/m/uon-official"
                 bind:value={modioInput}
+                on:paste={handlePaste}
               ></textarea>
               <p style="color: var(--clr-text-secondary);" class="text-xs mt-1">
-                Paste mod.io links, stubs, or IDs (one per line or
-                comma-separated)
+                Paste mod.io links, one per line
               </p>
 
               {#if nexusPreviewName}
