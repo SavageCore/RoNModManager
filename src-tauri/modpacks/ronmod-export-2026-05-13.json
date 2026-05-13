@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "name": "Generated ModPack",
+  "version": "0.1.0",
+  "description": "Generated from installed mods",
+  "author": null,
+  "subscriptions": [],
+  "collections": {
+    "Default": {
+      "default_enabled": true,
+      "description": "Generated from currently installed mods",
+      "mods": [
+        "pakchunk88-Mods_StMichaelsMedicalCenterRemaster_P.pak",
+        "pakchunk99-Mod_PlayerLimitEditor.pak",
+        "pakchunk99-Mod_SimpleBlueprintLoader.pak",
+        "pakchunk99-Mod_SimpleModMenu.pak",
+        "pakchunk99-LastResort.pak",
+        "pakchunk99-NightsInn.pak",
+        "pakchunk88-Mods_SkyTowerRemaster_P.pak",
+        "pakchunk99-Mods_OffFacewear_P.pak",
+        "pakchunk999-QoLRON.pak",
+        "pakchunk88-Mods_RedLibraryRemaster_P.pak",
+        "pakchunk99-Homeland.pak",
+        "pakchunk9999-Mods_CazanusVisceralBlud_P.pak",
+        "pakchunk9999-Mods_wound_P.pak",
+        "pakchunk99-Mods_OffHelmet_P.pak",
+        "pakchunk88-Mods_ChildrenOfTaronneTenementRemaster_P.pak",
+        "pakchunk99-Mods_VM_Weap_Black_Collection_P.pak",
+        "pakchunk99-Mods_No_Stress_P.pak",
+        "pakchunk99-Mods_OffVest_P.pak",
+        "pakchunk88-Mods_ABombNightclubRemaster_P.pak"
+      ]
+    }
+  }
+}

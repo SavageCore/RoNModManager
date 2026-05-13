@@ -3,7 +3,6 @@
   import {
     addModIoMod,
     applyProfile,
-    fetchNexusModInfo,
     getConfig,
     getInstalledModGroups,
     getProfile,
@@ -216,12 +215,7 @@
         pendingIncludeNewModsForActiveProfile = false;
       }
 
-      const modsForActiveProfileSet = new Set(modsForActiveProfile);
-      modGroups = sortModGroups(
-        activeProfileName
-          ? groups.filter((group) => modsForActiveProfileSet.has(group.name))
-          : groups,
-      );
+      modGroups = sortModGroups(groups);
       hasGamePath = config.game_path != null;
       profiles = await ensureDefaultProfile(profileList);
       expandedGroups = Object.fromEntries(
@@ -503,19 +497,6 @@
     try {
       await updateModSourceUrl(group.name, trimmed);
 
-      // Auto-sync name from Nexus metadata when possible.
-      if (trimmed.includes("nexusmods.com/")) {
-        try {
-          const nexus = await fetchNexusModInfo(trimmed);
-          await updateModDisplayName(group.name, nexus.name);
-          toastStore.info(`Updated name from Nexus: ${nexus.name}`);
-        } catch (error) {
-          toastStore.info(
-            `Saved URL, but could not fetch Nexus name: ${String(error)}`,
-          );
-        }
-      }
-
       await refresh();
       toastStore.success("Updated source URL");
       cancelEditingSourceUrl();
@@ -611,9 +592,13 @@
         void refresh();
       }
     };
+    const handleMetadataRefreshed = () => {
+      void refresh();
+    };
 
     window.addEventListener("focus", handleAppFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("ron:metadata-refreshed", handleMetadataRefreshed);
 
     const appWindow = getCurrentWindow();
     let unlistenDragDrop: (() => void) | null = null;
@@ -648,6 +633,10 @@
       console.log("Cleaning up mods page listeners");
       window.removeEventListener("focus", handleAppFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener(
+        "ron:metadata-refreshed",
+        handleMetadataRefreshed,
+      );
       if (unlistenDragDrop) {
         unlistenDragDrop();
       }
@@ -742,12 +731,8 @@
       class="text-sm text-center py-8"
     >
       {#if modGroups.length === 0}
-        {#if activeProfileName}
-          No mods in this profile
-        {:else}
-          No installed mods yet. Click the + button below to add mods or drag
-          and drop files here.
-        {/if}
+        No installed mods yet. Click the + button below to add mods or drag and
+        drop files here.
       {:else}
         No mods match your filter.
       {/if}

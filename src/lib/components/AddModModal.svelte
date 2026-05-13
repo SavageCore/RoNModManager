@@ -1,6 +1,12 @@
 <script lang="ts">
-  import { createEventDispatcher } from "svelte";
-  import { addModIoMod, fetchNexusModInfo } from "$lib/api/commands";
+  import { createEventDispatcher, onMount, onDestroy } from "svelte";
+  import { open } from "@tauri-apps/plugin-dialog";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import {
+    addModIoMod,
+    fetchNexusModInfo,
+    installLocalMod,
+  } from "$lib/api/commands";
   import { alertStore } from "$lib/stores/alert";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
 
@@ -9,6 +15,8 @@
   const dispatch = createEventDispatcher();
 
   let activeTab: "link" | "file" = "link";
+  let isDraggingOver = false;
+  let unlistenDragDrop: (() => void) | null = null;
   let modioInput = "";
   let nexusPreviewName = "";
   let nexusPreviewError = "";
@@ -135,6 +143,9 @@
       `Queued ${queueEntries.length} mod${queueEntries.length > 1 ? "s" : ""} in background...`,
     );
 
+    let successCount = 0;
+    let failureCount = 0;
+
     // Process each mod sequentially
     for (const entry of queueEntries) {
       modAddQueueStore.markRunning(entry.queueId, "Starting...");
@@ -142,19 +153,95 @@
       try {
         const result = await addModIoMod(entry.input);
         modAddQueueStore.markDone(entry.queueId, `Installed ${result.name}`);
+        successCount += 1;
       } catch (error) {
         const message = `Failed: ${String(error)}`;
         modAddQueueStore.markError(entry.queueId, message);
+        failureCount += 1;
       }
+    }
+
+    if (failureCount === 0) {
+      alertStore.success(
+        `Finished: installed ${successCount} mod${successCount === 1 ? "" : "s"}.`,
+      );
+    } else if (successCount === 0) {
+      alertStore.error(
+        `Finished: all ${failureCount} mod${failureCount === 1 ? "" : "s"} failed.`,
+      );
+    } else {
+      alertStore.info(
+        `Finished: installed ${successCount}, failed ${failureCount}.`,
+      );
     }
 
     dispatch("modAdded");
   }
 
-  async function handleAddViaFile() {
-    // TODO: Implement file picker and upload
-    alertStore.info("File upload coming soon...");
+  async function installFile(filePath: string) {
+    const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
+    alertStore.clear();
+    const queueId = modAddQueueStore.enqueue(fileName);
+    modAddQueueStore.markRunning(queueId, "Installing...");
+    try {
+      const result = await installLocalMod(filePath);
+      if (result.wasDuplicate) {
+        modAddQueueStore.markDone(queueId, `${fileName} is already installed`);
+        alertStore.info(
+          `"${fileName}" is already installed — uninstall it first to reinstall.`,
+        );
+      } else {
+        modAddQueueStore.markDone(queueId, `Installed ${fileName}`);
+        dispatch("modAdded");
+      }
+    } catch (error) {
+      modAddQueueStore.markError(queueId, `Failed: ${String(error)}`);
+      alertStore.error(String(error));
+    }
   }
+
+  async function handleAddViaFile() {
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: "Mod Files", extensions: ["pak", "zip", "rar", "7z"] }],
+    });
+    if (!selected) return;
+
+    const filePath = Array.isArray(selected) ? selected[0] : selected;
+    if (!filePath || typeof filePath !== "string") {
+      alertStore.error("No file selected");
+      return;
+    }
+
+    await installFile(filePath);
+  }
+
+  onMount(() => {
+    const appWindow = getCurrentWindow();
+    void appWindow
+      .onDragDropEvent((event) => {
+        if (!isVisible || activeTab !== "file") return;
+        if (event.payload.type === "over") {
+          isDraggingOver = true;
+        } else if (event.payload.type === "drop") {
+          isDraggingOver = false;
+          if ("paths" in event.payload && Array.isArray(event.payload.paths)) {
+            for (const path of event.payload.paths) {
+              void installFile(path);
+            }
+          }
+        } else if (event.payload.type === "leave") {
+          isDraggingOver = false;
+        }
+      })
+      .then((fn) => {
+        unlistenDragDrop = fn;
+      });
+  });
+
+  onDestroy(() => {
+    unlistenDragDrop?.();
+  });
 
   function closeModal() {
     modioInput = "";
@@ -189,7 +276,10 @@
         style="border-color: var(--adw-border-color);"
       >
         <button
-          on:click={() => (activeTab = "link")}
+          on:click={() => {
+            activeTab = "link";
+            alertStore.clear();
+          }}
           style={activeTab === "link"
             ? `color: var(--clr-primary-300); border-bottom: 2px solid var(--clr-primary-300);`
             : `color: var(--clr-text-secondary);`}
@@ -198,13 +288,16 @@
           mod.io Link
         </button>
         <button
-          on:click={() => (activeTab = "file")}
+          on:click={() => {
+            activeTab = "file";
+            alertStore.clear();
+          }}
           style={activeTab === "file"
             ? `color: var(--clr-primary-300); border-bottom: 2px solid var(--clr-primary-300);`
             : `color: var(--clr-text-secondary);`}
           class="pb-2 px-3 text-sm font-medium transition border-b-2 border-transparent cursor-pointer"
         >
-          Upload File
+          Local File
         </button>
       </div>
 
@@ -268,25 +361,39 @@
           </div>
         {:else}
           <div class="space-y-3">
-            <div>
-              <label
-                for="file-input"
-                style="color: var(--clr-text);"
-                class="block text-sm font-medium mb-2"
+            <!-- Drop zone -->
+            <button
+              on:click={handleAddViaFile}
+              style="border-color: {isDraggingOver
+                ? 'var(--clr-primary-300)'
+                : 'var(--adw-border-color)'}; background: {isDraggingOver
+                ? 'color-mix(in srgb, var(--clr-primary-300) 10%, transparent)'
+                : 'transparent'};"
+              class="w-full rounded-lg border-2 border-dashed p-8 flex flex-col items-center gap-2 cursor-pointer transition-colors"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="32"
+                height="32"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                style="color: var(--clr-text-secondary);"
               >
-                Select .pak or Archive File
-              </label>
-              <input
-                id="file-input"
-                type="file"
-                accept=".pak,.zip,.rar,.7z"
-                on:change={handleAddViaFile}
-                class="w-full"
-              />
-              <p style="color: var(--clr-text-secondary);" class="text-xs mt-1">
-                Supported: .pak files and archives (.zip, .rar, .7z)
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <p style="color: var(--clr-text);" class="text-sm font-medium">
+                Drop file here or click to browse
               </p>
-            </div>
+              <p style="color: var(--clr-text-secondary);" class="text-xs">
+                .pak, .zip, .rar, .7z
+              </p>
+            </button>
 
             {#if $alertStore.message}
               <p style={alertStyle} class="text-sm p-2 rounded">
@@ -296,7 +403,6 @@
 
             <div class="flex gap-2">
               <button on:click={closeModal} class="flex-1 btn"> Cancel </button>
-              <button class="flex-1 btn primary"> Upload </button>
             </div>
           </div>
         {/if}

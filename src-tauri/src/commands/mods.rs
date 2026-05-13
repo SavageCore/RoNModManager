@@ -104,12 +104,23 @@ fn update_manifest_metadata(
     archive_name: &str,
     display_name: &str,
     source_url: &str,
+    content_hash_fallback: Option<&str>,
 ) -> Result<(), String> {
     let manager = manifest::ManifestManager::new(&get_staging_root().map_err(|e| e.to_string())?);
-    let mut manifest_data = manager
+    // Try direct lookup by archive name first; fall back to content hash if not found.
+    let manifest_opt = manager
         .load_manifest(archive_name)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Archive manifest not found: {}", archive_name))?;
+        .map_err(|e| e.to_string())?;
+    let mut manifest_data = if let Some(m) = manifest_opt {
+        m
+    } else if let Some(hash) = content_hash_fallback {
+        manager
+            .find_by_content_hash(hash)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Archive manifest not found: {}", archive_name))?
+    } else {
+        return Err(format!("Archive manifest not found: {}", archive_name));
+    };
 
     manifest_data.display_name = Some(display_name.to_string());
     manifest_data.source_url = Some(source_url.to_string());
@@ -609,9 +620,23 @@ pub async fn add_modio_mod(
     .await
     .map_err(String::from)?;
 
+    // Compute hash before install so we can use it as a fallback for metadata
+    // lookup even if the archive name somehow doesn't match the saved manifest.
+    let archive_content_hash = hasher::md5_file(&archive_path).ok();
+
     install_local_mod(app, state, archive_path.to_string_lossy().to_string()).await?;
 
-    update_manifest_metadata(&archive_name, &mod_details.name, &mod_details.profile_url)?;
+    if let Err(e) = update_manifest_metadata(
+        &archive_name,
+        &mod_details.name,
+        &mod_details.profile_url,
+        archive_content_hash.as_deref(),
+    ) {
+        eprintln!(
+            "Warning: could not save mod metadata for {}: {}",
+            archive_name, e
+        );
+    }
 
     Ok(AddModioResult {
         mod_id: mod_details.id,
@@ -628,6 +653,149 @@ pub struct NexusModInfoResult {
     pub name: String,
     pub summary: Option<String>,
     pub mod_url: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshModMetadataResult {
+    pub checked: usize,
+    pub refreshed: usize,
+    pub skipped: usize,
+    pub failed: usize,
+}
+
+async fn resolve_display_name_from_source_url(
+    source_url: &str,
+    api_key: Option<&str>,
+    oauth_token: Option<&str>,
+    nexus_service: &nexus_api::NexusApiService,
+    modio_service: &ModioApiService,
+) -> Result<Option<String>, String> {
+    let trimmed = source_url.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    if trimmed.contains("nexusmods.com") {
+        let Some(key) = api_key else {
+            return Ok(None);
+        };
+
+        let mod_id = nexus_api::parse_nexus_url_to_mod_id(trimmed).map_err(String::from)?;
+        let mod_info = nexus_service
+            .get_mod_info(key, mod_id)
+            .await
+            .map_err(String::from)?;
+        return Ok(Some(mod_info.name));
+    }
+
+    if trimmed.contains("mod.io") {
+        let Some(token) = oauth_token else {
+            return Ok(None);
+        };
+
+        let (explicit_id, slug) = parse_modio_input_to_slug_or_id(trimmed)?;
+        let mod_id = match explicit_id {
+            Some(id) => id,
+            None => {
+                let slug_value =
+                    slug.ok_or_else(|| "Could not determine mod.io stub".to_string())?;
+                modio_service
+                    .resolve_slug_to_mod_id(token, &slug_value)
+                    .await
+                    .map_err(String::from)?
+            }
+        };
+
+        let mod_details = modio_service
+            .get_mod_download_info(token, mod_id)
+            .await
+            .map_err(String::from)?;
+        return Ok(Some(mod_details.name));
+    }
+
+    Ok(None)
+}
+
+#[tauri::command]
+pub async fn refresh_mod_metadata(
+    state: State<'_, AppState>,
+) -> Result<RefreshModMetadataResult, String> {
+    let config = state.get_config().map_err(String::from)?;
+    let api_key = config
+        .nexus_api_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let oauth_token = config
+        .oauth_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    let staging_root = get_staging_root().map_err(|e| e.to_string())?;
+    let manager = manifest::ManifestManager::new(&staging_root);
+    let manifests = manager.list_all_manifests().map_err(|e| e.to_string())?;
+
+    let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
+    let modio_service = ModioApiService::new(state.client.clone());
+
+    let mut result = RefreshModMetadataResult {
+        checked: 0,
+        refreshed: 0,
+        skipped: 0,
+        failed: 0,
+    };
+
+    for mut manifest_data in manifests.into_values() {
+        result.checked += 1;
+
+        let Some(source_url) = manifest_data.source_url.clone() else {
+            result.skipped += 1;
+            continue;
+        };
+
+        let source_url = source_url.trim().to_string();
+        if source_url.is_empty() {
+            result.skipped += 1;
+            continue;
+        }
+
+        match resolve_display_name_from_source_url(
+            &source_url,
+            api_key,
+            oauth_token,
+            &nexus_service,
+            &modio_service,
+        )
+        .await
+        {
+            Ok(Some(name)) => {
+                manifest_data.display_name = Some(name);
+                if let Err(error) = manager.save_manifest(&manifest_data) {
+                    eprintln!(
+                        "Failed to save refreshed metadata for {}: {}",
+                        manifest_data.source_archive, error
+                    );
+                    result.failed += 1;
+                } else {
+                    result.refreshed += 1;
+                }
+            }
+            Ok(None) => {
+                result.skipped += 1;
+            }
+            Err(error) => {
+                eprintln!(
+                    "Failed to refresh metadata for {} ({}): {}",
+                    manifest_data.source_archive, source_url, error
+                );
+                result.failed += 1;
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -740,6 +908,8 @@ pub async fn update_mod_source_url(
         .ok_or_else(|| "Game path is not configured".to_string())?;
     let staging_root = get_staging_root().map_err(|e| e.to_string())?;
     let manager = manifest::ManifestManager::new(&staging_root);
+    let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
+    let modio_service = ModioApiService::new(state.client.clone());
 
     let mut manifest_data = manager
         .load_manifest(&archive_name)
@@ -751,6 +921,42 @@ pub async fn update_mod_source_url(
     } else {
         Some(source_url.trim().to_string())
     };
+
+    let api_key = config
+        .nexus_api_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let oauth_token = config
+        .oauth_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    if let Some(ref url) = manifest_data.source_url {
+        match resolve_display_name_from_source_url(
+            url,
+            api_key,
+            oauth_token,
+            &nexus_service,
+            &modio_service,
+        )
+        .await
+        {
+            Ok(Some(name)) => {
+                manifest_data.display_name = Some(name);
+            }
+            Ok(None) => {
+                // No lookup available (missing credentials/unsupported host); source URL is still saved.
+            }
+            Err(error) => {
+                eprintln!(
+                    "Saved source URL for {} but metadata lookup failed: {}",
+                    archive_name, error
+                );
+            }
+        }
+    }
 
     manager
         .save_manifest(&manifest_data)
@@ -929,12 +1135,18 @@ pub async fn uninstall_mod(state: State<'_, AppState>, filename: String) -> Resu
     Ok(())
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalModInstallResult {
+    pub was_duplicate: bool,
+}
+
 #[tauri::command]
 pub async fn install_local_mod(
     app: AppHandle,
     state: State<'_, AppState>,
     file_path: String,
-) -> Result<(), String> {
+) -> Result<LocalModInstallResult, String> {
     println!("install_local_mod called with path: {}", file_path);
 
     let config = state.get_config().map_err(String::from)?;
@@ -988,7 +1200,7 @@ pub async fn install_local_mod(
     );
 
     match install_downloaded_file(&path, &context, &app) {
-        Ok(_) => {
+        Ok(is_duplicate) => {
             if let Some(installed_mod_name) = path.file_name().and_then(|n| n.to_str()) {
                 if let Err(error) = add_mod_to_active_profile(&state, installed_mod_name) {
                     eprintln!(
@@ -1012,7 +1224,9 @@ pub async fn install_local_mod(
                     processed_bytes: None,
                 },
             );
-            Ok(())
+            Ok(LocalModInstallResult {
+                was_duplicate: is_duplicate,
+            })
         }
         Err(e) => {
             let error_msg = format!("Failed to install mod: {}", e);
@@ -1065,7 +1279,7 @@ fn install_downloaded_file(
     path: &PathBuf,
     context: &installer::InstallContext,
     app: &AppHandle,
-) -> crate::models::Result<()> {
+) -> crate::models::Result<bool> {
     println!("install_downloaded_file: Processing file: {:?}", path);
 
     let hash_start = Instant::now();
@@ -1147,7 +1361,7 @@ fn install_downloaded_file(
             },
         );
 
-        return Ok(());
+        return Ok(true);
     }
 
     let _ = app.emit(
@@ -1224,7 +1438,7 @@ fn install_downloaded_file(
 
         // Save manifest for tracking installed files with content hash
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
-        return Ok(());
+        return Ok(false);
     }
 
     if extension.eq_ignore_ascii_case("rar") {
@@ -1244,7 +1458,7 @@ fn install_downloaded_file(
 
         // Save manifest for tracking installed files with content hash
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
-        return Ok(());
+        return Ok(false);
     }
 
     if extension.eq_ignore_ascii_case("7z") {
@@ -1279,7 +1493,7 @@ fn install_downloaded_file(
             installed_files: vec![destination],
         };
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
-        return Ok(());
+        return Ok(false);
     }
 
     if extension.eq_ignore_ascii_case("sav") {
@@ -1308,7 +1522,8 @@ fn install_downloaded_file(
             installed_files: vec![destination],
         };
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
+        return Ok(false);
     }
 
-    Ok(())
+    Ok(false)
 }

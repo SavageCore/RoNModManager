@@ -32,6 +32,7 @@ pub fn run() {
         });
     }
     builder
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
@@ -67,6 +68,7 @@ pub fn run() {
             mods::install_local_mod,
             mods::add_modio_mod,
             mods::fetch_nexus_mod_info,
+            mods::refresh_mod_metadata,
             mods::uninstall_mods,
             mods::uninstall_mod,
             mods::uninstall_archive,

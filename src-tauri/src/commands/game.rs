@@ -22,6 +22,12 @@ fn get_staging_root() -> Result<PathBuf, String> {
 }
 
 fn create_file_link(src: &Path, dst: &Path) -> Result<(), String> {
+    // Remove any existing file or symlink at the destination so re-installing
+    // the same mod doesn't fail with "File exists (os error 17)".
+    if dst.exists() || dst.is_symlink() {
+        fs::remove_file(dst).map_err(|e| format!("Failed to remove existing link: {}", e))?;
+    }
+
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(src, dst).map_err(|e| e.to_string())

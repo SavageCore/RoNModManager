@@ -52,7 +52,7 @@ export const getInstalledModGroups = () =>
 export const installMods = (enabledCollections?: string[]) =>
   invoke<void>("install_mods", { enabled_collections: enabledCollections });
 export const installLocalMod = (filePath: string) =>
-  invoke<void>("install_local_mod", { filePath });
+  invoke<{ wasDuplicate: boolean }>("install_local_mod", { filePath });
 export const addModIoMod = (input: string) =>
   invoke<{
     modId: number;
@@ -67,6 +67,13 @@ export const fetchNexusModInfo = (input: string) =>
     summary: string | null;
     modUrl: string;
   }>("fetch_nexus_mod_info", { input });
+export const refreshModMetadata = () =>
+  invoke<{
+    checked: number;
+    refreshed: number;
+    skipped: number;
+    failed: number;
+  }>("refresh_mod_metadata");
 
 export const updateConfig = (updates: {
   nexus_api_key?: string | null;
