@@ -1,3 +1,6 @@
+packages:
+  - .
+
 allowBuilds:
   esbuild: true
   wc_toolkit: true

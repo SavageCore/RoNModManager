@@ -21,12 +21,20 @@
     syncModLinks,
     detectGamePath,
     setGamePath,
+    refreshModMetadata,
   } from "$lib/api/commands";
   import { initTheme } from "$lib/theme";
   import type { Profile, ModProgressEvent } from "$lib/types";
   import { modToggleState } from "$lib/stores/modState";
   import { operationStatusStore } from "$lib/stores/operationStatus";
-  import { Layers, Package, Play, Settings, User } from "lucide-svelte";
+  import {
+    Layers,
+    Package,
+    Play,
+    RefreshCw,
+    Settings,
+    User,
+  } from "lucide-svelte";
   import FooterStatusBar from "$lib/components/FooterStatusBar.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import { tokenStore } from "$lib/stores/token";
@@ -46,6 +54,9 @@
   let hasSavedToken = false;
   let isApplyingProfile = false;
   let isLaunching = false;
+  let isRefreshingMetadata = false;
+  let metadataRefreshMessage = "";
+  let metadataRefreshTone: "idle" | "success" | "error" = "idle";
 
   function resolveSelectedProfile(
     activeProfile: string | null | undefined,
@@ -124,6 +135,24 @@
       alert(`Failed to launch game: ${String(error)}`);
     } finally {
       isLaunching = false;
+    }
+  }
+
+  async function handleRefreshMetadata() {
+    try {
+      isRefreshingMetadata = true;
+      metadataRefreshTone = "idle";
+      metadataRefreshMessage = "Refreshing mod metadata from source links...";
+      const result = await refreshModMetadata();
+      metadataRefreshTone = result.failed > 0 ? "error" : "success";
+      metadataRefreshMessage = `Metadata refresh complete: checked ${result.checked}, refreshed ${result.refreshed}, skipped ${result.skipped}, failed ${result.failed}.`;
+      window.dispatchEvent(new CustomEvent("ron:metadata-refreshed"));
+    } catch (error) {
+      console.error("Failed to refresh mod metadata:", error);
+      metadataRefreshTone = "error";
+      metadataRefreshMessage = `Metadata refresh failed: ${String(error)}`;
+    } finally {
+      isRefreshingMetadata = false;
     }
   }
 
@@ -302,10 +331,25 @@
 
     <!-- Right: Action buttons (always visible) -->
     <div class="flex items-center gap-2 ml-auto">
+      <button
+        class="btn btn-sm h-9 w-9 px-0 flex items-center justify-center"
+        on:click={() => {
+          void handleRefreshMetadata();
+        }}
+        disabled={isRefreshingMetadata}
+        title="Refresh mod metadata from Nexus and mod.io links"
+        aria-label="Refresh mod metadata"
+      >
+        <RefreshCw
+          size={16}
+          class={isRefreshingMetadata ? "is-spinning" : ""}
+        />
+      </button>
+
       <!-- Profile dropdown -->
       <div
         style="background: var(--clr-btn); color: var(--clr-text);"
-        class="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm"
+        class="flex h-9 items-center gap-2 rounded-lg px-3 text-sm"
       >
         <label
           for="header-profile-select"
@@ -326,7 +370,7 @@
 
       <!-- Launch Game button -->
       <button
-        class="btn primary btn-sm"
+        class="btn primary btn-sm h-9"
         on:click={() => {
           void launchWithProfile();
         }}
@@ -338,6 +382,19 @@
       </button>
     </div>
   </header>
+
+  {#if metadataRefreshMessage}
+    <div
+      style="background: {metadataRefreshTone === 'error'
+        ? 'color-mix(in srgb, var(--clr-error) 12%, var(--clr-surface))'
+        : metadataRefreshTone === 'success'
+          ? 'color-mix(in srgb, var(--clr-success) 12%, var(--clr-surface))'
+          : 'color-mix(in srgb, var(--clr-primary-300) 10%, var(--clr-surface))'}; border-bottom: 1px solid var(--adw-border-color);"
+      class="px-4 py-2 text-sm"
+    >
+      <span style="color: var(--clr-text);">{metadataRefreshMessage}</span>
+    </div>
+  {/if}
 
   {#if !hasSavedToken}
     <div
@@ -406,3 +463,18 @@
 
   <FooterStatusBar />
 </div>
+
+<style>
+  .is-spinning {
+    animation: spin 0.9s linear infinite;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+</style>
