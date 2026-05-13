@@ -670,13 +670,23 @@
   <select
     class="input"
     bind:value={modSourceFilter}
-    style="width: 140px; height: 2.25rem; padding-top: 0.25rem; padding-bottom: 0.25rem; font-size: 1rem;"
+    style="width: 140px; height: 2.625rem; display: flex; align-items: center;"
     aria-label="Filter by source"
   >
     <option value="all">All Sources</option>
     <option value="modio">Mod.io</option>
     <option value="nexus">Nexus</option>
   </select>
+  <button
+    on:click={() => {
+      showAddModModal = true;
+    }}
+    class="btn btn-sm"
+    style="height: 2.625rem; background: var(--clr-success-300); color: var(--clr-success-text);"
+    title="Add Mod"
+  >
+    + Add Mod
+  </button>
 </div>
 
 <!-- Gale-style Mod List -->
@@ -942,14 +952,31 @@
   {/if}
 </div>
 
-<!-- Floating Action Button to Add Mods -->
-<button
-  on:click={() => {
-    showAddModModal = true;
-  }}
-  style="background: var(--clr-primary-300); color: #ffffff;"
-  class="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg flex items-center justify-center text-2xl hover:shadow-xl transition-shadow"
-  title="Add Mod"
->
-  +
-</button>
+<style>
+  .btn-success {
+    background-color: var(--clr-success-300);
+    color: var(--clr-success-text);
+    border-color: var(--clr-success-300);
+    transition: all 120ms ease;
+  }
+
+  .btn-success:hover:not(.toggled, .disabled) {
+    background-color: color-mix(in srgb, var(--clr-success-300) 70%, black);
+    border-color: color-mix(in srgb, var(--clr-success-300) 70%, black);
+  }
+
+  .btn-success:active:not(.disabled) {
+    background-color: var(--clr-success-100);
+    border-color: var(--clr-success-100);
+  }
+
+  .btn-success.toggled {
+    background-color: color-mix(in srgb, var(--clr-success-300) 50%, white);
+    border-color: color-mix(in srgb, var(--clr-success-300) 50%, white);
+  }
+
+  .btn-success.disabled {
+    background-color: color-mix(in srgb, var(--clr-success-300) 75%, black);
+    border-color: color-mix(in srgb, var(--clr-success-300) 75%, black);
+  }
+</style>
