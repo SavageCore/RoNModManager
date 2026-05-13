@@ -24,6 +24,7 @@
   /* Danger/destructive color (Red) */
   --clr-danger-100: #ffb3ba;
   --clr-danger-300: #ff6b6b;
+  --clr-danger-500: #b71c1c;
   --clr-danger-text: #ffffff;
 
   /* Success color (Green) */
@@ -65,6 +66,7 @@
     /* Danger color (Red) */
     --clr-danger-100: #f28482;
     --clr-danger-300: #e74c3c;
+    --clr-danger-500: #922b21;
     --clr-danger-text: #ffffff;
 
     /* Success color (Green) */
@@ -99,6 +101,7 @@
   --clr-primary-text: #ffffff;
   --clr-danger-100: #ffb3ba;
   --clr-danger-300: #ff6b6b;
+  --clr-danger-500: #b71c1c;
   --clr-danger-text: #ffffff;
   --clr-success-100: #b3ffb3;
   --clr-success-300: #57e389;
@@ -126,6 +129,7 @@
   --clr-primary-text: #ffffff;
   --clr-danger-100: #f28482;
   --clr-danger-300: #e74c3c;
+  --clr-danger-500: #922b21;
   --clr-danger-text: #ffffff;
   --clr-success-100: #8fce00;
   --clr-success-300: #57e389;
@@ -193,6 +197,38 @@ body {
 .btn-success.disabled {
   background-color: color-mix(in srgb, var(--clr-success-300) 75%, black);
   border-color: color-mix(in srgb, var(--clr-success-300) 75%, black);
+}
+
+.btn.danger,
+.btn-danger {
+  background-color: var(--clr-danger-300);
+  color: var(--clr-danger-text);
+  border-color: var(--clr-danger-300);
+  transition: all 120ms ease;
+}
+
+.btn.danger:hover:not(.toggled, .disabled),
+.btn-danger:hover:not(.toggled, .disabled) {
+  background-color: var(--clr-danger-500);
+  border-color: var(--clr-danger-500);
+}
+
+.btn.danger:active:not(.disabled),
+.btn-danger:active:not(.disabled) {
+  background-color: var(--clr-danger-100);
+  border-color: var(--clr-danger-100);
+}
+
+.btn.danger.toggled,
+.btn-danger.toggled {
+  background-color: color-mix(in srgb, var(--clr-danger-300) 50%, white);
+  border-color: color-mix(in srgb, var(--clr-danger-300) 50%, white);
+}
+
+.btn.danger.disabled,
+.btn-danger.disabled {
+  background-color: color-mix(in srgb, var(--clr-danger-300) 75%, black);
+  border-color: color-mix(in srgb, var(--clr-danger-300) 75%, black);
 }
 
 .btn-sm {
@@ -319,12 +355,19 @@ body {
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  border: 1px solid var(--adw-border-color);
-  background: transparent;
-  color: var(--clr-danger-300);
+  border: 1px solid var(--clr-danger-300);
+  background: var(--clr-danger-300);
+  color: var(--clr-danger-text);
   cursor: pointer;
+  transition: all 120ms ease;
 }
 
 .icon-btn-danger:hover {
-  background: color-mix(in srgb, var(--clr-danger-300) 16%, transparent);
+  background: var(--clr-danger-500);
+  border-color: var(--clr-danger-500);
+}
+
+.icon-btn-danger:active {
+  background: var(--clr-danger-100);
+  border-color: var(--clr-danger-100);
 }
