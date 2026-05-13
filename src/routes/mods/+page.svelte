@@ -18,6 +18,7 @@
     updateModSourceUrl,
   } from "$lib/api/commands";
   import AddModModal from "$lib/components/AddModModal.svelte";
+  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import {
@@ -25,6 +26,7 @@
     Link as LinkIcon,
     Globe,
     Pencil,
+    Plus,
     Trash2,
   } from "lucide-svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -37,6 +39,21 @@
   let modSourceFilter: "all" | "nexus" | "modio" = "all";
   let modsForActiveProfile: string[] = [];
   let showAddModModal = false;
+  let confirmModal: {
+    isVisible: boolean;
+    title: string;
+    message: string;
+    detail: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } = {
+    isVisible: false,
+    title: "",
+    message: "",
+    detail: "",
+    confirmLabel: "Confirm",
+    onConfirm: () => {},
+  };
   let profiles: Profile[] = [];
   let selectedProfile = "Default";
   let activeProfileName: string | null = null;
@@ -355,45 +372,60 @@
   }
 
   async function handleUninstallArchive(group: InstalledModGroup) {
-    try {
-      if (group.managedByManifest) {
-        await uninstallArchive(group.name);
-      } else {
-        const primaryFile = group.files[0]?.name;
-        if (primaryFile) {
-          await uninstallMod(primaryFile);
+    const label = group.displayName ?? group.name;
+    const isNamed = !!group.displayName;
+    confirmModal = {
+      isVisible: true,
+      title: "Uninstall mod?",
+      message: `Are you sure you want to uninstall <strong>${label}</strong>? This cannot be undone.`,
+      detail: isNamed ? group.name : "",
+      confirmLabel: "Uninstall",
+      onConfirm: async () => {
+        try {
+          if (group.managedByManifest) {
+            await uninstallArchive(group.name);
+          } else {
+            const primaryFile = group.files[0]?.name;
+            if (primaryFile) {
+              await uninstallMod(primaryFile);
+            }
+          }
+          toastStore.success(`Uninstalled: ${group.name}`);
+          await refresh();
+          if (hasGamePath) {
+            await syncModLinks(modsForActiveProfile);
+          }
+        } catch (error) {
+          toastStore.error(
+            `Failed to uninstall ${group.name}: ${String(error)}`,
+          );
         }
-      }
-      toastStore.success(`Uninstalled: ${group.name}`);
-
-      // Refresh the UI
-      await refresh();
-
-      // Sync game links for remaining mods in active profile
-      if (hasGamePath) {
-        await syncModLinks(modsForActiveProfile);
-      }
-    } catch (error) {
-      toastStore.error(`Failed to uninstall ${group.name}: ${String(error)}`);
-    }
+      },
+    };
   }
 
   async function handleUninstallAll() {
-    try {
-      await uninstallMods();
-      toastStore.success("Uninstalled all mods");
-
-      // Backend uninstall_mods now removes all mods from active profile.
-      modsForActiveProfile = [];
-
-      await refresh();
-
-      if (hasGamePath) {
-        await syncModLinks([]);
-      }
-    } catch (error) {
-      toastStore.error(`Failed to uninstall all mods: ${String(error)}`);
-    }
+    confirmModal = {
+      isVisible: true,
+      title: "Uninstall all mods?",
+      message:
+        "This will permanently remove all installed mods. This cannot be undone.",
+      confirmLabel: "Uninstall All",
+      detail: "",
+      onConfirm: async () => {
+        try {
+          await uninstallMods();
+          toastStore.success("Uninstalled all mods");
+          modsForActiveProfile = [];
+          await refresh();
+          if (hasGamePath) {
+            await syncModLinks([]);
+          }
+        } catch (error) {
+          toastStore.error(`Failed to uninstall all mods: ${String(error)}`);
+        }
+      },
+    };
   }
 
   async function handleToggleAll() {
@@ -658,6 +690,15 @@
   on:modAdded={handleModAdded}
 />
 
+<ConfirmModal
+  bind:isVisible={confirmModal.isVisible}
+  title={confirmModal.title}
+  message={confirmModal.message}
+  detail={confirmModal.detail}
+  confirmLabel={confirmModal.confirmLabel}
+  onConfirm={confirmModal.onConfirm}
+/>
+
 <!-- Filter Controls -->
 <div class="flex flex-col sm:flex-row gap-2 mb-4 items-center">
   <input
@@ -670,22 +711,13 @@
   <select
     class="input"
     bind:value={modSourceFilter}
-    style="width: 140px;"
+    style="width: 140px; align-self: stretch;"
     aria-label="Filter by source"
   >
     <option value="all">All Sources</option>
     <option value="modio">Mod.io</option>
     <option value="nexus">Nexus</option>
   </select>
-  <button
-    on:click={() => {
-      showAddModModal = true;
-    }}
-    class="btn btn-sm btn-success"
-    title="Add Mod"
-  >
-    + Add Mod
-  </button>
 </div>
 
 <!-- Gale-style Mod List -->
@@ -704,6 +736,37 @@
   <div class="flex items-center justify-between mb-4 gap-3">
     <h2 style="color: var(--clr-text);" class="text-lg font-semibold">Mods</h2>
     <div class="flex items-center gap-2">
+      <button
+        on:click={() => {
+          showAddModModal = true;
+        }}
+        class="btn btn-sm btn-success"
+        title="Add Mod"
+      >
+        <Plus size={16} class="inline mr-1" />
+        Add Mod
+      </button>
+      <button
+        class="btn btn-sm btn-danger"
+        on:click={() => {
+          void handleUninstallAll();
+        }}
+        disabled={modGroups.length === 0}
+        title="Uninstall every installed mod"
+      >
+        <Trash2 size={16} class="inline mr-1" />
+        Uninstall All
+      </button>
+    </div>
+  </div>
+
+  <p style="color: var(--clr-text-secondary);" class="text-sm mb-4">
+    Each profile has its own set of active mods. Use the checkboxes to enable or
+    disable mods for this profile.
+  </p>
+
+  {#if filteredModGroups.length > 0}
+    <div class="flex items-center gap-2 mb-2">
       <label class="gale-switch" title="Toggle all mods on/off">
         <input
           type="checkbox"
@@ -716,23 +779,11 @@
         />
         <span class="gale-switch-track"></span>
       </label>
-      <button
-        class="btn danger btn-sm"
-        on:click={() => {
-          void handleUninstallAll();
-        }}
-        disabled={modGroups.length === 0}
-        title="Uninstall every installed mod"
+      <span style="color: var(--clr-text-secondary);" class="text-sm"
+        >Toggle all</span
       >
-        Uninstall All
-      </button>
     </div>
-  </div>
-
-  <p style="color: var(--clr-text-secondary);" class="text-sm mb-4">
-    Each profile has its own set of active mods. Use the checkboxes to enable or
-    disable mods for this profile.
-  </p>
+  {/if}
 
   {#if filteredModGroups.length === 0}
     <p
@@ -833,7 +884,10 @@
             </button>
 
             <div class="flex items-center gap-2">
-              <label class="gale-switch" title="Enable/disable group locally">
+              <label
+                class="gale-switch"
+                title={`${modsForActiveProfile.includes(group.name) ? "Disable" : "Enable"} ${group.displayName ?? group.name}`}
+              >
                 <input
                   type="checkbox"
                   checked={modsForActiveProfile.includes(group.name)}
@@ -845,7 +899,7 @@
 
               <button
                 class="icon-btn-danger"
-                title={`Uninstall ${group.name}`}
+                title={`Uninstall ${group.displayName ?? group.name}`}
                 on:click={() => {
                   void handleUninstallArchive(group);
                 }}
