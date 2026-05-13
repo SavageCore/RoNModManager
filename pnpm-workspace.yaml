@@ -3,4 +3,4 @@ packages:
 
 allowBuilds:
   esbuild: true
-  wc_toolkit: true
+  wc_toolkit: false
