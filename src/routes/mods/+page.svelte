@@ -711,7 +711,7 @@
   <select
     class="input"
     bind:value={modSourceFilter}
-    style="width: 140px; align-self: stretch;"
+    style="width: 140px; padding-top: 0; padding-bottom: 0; height: 2.5rem;"
     aria-label="Filter by source"
   >
     <option value="all">All Sources</option>
