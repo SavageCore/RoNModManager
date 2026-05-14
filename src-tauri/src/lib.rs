@@ -1,3 +1,4 @@
+#[cfg(debug_assertions)]
 use tauri::Manager;
 pub mod commands;
 pub mod models;
@@ -22,15 +23,13 @@ pub fn run() {
         }
     }
 
-    let mut builder = tauri::Builder::default();
+    let builder = tauri::Builder::default();
     #[cfg(debug_assertions)]
-    {
-        builder = builder.setup(|app| {
-            let window = app.get_webview_window("main").unwrap();
-            window.open_devtools();
-            Ok(())
-        });
-    }
+    let builder = builder.setup(|app| {
+        let window = app.get_webview_window("main").unwrap();
+        window.open_devtools();
+        Ok(())
+    });
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())

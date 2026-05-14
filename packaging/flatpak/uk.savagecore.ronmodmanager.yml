@@ -1,9 +1,9 @@
 app-id: uk.savagecore.ronmodmanager
 runtime: org.gnome.Platform
-runtime-version: "47"
+runtime-version: "50"
 sdk: org.gnome.Sdk
 sdk-extensions:
-  - org.freedesktop.Sdk.Extension.node22
+  - org.freedesktop.Sdk.Extension.node24
   - org.freedesktop.Sdk.Extension.rust-stable
 command: ronmodmanager
 finish-args:
@@ -14,18 +14,25 @@ finish-args:
   - --device=dri
   - --filesystem=home
 build-options:
-  append-path: /usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin
+  append-path: /usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
 modules:
   - name: ronmodmanager
     buildsystem: simple
     build-commands:
-      - npm install --global --prefix=/app pnpm
-      - /app/bin/pnpm install --frozen-lockfile
-      - /app/bin/pnpm tauri build -- --bundles none
+      - >-
+        export CARGO_HOME="$PWD/.cargo-home" &&
+        export CARGO_TARGET_DIR="$PWD/src-tauri/target" &&
+        npm run tauri build -- --no-bundle
       - install -Dm755 src-tauri/target/release/ronmodmanager /app/bin/ronmodmanager
       - install -Dm644 packaging/flatpak/uk.savagecore.ronmodmanager.desktop /app/share/applications/uk.savagecore.ronmodmanager.desktop
       - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/uk.savagecore.ronmodmanager.png
       - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/uk.savagecore.ronmodmanager.png
     sources:
+      - type: dir
+        path: ../../node_modules
+        dest: node_modules
+      - type: dir
+        path: ../../src-tauri/vendor
+        dest: src-tauri/vendor
       - type: dir
         path: ../..

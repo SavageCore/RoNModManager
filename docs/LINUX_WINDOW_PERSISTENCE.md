@@ -56,10 +56,10 @@ Two dev commands are available:
 
 ```bash
 # Native Wayland (window position won't persist)
-pnpm run dev:linux
+npm run dev:linux
 
 # XWayland mode (full window state persistence)
-pnpm run dev:xwayland
+npm run dev:xwayland
 ```
 
 ### Flatpak Permissions
