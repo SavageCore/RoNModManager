@@ -19,9 +19,9 @@ modules:
   - name: ronmodmanager
     buildsystem: simple
     build-commands:
-      - corepack enable
-      - pnpm install --frozen-lockfile
-      - pnpm tauri build -- --bundles none
+      - npm install --global --prefix=/app pnpm
+      - /app/bin/pnpm install --frozen-lockfile
+      - /app/bin/pnpm tauri build -- --bundles none
       - install -Dm755 src-tauri/target/release/ronmodmanager /app/bin/ronmodmanager
       - install -Dm644 packaging/flatpak/uk.savagecore.ronmodmanager.desktop /app/share/applications/uk.savagecore.ronmodmanager.desktop
       - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/uk.savagecore.ronmodmanager.png
