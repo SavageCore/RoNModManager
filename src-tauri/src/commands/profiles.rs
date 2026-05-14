@@ -61,6 +61,12 @@ pub async fn save_profile(
     installed_mod_names: Vec<String>,
 ) -> Result<Profile, String> {
     let mut profile = Profile::new(name, installed_mod_names);
+    if let Some(existing) =
+        services::profiles::get_profile(&profile.name).map_err(|e| e.to_string())?
+    {
+        profile.enabled_collections = existing.enabled_collections;
+        profile.collections = existing.collections;
+    }
     if let Some(desc) = description {
         profile = profile.with_description(desc);
     }

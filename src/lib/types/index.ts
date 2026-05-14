@@ -102,6 +102,8 @@ export interface Profile {
   name: string;
   description: string | null;
   installed_mod_names: string[];
+  enabled_collections: string[];
+  collections: Record<string, string[]>;
   created_at: string;
 }
 

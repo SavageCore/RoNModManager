@@ -36,6 +36,16 @@ export const exportModpackToFile = (modpack: ModPack, path: string) =>
 
 export const getCollections = () =>
   invoke<Record<string, boolean>>("get_collections");
+export const getCollectionMods = () =>
+  invoke<Record<string, string[]>>("get_collection_mods");
+export const createCollection = (name: string, modNames: string[] = []) =>
+  invoke<void>("create_collection", { name, modNames });
+export const addModToCollection = (collection: string, modName: string) =>
+  invoke<void>("add_mod_to_collection", { collection, modName });
+export const removeModFromCollection = (collection: string, modName: string) =>
+  invoke<void>("remove_mod_from_collection", { collection, modName });
+export const deleteCollection = (name: string) =>
+  invoke<void>("delete_collection", { name });
 export const toggleCollection = (name: string, enabled: boolean) =>
   invoke<void>("toggle_collection", { name, enabled });
 

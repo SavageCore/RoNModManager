@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
+    addModToCollection,
     addModIoMod,
     applyProfile,
+    createCollection,
     getConfig,
     getInstalledModGroups,
     getProfile,
@@ -18,6 +20,7 @@
     updateModSourceUrl,
   } from "$lib/api/commands";
   import AddModModal from "$lib/components/AddModModal.svelte";
+  import CollectionPickerModal from "$lib/components/CollectionPickerModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -67,6 +70,10 @@
   let editInputValue = "";
   let editingUrlGroup: string | null = null;
   let editUrlInputValue = "";
+  let showCollectionPickerModal = false;
+  let collectionPickerModName = "";
+  let collectionPickerModLabel = "";
+  let activeCollectionNames: string[] = [];
 
   function extractModIoInputFromDroppedText(raw: string): string | null {
     const candidates = raw
@@ -207,7 +214,12 @@
         const activeProfile = await getProfile(activeProfileName);
         if (activeProfile) {
           modsForActiveProfile = [...activeProfile.installed_mod_names];
+          activeCollectionNames = Object.keys(activeProfile.collections ?? {});
+        } else {
+          activeCollectionNames = [];
         }
+      } else {
+        activeCollectionNames = [];
       }
 
       if (activeProfileName && pendingIncludeNewModsForActiveProfile) {
@@ -354,6 +366,50 @@
       }
     } catch (error) {
       toastStore.error(`Failed to update active mods: ${String(error)}`);
+    }
+  }
+
+  function openCollectionPicker(modName: string, modLabel: string) {
+    if (!activeProfileName) {
+      toastStore.error("Select an active profile first.");
+      return;
+    }
+
+    collectionPickerModName = modName;
+    collectionPickerModLabel = modLabel;
+    showCollectionPickerModal = true;
+  }
+
+  async function handleCollectionPickerSubmit(collectionName: string) {
+    const modName = collectionPickerModName;
+    const modLabel = collectionPickerModLabel;
+    const trimmedCollectionName = collectionName.trim();
+    showCollectionPickerModal = false;
+    collectionPickerModName = "";
+    collectionPickerModLabel = "";
+
+    if (!modName || !trimmedCollectionName) {
+      return;
+    }
+
+    try {
+      const existingCollectionName = activeCollectionNames.find(
+        (name) => name.toLowerCase() === trimmedCollectionName.toLowerCase(),
+      );
+
+      if (existingCollectionName) {
+        await addModToCollection(existingCollectionName, modName);
+      } else {
+        await createCollection(trimmedCollectionName, [modName]);
+      }
+
+      toastStore.success(
+        `Added ${modLabel || modName} to ${existingCollectionName ?? trimmedCollectionName}.`,
+      );
+      window.dispatchEvent(new CustomEvent("ron:collections-changed"));
+      await refresh();
+    } catch (error) {
+      toastStore.error(`Failed to add mod to collection: ${String(error)}`);
     }
   }
 
@@ -699,6 +755,20 @@
   onConfirm={confirmModal.onConfirm}
 />
 
+<CollectionPickerModal
+  isVisible={showCollectionPickerModal}
+  modName={collectionPickerModLabel || collectionPickerModName}
+  collections={activeCollectionNames}
+  on:close={() => {
+    showCollectionPickerModal = false;
+    collectionPickerModName = "";
+    collectionPickerModLabel = "";
+  }}
+  on:submit={(event) => {
+    void handleCollectionPickerSubmit(event.detail.collectionName);
+  }}
+/>
+
 <!-- Filter Controls -->
 <div class="flex flex-col sm:flex-row gap-2 mb-4 items-center">
   <input
@@ -803,6 +873,9 @@
         <li
           style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
           class="rounded border"
+          on:contextmenu|preventDefault={() => {
+            openCollectionPicker(group.name, group.displayName || group.name);
+          }}
         >
           <div class="flex items-center justify-between px-3 py-2 gap-3">
             <button
