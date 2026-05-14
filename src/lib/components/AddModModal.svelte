@@ -146,9 +146,8 @@
       queueId: modAddQueueStore.enqueue(modInput),
     }));
 
-    alertStore.info(
-      `Queued ${queueEntries.length} mod${queueEntries.length > 1 ? "s" : ""} in background...`,
-    );
+    // Close immediately — progress is visible in the bottom bar
+    closeModal();
 
     let successCount = 0;
     let failureCount = 0;
@@ -166,20 +165,6 @@
         modAddQueueStore.markError(entry.queueId, message);
         failureCount += 1;
       }
-    }
-
-    if (failureCount === 0) {
-      alertStore.success(
-        `Finished: installed ${successCount} mod${successCount === 1 ? "" : "s"}.`,
-      );
-    } else if (successCount === 0) {
-      alertStore.error(
-        `Finished: all ${failureCount} mod${failureCount === 1 ? "" : "s"} failed.`,
-      );
-    } else {
-      alertStore.info(
-        `Finished: installed ${successCount}, failed ${failureCount}.`,
-      );
     }
 
     dispatch("modAdded");

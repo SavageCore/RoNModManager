@@ -1081,12 +1081,6 @@ pub async fn uninstall_mod(state: State<'_, AppState>, filename: String) -> Resu
     // Check if this file is part of an archive installation
     let manager = manifest::ManifestManager::new(&staging_root);
     if let Ok(Some((archive_name, manifest))) = manager.get_manifest_for_pak(&filename) {
-        println!(
-            "Found manifest for {}: {} files to uninstall",
-            archive_name,
-            manifest.installed_files.len()
-        );
-
         // Remove from active profile first.
         remove_mod_from_active_profile(&state, &archive_name)?;
 
@@ -1098,7 +1092,6 @@ pub async fn uninstall_mod(state: State<'_, AppState>, filename: String) -> Resu
         // Uninstall all files from the archive
         for file_path in &manifest.installed_files {
             if file_path.exists() {
-                println!("Removing: {:?}", file_path);
                 if let Err(e) = fs::remove_file(file_path) {
                     eprintln!("Failed to remove {:?}: {}", file_path, e);
                 } else {
@@ -1147,22 +1140,15 @@ pub async fn install_local_mod(
     state: State<'_, AppState>,
     file_path: String,
 ) -> Result<LocalModInstallResult, String> {
-    println!("install_local_mod called with path: {}", file_path);
-
     let config = state.get_config().map_err(String::from)?;
     let game_path = config
         .game_path
         .ok_or_else(|| "Game path is not configured".to_string())?;
 
-    println!("Game path: {:?}", game_path);
-
     let staging_root = get_staging_root().map_err(|e| e.to_string())?;
     let paks_path = staging_root.join("mods");
     let savegames_path = staging_root.join("savegames");
     let backup_path = staging_root.join("backups");
-
-    println!("Staged Paks path: {:?}", paks_path);
-    println!("Staged SaveGames path: {:?}", savegames_path);
 
     let _ = app.emit(
         "install_progress",
@@ -1183,8 +1169,6 @@ pub async fn install_local_mod(
         savegames_path,
         backup_path,
     };
-
-    println!("Calling install_downloaded_file...");
 
     // Emit preparation progress before analysis/hashing begins.
     let _ = app.emit(
@@ -1212,7 +1196,6 @@ pub async fn install_local_mod(
 
             sync_active_profile_links(&state)?;
 
-            println!("Installation successful!");
             let _ = app.emit(
                 "install_progress",
                 &ProgressEvent {
@@ -1230,7 +1213,6 @@ pub async fn install_local_mod(
         }
         Err(e) => {
             let error_msg = format!("Failed to install mod: {}", e);
-            println!("Installation failed: {}", error_msg);
             let _ = app.emit(
                 "install_progress",
                 &ProgressEvent::new_error(error_msg.clone()),
@@ -1271,7 +1253,6 @@ fn save_install_manifest(
     };
 
     manager.save_manifest(&manifest)?;
-    println!("Saved manifest with {} files", report.installed_files.len());
     Ok(())
 }
 
@@ -1280,8 +1261,6 @@ fn install_downloaded_file(
     context: &installer::InstallContext,
     app: &AppHandle,
 ) -> crate::models::Result<bool> {
-    println!("install_downloaded_file: Processing file: {:?}", path);
-
     let hash_start = Instant::now();
     let mut hash_last_emit = Instant::now() - Duration::from_millis(500);
 
@@ -1328,7 +1307,6 @@ fn install_downloaded_file(
         );
     })
     .map_err(|e| crate::models::AppError::Validation(format!("Failed to hash file: {}", e)))?;
-    println!("Computed content hash: {}", content_hash);
 
     let _ = app.emit(
         "install_progress",
@@ -1347,8 +1325,6 @@ fn install_downloaded_file(
     // another per-profile duplicate folder.
     let manager = manifest::ManifestManager::new(&get_staging_root()?);
     if manager.find_by_content_hash(&content_hash)?.is_some() {
-        println!("Found existing installation with same content hash; reusing staged files");
-
         let _ = app.emit(
             "install_progress",
             &ProgressEvent {
@@ -1403,10 +1379,7 @@ fn install_downloaded_file(
         .and_then(|ext| ext.to_str())
         .unwrap_or_default();
 
-    println!("File extension: {}", extension);
-
     if extension.eq_ignore_ascii_case("zip") {
-        println!("Detected ZIP archive, calling install_archive");
         let start = Instant::now();
         let mut last_emit = Instant::now() - Duration::from_millis(500);
         let report = installer::install_archive_with_progress(path, &staged_context, |progress| {
@@ -1442,7 +1415,6 @@ fn install_downloaded_file(
     }
 
     if extension.eq_ignore_ascii_case("rar") {
-        println!("Detected RAR archive, calling install_rar_archive");
         let _ = app.emit(
             "install_progress",
             &ProgressEvent {
@@ -1468,7 +1440,6 @@ fn install_downloaded_file(
     }
 
     if extension.eq_ignore_ascii_case("pak") {
-        println!("Detected PAK file, installing directly");
         let _ = app.emit(
             "install_progress",
             &ProgressEvent {
@@ -1497,7 +1468,6 @@ fn install_downloaded_file(
     }
 
     if extension.eq_ignore_ascii_case("sav") {
-        println!("Detected SAV file, installing to SaveGames");
         let _ = app.emit(
             "install_progress",
             &ProgressEvent {
