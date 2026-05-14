@@ -24,8 +24,10 @@
   import { applyThemeClass } from "$lib/theme";
   import { toastStore } from "$lib/stores/toast";
   import { tokenStore } from "$lib/stores/token";
+  import { updateCheckStore } from "$lib/stores/updateCheck";
 
   const VALIDATION_TTL_MS = 6 * 60 * 60 * 1000;
+  const UPDATE_CHECK_COOLDOWN_MS = 15 * 1000;
   const MODIO_VALIDATION_CACHE_KEY = "ronmodmanager.modioValidationCache";
   const NEXUS_VALIDATION_CACHE_KEY = "ronmodmanager.nexusValidationCache";
 
@@ -58,6 +60,9 @@
   let updateCheckInProgress = false;
   let updateInstallInProgress = false;
   let updateVersion: string | null = null;
+  let updateLastChecked: Date | null = null;
+
+  $: updateLastChecked = $updateCheckStore ? new Date($updateCheckStore) : null;
 
   function readValidationCache(key: string): ValidationCache | null {
     if (typeof window === "undefined") {
@@ -384,6 +389,24 @@
   }
 
   async function checkUpdates() {
+    const lastCheckedAt = $updateCheckStore;
+    if (lastCheckedAt) {
+      const cooldownRemaining =
+        UPDATE_CHECK_COOLDOWN_MS - (Date.now() - lastCheckedAt);
+      if (cooldownRemaining > 0) {
+        const secondsRemaining = Math.ceil(cooldownRemaining / 1000);
+        import("$lib/stores/operationStatus").then(
+          ({ operationStatusStore }) => {
+            operationStatusStore.setTemporaryMessage(
+              `Please wait ${secondsRemaining}s before checking again.`,
+              2500,
+            );
+          },
+        );
+        return;
+      }
+    }
+
     updateCheckInProgress = true;
     try {
       const info = await checkForUpdate();
@@ -398,6 +421,8 @@
       toastStore.error(`Failed to check updates: ${error}`);
     } finally {
       updateCheckInProgress = false;
+      // Store timestamp of this check to show in UI and throttle rapid re-checks.
+      updateCheckStore.markChecked();
     }
   }
 
@@ -624,26 +649,32 @@
           {#if updateVersion}
             Update ready: {updateVersion}
           {:else}
-            Check GitHub Releases for signed updates
+            Check for updates
           {/if}
         </p>
+        <!-- Muted last checked text -->
+        {#if updateLastChecked}
+          <p style="color: var(--clr-text-secondary);" class="text-xs">
+            Last checked: {updateLastChecked.toLocaleString()}
+          </p>
+        {/if}
       </div>
       <div class="flex gap-2">
         <button
-          class="btn btn-sm"
-          class:disabled={updateCheckInProgress}
-          disabled={updateCheckInProgress}
-          on:click={checkUpdates}
-        >
-          {updateCheckInProgress ? "Checking..." : "Check"}
-        </button>
-        <button
           class="btn btn-sm primary"
-          class:disabled={updateInstallInProgress || !updateVersion}
-          disabled={updateInstallInProgress || !updateVersion}
-          on:click={installAvailableUpdate}
+          class:disabled={updateCheckInProgress || updateInstallInProgress}
+          disabled={updateCheckInProgress || updateInstallInProgress}
+          on:click={updateVersion ? installAvailableUpdate : checkUpdates}
         >
-          {updateInstallInProgress ? "Installing..." : "Install"}
+          {#if updateCheckInProgress}
+            Checking...
+          {:else if updateInstallInProgress}
+            Installing...
+          {:else if updateVersion}
+            Install Update
+          {:else}
+            Check for Updates
+          {/if}
         </button>
       </div>
     </div>

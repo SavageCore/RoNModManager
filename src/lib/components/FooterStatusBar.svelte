@@ -259,34 +259,36 @@
       >
         {displayMessage}
       </span>
-      {#if !isDownloadComplete && !suppressComplete}
-        <span style="color: var(--clr-text-secondary);" class="shrink-0">
-          {taskPercent.toFixed(0)}%
-        </span>
-      {/if}
-      {#if progressDetails && !suppressComplete && !isDownloadComplete}
-        <span style="color: var(--clr-text-secondary);" class="shrink-0">
-          {progressDetails}
-        </span>
-      {/if}
-      <div
-        class="progress-track ml-auto h-1.5 w-28 rounded-full overflow-hidden"
-        style="background: var(--clr-surface-variant);"
-      >
-        {#if showIndeterminateBar}
-          <div class="progress-overlay">
-            <div
-              class="h-full indeterminate-bar"
-              style="background: var(--clr-primary-300);"
-            ></div>
-          </div>
-        {:else}
-          <div
-            class="progress-fill h-full transition-all duration-150"
-            style={`width: ${displayPercent}%; background: ${$operationStatusStore.isError ? "var(--clr-danger-300)" : "var(--clr-primary-300)"};`}
-          ></div>
+      {#if !$operationStatusStore.temporary}
+        {#if !isDownloadComplete && !suppressComplete}
+          <span style="color: var(--clr-text-secondary);" class="shrink-0">
+            {taskPercent.toFixed(0)}%
+          </span>
         {/if}
-      </div>
+        {#if progressDetails && !suppressComplete && !isDownloadComplete}
+          <span style="color: var(--clr-text-secondary);" class="shrink-0">
+            {progressDetails}
+          </span>
+        {/if}
+        <div
+          class="progress-track ml-auto h-1.5 w-28 rounded-full overflow-hidden"
+          style="background: var(--clr-surface-variant);"
+        >
+          {#if showIndeterminateBar}
+            <div class="progress-overlay">
+              <div
+                class="h-full indeterminate-bar"
+                style="background: var(--clr-primary-300);"
+              ></div>
+            </div>
+          {:else}
+            <div
+              class="progress-fill h-full transition-all duration-150"
+              style={`width: ${displayPercent}%; background: ${$operationStatusStore.isError ? "var(--clr-danger-300)" : "var(--clr-primary-300)"};`}
+            ></div>
+          {/if}
+        </div>
+      {/if}
     </div>
   {:else if recentQueue.length > 0}
     <div class="flex-1 min-w-0" style="color: var(--clr-text-secondary);">

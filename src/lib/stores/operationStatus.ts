@@ -12,7 +12,12 @@ export interface OperationStatusState {
   isError: boolean;
 }
 
-const INITIAL_STATE: OperationStatusState = {
+export interface OperationStatusStateWithTemp extends OperationStatusState {
+  /** True if this is a temporary message (e.g. update cooldown), not a real operation. */
+  temporary?: boolean;
+}
+
+const INITIAL_STATE: OperationStatusStateWithTemp = {
   visible: false,
   operation: "",
   file: "",
@@ -21,12 +26,14 @@ const INITIAL_STATE: OperationStatusState = {
   totalBytes: null,
   processedBytes: null,
   isError: false,
+  temporary: false,
 };
 
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
 function createOperationStatusStore() {
-  const { subscribe, set } = writable<OperationStatusState>(INITIAL_STATE);
+  const { subscribe, set } =
+    writable<OperationStatusStateWithTemp>(INITIAL_STATE);
 
   function clearHideTimer() {
     if (hideTimer) {
@@ -52,6 +59,7 @@ function createOperationStatusStore() {
         totalBytes: progress.total_bytes,
         processedBytes: progress.processed_bytes,
         isError,
+        temporary: false,
       });
 
       if (isComplete || isError) {
@@ -60,6 +68,21 @@ function createOperationStatusStore() {
           hideTimer = null;
         }, 5000);
       }
+    },
+    /** Show a temporary status message in the footer bar for a short time. */
+    setTemporaryMessage: (message: string, duration = 3000) => {
+      clearHideTimer();
+      set({
+        ...INITIAL_STATE,
+        visible: true,
+        message,
+        isError: false,
+        temporary: true,
+      });
+      hideTimer = setTimeout(() => {
+        set(INITIAL_STATE);
+        hideTimer = null;
+      }, duration);
     },
     clear: () => {
       clearHideTimer();
