@@ -334,7 +334,7 @@ fn copy_file_if_changed(source: &Path, destination: &Path) -> Result<bool> {
 }
 
 fn copy_entry_if_changed_with_progress<F>(
-    entry: &mut zip::read::ZipFile<'_>,
+    entry: &mut zip::read::ZipFile<'_, std::fs::File>,
     destination: &Path,
     mut on_chunk: F,
 ) -> Result<bool>

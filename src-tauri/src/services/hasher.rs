@@ -1,4 +1,5 @@
 use crc32fast::Hasher as Crc32Hasher;
+use hex;
 use md5::{Digest, Md5};
 use std::io::{self, Read};
 use std::path::Path;
@@ -28,7 +29,7 @@ where
         on_progress(processed_bytes, total_bytes);
     }
 
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex::encode(hasher.finalize()))
 }
 
 /// Compute MD5 hash of a file
