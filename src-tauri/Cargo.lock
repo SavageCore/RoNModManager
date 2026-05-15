@@ -3422,6 +3422,7 @@ dependencies = [
  "crc32fast",
  "dirs",
  "futures-util",
+ "hex",
  "md-5",
  "mockito",
  "reqwest 0.12.28",

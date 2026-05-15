@@ -36,6 +36,8 @@ semver = "1"
 dirs = "6"
 tauri-plugin-dialog = "2.7.1"
 
+hex = "0.4"
+
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
 
