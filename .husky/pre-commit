@@ -1,4 +1,4 @@
-pnpm lint-staged
+npx lint-staged
 
 # Lint backend (Rust) when any src-tauri source files are staged
 if git diff --cached --name-only | grep -q '^src-tauri/'; then

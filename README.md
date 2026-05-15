@@ -9,24 +9,24 @@ Cross-platform (Linux + Windows) GUI mod manager for Ready or Not.
 - Tauri v2 (Rust backend)
 - Svelte 5 + TypeScript (frontend)
 - Tailwind CSS 4
-- `pnpm` package management
+- `npm` package management
 
 ## Development
 
 ```bash
-pnpm install
-pnpm dev
-pnpm tauri dev
+npm install
+npm run dev
+npm run tauri dev
 ```
 
 ### Linux Development
 
 ```bash
 # Native Wayland (window position won't persist)
-pnpm run dev:linux
+npm run dev:linux
 
 # XWayland mode (full window state persistence)
-pnpm run dev:xwayland
+npm run dev:xwayland
 ```
 
 See [docs/LINUX_WINDOW_PERSISTENCE.md](docs/LINUX_WINDOW_PERSISTENCE.md) for details on window state persistence on Linux/Wayland.
@@ -34,9 +34,9 @@ See [docs/LINUX_WINDOW_PERSISTENCE.md](docs/LINUX_WINDOW_PERSISTENCE.md) for det
 ## Quality Checks
 
 ```bash
-pnpm lint
-pnpm check
-pnpm test:unit
+npm run lint
+npm run check
+npm run test:unit
 
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
@@ -57,7 +57,7 @@ Before shipping updater-enabled builds:
 1. Generate updater keys once:
 
 ```bash
-pnpm tauri signer generate -w ~/.tauri/ronmodmanager.key
+npm run tauri signer generate -w ~/.tauri/ronmodmanager.key
 ```
 
 2. Copy the generated public key into `src-tauri/tauri.conf.json` `plugins.updater.pubkey`.
@@ -79,8 +79,6 @@ CI and release workflows build a `.flatpak` bundle and publish it as an artifact
 Local Flatpak build:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y flatpak flatpak-builder
 flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 flatpak install -y flathub org.gnome.Platform//47 org.gnome.Sdk//47 org.freedesktop.Sdk.Extension.node22//24.08 org.freedesktop.Sdk.Extension.rust-stable//24.08
 

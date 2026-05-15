@@ -7,7 +7,7 @@
     "cargo check": true,
     "git add": true,
     "git commit": true,
-    "pnpm": true
+    "npm": true
   },
   "files.watcherExclude": {
     ".git/objects/**": true,

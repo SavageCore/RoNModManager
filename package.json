@@ -1,12 +1,18 @@
 {
+  "private": true,
+  "workspaces": [
+    "src/*",
+    "src-tauri/*",
+    "tests/*"
+  ],
   "name": "ronmodmanager",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Cross-platform Ready or Not mod manager built with Tauri and Svelte",
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "dev:linux": "WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 pnpm tauri dev",
-    "dev:xwayland": "GDK_BACKEND=x11 pnpm tauri dev",
+    "dev:linux": "WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 npm run tauri dev",
+    "dev:xwayland": "GDK_BACKEND=x11 npm run tauri dev",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -17,14 +23,14 @@
     "test:unit:watch": "vitest",
     "tauri": "tauri",
     "prepare": "husky",
-    "release": "dotenvx run -- pnpm tauri build"
+    "release": "dotenvx run -- npm run tauri build"
   },
   "license": "MIT",
   "dependencies": {
     "@dotenvx/dotenvx": "^1.54.1",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-dialog": "^2.7.1",
-    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/api": "^2.10.0",
+    "@tauri-apps/plugin-dialog": "2.7.1",
+    "@tauri-apps/plugin-opener": "2.5.4",
     "adwavecss": "^0.2.6",
     "adwaveui": "^0.3.0",
     "lucide-svelte": "^0.577.0"
@@ -34,7 +40,7 @@
     "@sveltejs/kit": "^2.9.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tailwindcss/vite": "^4.2.1",
-    "@tauri-apps/cli": "^2",
+    "@tauri-apps/cli": "2.11.1",
     "@testing-library/svelte": "^5.3.1",
     "@vitest/coverage-v8": "^4.0.18",
     "husky": "^9.1.7",
@@ -56,5 +62,6 @@
     "*.{css,json,md,yml,yaml}": [
       "prettier --write"
     ]
-  }
+  },
+  "packageManager": "npm@11.14.1"
 }

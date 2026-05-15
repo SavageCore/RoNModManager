@@ -1,18 +1,18 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "RoN Mod Manager",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "identifier": "uk.savagecore.ronmodmanager",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../build"
   },
   "app": {
     "windows": [
       {
-        "title": "Mod Manager",
+        "title": "RoN Mod Manager",
         "width": 1280,
         "height": 840,
         "minWidth": 1024,
