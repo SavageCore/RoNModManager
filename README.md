@@ -82,6 +82,9 @@ Local Flatpak build:
 flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 flatpak install -y flathub org.gnome.Platform//47 org.gnome.Sdk//47 org.freedesktop.Sdk.Extension.node22//24.08 org.freedesktop.Sdk.Extension.rust-stable//24.08
 
+cd src-tauri
+cargo vendor vendor
+cd ..
 flatpak-builder --force-clean --user --install-deps-from=flathub --repo=flatpak-repo build-dir packaging/flatpak/uk.savagecore.ronmodmanager.yml
 flatpak build-bundle flatpak-repo ronmodmanager.flatpak uk.savagecore.ronmodmanager
 ```

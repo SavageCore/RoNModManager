@@ -7,4 +7,5 @@ node_modules/
 build/
 flatpak-repo/
 src-tauri/vendor/
+src-tauri/.cargo/
 *.flatpak
