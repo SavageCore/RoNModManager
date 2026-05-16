@@ -162,7 +162,7 @@
     });
 
     let cleanup = () => {};
-    let unlistenProgress: UnlistenFn | null = null;
+    let unlistenFunctions: UnlistenFn[] = [];
     let unlistenResize: (() => void) | null = null;
     let unlistenMove: (() => void) | null = null;
     const appWindow = getCurrentWindow();
@@ -282,7 +282,13 @@
     void listen<ModProgressEvent>("install_progress", (event) => {
       operationStatusStore.updateFromProgress(event.payload);
     }).then((fn) => {
-      unlistenProgress = fn;
+      unlistenFunctions.push(fn);
+    });
+
+    void listen<ModProgressEvent>("export_progress", (event) => {
+      operationStatusStore.updateFromProgress(event.payload);
+    }).then((fn) => {
+      unlistenFunctions.push(fn);
     });
 
     return () => {
@@ -293,9 +299,7 @@
       if (moveDebounce) {
         clearTimeout(moveDebounce);
       }
-      if (unlistenProgress) {
-        unlistenProgress();
-      }
+      unlistenFunctions.forEach((fn) => fn());
       if (unlistenResize) {
         unlistenResize();
       }

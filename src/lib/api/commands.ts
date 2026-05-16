@@ -31,8 +31,8 @@ export const getModpackCollections = () =>
   invoke<Record<string, Collection>>("get_modpack_collections");
 export const buildModpackFromInstalled = () =>
   invoke<ModPack>("build_modpack_from_installed");
-export const exportModpackToFile = (modpack: ModPack, path: string) =>
-  invoke<void>("export_modpack_to_file", { modpack, path });
+export const exportModpackToFile = (modpack: ModPack, dirPath: string) =>
+  invoke<void>("export_modpack_to_file", { modpack, dirPath });
 
 export const getCollections = () =>
   invoke<Record<string, boolean>>("get_collections");
@@ -87,7 +87,6 @@ export const refreshModMetadata = () =>
 
 export const updateConfig = (updates: {
   nexus_api_key?: string | null;
-  enabled_collections?: string[];
   active_profile?: string | null;
 }) => invoke<void>("update_config", { updates });
 

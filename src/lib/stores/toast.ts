@@ -13,7 +13,7 @@ interface ToastStore {
   toasts: Toast[];
 }
 
-const MAX_DURATION = 30000; // 30 seconds
+const MAX_DURATION = 3600000; // 1 hour (effectively allow very long toasts)
 
 function createToastStore() {
   const { subscribe, update } = writable<ToastStore>({ toasts: [] });
@@ -33,24 +33,26 @@ function createToastStore() {
         return state;
       });
 
-      // Auto-remove after duration
-      setTimeout(() => {
-        update((state) => {
-          state.toasts = state.toasts.filter((t) => t.id !== id);
-          return state;
-        });
-      }, clampedDuration);
+      // Auto-remove after duration, unless duration is 0 (persistent)
+      if (clampedDuration > 0) {
+        setTimeout(() => {
+          update((state) => {
+            state.toasts = state.toasts.filter((t) => t.id !== id);
+            return state;
+          });
+        }, clampedDuration);
+      }
 
       return id;
     },
     success: (message: string, duration?: number) => {
-      return createToastStore().add(message, "success", duration);
+      return toastStore.add(message, "success", duration);
     },
     error: (message: string, duration?: number) => {
-      return createToastStore().add(message, "error", duration);
+      return toastStore.add(message, "error", duration);
     },
     info: (message: string, duration?: number) => {
-      return createToastStore().add(message, "info", duration);
+      return toastStore.add(message, "info", duration);
     },
     remove: (id: string) => {
       update((state) => {

@@ -1,21 +1,11 @@
 export type ThemeMode = "light" | "dark" | "system";
 
-export interface SubscribedMod {
-  md5: string;
-  filename: string;
-  download_url: string;
-  contents: string[];
-}
-
 export interface AppConfig {
   game_path: string | null;
   modpack_url: string | null;
   modpack_version: string | null;
   oauth_token: string | null;
   nexus_api_key: string | null;
-  subscribed_mods: Record<string, SubscribedMod>;
-  collections: Record<string, boolean>;
-  enabled_collections: string[];
   active_profile: string | null;
   theme: ThemeMode;
   window_width: number | null;

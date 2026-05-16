@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
@@ -13,30 +12,31 @@ pub enum ThemeMode {
     System,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct SubscribedMod {
-    pub md5: String,
-    pub filename: String,
-    pub download_url: String,
-    pub contents: Vec<String>,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
+    #[serde(default)]
     pub game_path: Option<PathBuf>,
+    #[serde(default)]
     pub modpack_url: Option<String>,
+    #[serde(default)]
     pub modpack_version: Option<String>,
+    #[serde(default)]
     pub oauth_token: Option<String>,
+    #[serde(default)]
     pub nexus_api_key: Option<String>,
-    pub subscribed_mods: HashMap<String, SubscribedMod>,
-    pub collections: HashMap<String, bool>,
-    pub enabled_collections: Vec<String>,
+    #[serde(default)]
     pub active_profile: Option<String>,
+    #[serde(default)]
     pub theme: ThemeMode,
+    #[serde(default)]
     pub window_width: Option<f64>,
+    #[serde(default)]
     pub window_height: Option<f64>,
+    #[serde(default)]
     pub window_x: Option<f64>,
+    #[serde(default)]
     pub window_y: Option<f64>,
+    #[serde(default)]
     pub last_update_check: Option<DateTime<Utc>>,
 }
 
@@ -48,9 +48,6 @@ impl Default for AppConfig {
             modpack_version: None,
             oauth_token: None,
             nexus_api_key: None,
-            subscribed_mods: HashMap::new(),
-            collections: HashMap::new(),
-            enabled_collections: Vec::new(),
             active_profile: None,
             theme: ThemeMode::System,
             window_width: None,

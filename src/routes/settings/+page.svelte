@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import {
     applyIntroSkip,
@@ -23,8 +24,31 @@
   } from "$lib/api/commands";
   import { applyThemeClass } from "$lib/theme";
   import { toastStore } from "$lib/stores/toast";
+  import { operationStatusStore } from "$lib/stores/operationStatus";
+  import { revealItemInDir } from "@tauri-apps/plugin-opener";
+  import { downloadDir } from "@tauri-apps/api/path";
   import { tokenStore } from "$lib/stores/token";
   import { updateCheckStore } from "$lib/stores/updateCheck";
+  import ExportModpackModal from "$lib/components/ExportModpackModal.svelte";
+  // Persist modpack export metadata in localStorage
+  const MODPACK_META_KEY = "ronmodmanager.modpackMeta";
+  function loadModpackMeta() {
+    if (typeof window === "undefined") return {};
+    try {
+      return (
+        JSON.parse(window.localStorage.getItem(MODPACK_META_KEY) || "{}") ?? {}
+      );
+    } catch {
+      return {};
+    }
+  }
+  function saveModpackMeta(meta: any) {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(MODPACK_META_KEY, JSON.stringify(meta));
+  }
+
+  let showExportModal = false;
+  let exportMeta = loadModpackMeta();
 
   const VALIDATION_TTL_MS = 6 * 60 * 60 * 1000;
   const UPDATE_CHECK_COOLDOWN_MS = 15 * 1000;
@@ -370,20 +394,66 @@
     }
   }
 
-  async function exportInstalledMods() {
+  function exportInstalledMods() {
+    showExportModal = true;
+  }
+
+  onDestroy(() => {});
+
+  async function handleExportModpack({
+    name,
+    version,
+    description,
+    author,
+  }: {
+    name: string;
+    version: string;
+    description: string;
+    author: string;
+  }) {
+    showExportModal = false;
+    exportMeta = { name, version, description, author };
+    saveModpackMeta(exportMeta);
+    let exportDir = "";
     try {
-      const modpack = await buildModpackFromInstalled();
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/[:.]/g, "-")
-        .split("T")[0];
-      // Save to app config directory with timestamp
-      const filename = `ronmod-export-${timestamp}.json`;
-      await exportModpackToFile(modpack, `./modpacks/${filename}`);
-      toastStore.success(
-        `Modpack exported successfully! Filename: ${filename}`,
-      );
+      let modpack = await buildModpackFromInstalled();
+      // Overwrite metadata
+      modpack = {
+        ...modpack,
+        name,
+        version,
+        description,
+        author,
+      };
+      const folderName = `${name.replace(/[^a-zA-Z0-9_-]+/g, "_")}-${version.replace(/[^a-zA-Z0-9._-]+/g, "_")}`;
+      let downloadsPath = "~/Downloads";
+      try {
+        downloadsPath = await downloadDir();
+      } catch (e) {
+        // fallback to ~/Downloads
+      }
+      exportDir = `${downloadsPath.replace(/\/$/, "")}/${folderName}`;
+      console.log("Exporting modpack to:", exportDir);
+      operationStatusStore.setTemporaryMessage("Exporting modpack...", 10000);
+      try {
+        await exportModpackToFile(modpack, exportDir);
+        console.log("Export successful!");
+        const toastId = toastStore.add(
+          `Modpack exported to: ${exportDir}<br><span class='text-xs opacity-80'>Contains modpack.json and mods/</span> <button class='btn btn-xs ml-2' onclick='window.__OPEN_EXPORT_DIR && window.__OPEN_EXPORT_DIR()'>Open Folder</button>`,
+          "success",
+          0,
+        );
+        // @ts-ignore
+        window.__OPEN_EXPORT_DIR = () => {
+          revealItemInDir(exportDir);
+          toastStore.remove(toastId);
+        };
+      } catch (error) {
+        console.error("Export failed:", error);
+        toastStore.error(`Failed to export modpack: ${error}`);
+      }
     } catch (error) {
+      console.error("Modpack build failed:", error);
       toastStore.error(`Failed to export modpack: ${error}`);
     }
   }
@@ -638,6 +708,16 @@
       </button>
     </div>
   </div>
+
+  <ExportModpackModal
+    isVisible={showExportModal}
+    initialName={exportMeta.name || ""}
+    initialVersion={exportMeta.version || "1.0.0"}
+    initialDescription={exportMeta.description || ""}
+    initialAuthor={exportMeta.author || ""}
+    on:close={() => (showExportModal = false)}
+    on:submit={(e) => handleExportModpack(e.detail)}
+  />
 
   <div class="card mt-6">
     <div class="flex items-center justify-between gap-3">

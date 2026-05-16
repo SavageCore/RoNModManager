@@ -99,3 +99,7 @@ flatpak run uk.savagecore.ronmodmanager
 ## License
 
 MIT
+
+## Modpack Export & Hosting
+
+See [docs/HOSTING_MODPACKS.md](docs/HOSTING_MODPACKS.md) for instructions on exporting, self-hosting, and sharing modpacks.
