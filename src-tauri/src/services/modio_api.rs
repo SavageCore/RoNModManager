@@ -1,3 +1,10 @@
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct ModioGameSummary {
+    pub id: u32,
+    pub name: Option<String>,
+    pub name_id: Option<String>,
+    pub slug: Option<String>,
+}
 use std::time::Duration;
 
 use reqwest::Client;
@@ -7,14 +14,13 @@ use tokio::time::sleep;
 use crate::models::{AppError, Result};
 
 const DEFAULT_BASE_URL: &str = "https://api.mod.io/v1";
-const DEFAULT_GAME_ID: u32 = 3791;
 const MAX_ATTEMPTS: usize = 3;
 
 #[derive(Debug, Clone)]
 pub struct ModioApiService {
     client: Client,
     base_url: String,
-    game_id: u32,
+    game_id: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -59,12 +65,16 @@ struct ModioModDetailResponse {
     modfile: Option<ModioFileInfo>,
 }
 
+
+
+
+
 impl ModioApiService {
-    pub fn new(client: Client) -> Self {
+    pub fn new(client: Client, game_id: Option<u32>) -> Self {
         Self {
             client,
             base_url: DEFAULT_BASE_URL.to_string(),
-            game_id: DEFAULT_GAME_ID,
+            game_id,
         }
     }
 
@@ -73,12 +83,54 @@ impl ModioApiService {
         Self {
             client,
             base_url,
-            game_id: DEFAULT_GAME_ID,
+            game_id: Some(3791),
         }
     }
 
+    /// Looks up the mod.io game ID for a given slug using the public API key.
+    pub async fn lookup_game_id(
+        &self,
+        api_key: &str,
+        slug: &str,
+    ) -> Result<u32> {
+
+        let url = format!("{}/games?name_id={}&api_key={}", self.base_url, slug, api_key);
+        // Debug: print the API key (masked) and URL
+        let masked_key = if api_key.len() > 4 {
+            format!("{}****", &api_key[..api_key.len()-4])
+        } else {
+            "****".to_string()
+        };
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|e| AppError::Http(e))?;
+
+        if !response.status().is_success() {
+            return Err(AppError::Http(response.error_for_status().unwrap_err()));
+        }
+
+        let payload: ModioListResponse<ModioGameSummary> = match response.json().await {
+            Ok(p) => p,
+            Err(e) => {
+                return Err(AppError::Validation(format!("Error decoding response body: {}", e)));
+            }
+        };
+        payload
+            .data
+            .first()
+            .map(|entry| entry.id)
+            .ok_or_else(|| AppError::NotFound(format!("game slug not found: {}", slug)))
+    }
+
+
     pub async fn fetch_subscribed_mods(&self, oauth_token: &str) -> Result<Vec<ModioModSummary>> {
-        let url = format!("{}/me/subscribed?game_id={}", self.base_url, self.game_id);
+        let game_id = self.game_id.ok_or_else(|| AppError::Validation("mod.io game_id not set".to_string()))?;
+        let url = format!("{}/me/subscribed?game_id={}", self.base_url, game_id);
 
         let response = self
             .execute_with_retry(|| self.client.get(&url).bearer_auth(oauth_token))
@@ -89,9 +141,10 @@ impl ModioApiService {
     }
 
     pub async fn subscribe_mod(&self, oauth_token: &str, mod_id: u64) -> Result<()> {
+        let game_id = self.game_id.ok_or_else(|| AppError::Validation("mod.io game_id not set".to_string()))?;
         let url = format!(
             "{}/games/{}/mods/{}/subscribe",
-            self.base_url, self.game_id, mod_id
+            self.base_url, game_id, mod_id
         );
 
         self.execute_with_retry(|| self.client.post(&url).bearer_auth(oauth_token))
@@ -101,9 +154,10 @@ impl ModioApiService {
     }
 
     pub async fn unsubscribe_mod(&self, oauth_token: &str, mod_id: u64) -> Result<()> {
+        let game_id = self.game_id.ok_or_else(|| AppError::Validation("mod.io game_id not set".to_string()))?;
         let url = format!(
             "{}/games/{}/mods/{}/subscribe",
-            self.base_url, self.game_id, mod_id
+            self.base_url, game_id, mod_id
         );
 
         self.execute_with_retry(|| self.client.delete(&url).bearer_auth(oauth_token))
@@ -113,11 +167,11 @@ impl ModioApiService {
     }
 
     pub async fn resolve_slug_to_mod_id(&self, oauth_token: &str, slug: &str) -> Result<u64> {
+        let game_id = self.game_id.ok_or_else(|| AppError::Validation("mod.io game_id not set".to_string()))?;
         let url = format!(
             "{}/games/{}/mods?name_id={}",
-            self.base_url, self.game_id, slug
+            self.base_url, game_id, slug
         );
-
         let response = self
             .execute_with_retry(|| self.client.get(&url).bearer_auth(oauth_token))
             .await?;
@@ -135,7 +189,8 @@ impl ModioApiService {
         oauth_token: &str,
         mod_id: u64,
     ) -> Result<ModioModDownload> {
-        let url = format!("{}/games/{}/mods/{}", self.base_url, self.game_id, mod_id);
+        let game_id = self.game_id.ok_or_else(|| AppError::Validation("mod.io game_id not set".to_string()))?;
+        let url = format!("{}/games/{}/mods/{}", self.base_url, game_id, mod_id);
         let response = self
             .execute_with_retry(|| self.client.get(&url).bearer_auth(oauth_token))
             .await?;

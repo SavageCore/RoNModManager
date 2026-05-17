@@ -32,7 +32,7 @@ pub async fn validate_token(state: State<'_, AppState>) -> Result<bool> {
         None => return Ok(false),
     };
 
-    let service = ModioApiService::new(state.client.clone());
+    let service = ModioApiService::new(state.client.clone(), config.modio_game_id);
     match service.fetch_subscribed_mods(&token).await {
         Ok(_) => Ok(true),
         Err(_) => Ok(false),

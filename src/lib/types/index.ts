@@ -5,6 +5,7 @@ export interface AppConfig {
   modpack_url: string | null;
   modpack_version: string | null;
   oauth_token: string | null;
+  modio_api_key: string | null;
   nexus_api_key: string | null;
   active_profile: string | null;
   theme: ThemeMode;

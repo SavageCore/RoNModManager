@@ -1,3 +1,12 @@
+// Subscribe to a mod.io mod by mod ID and OAuth token
+export const modioSubscribe = (args: { mod_id: string; oauth_token: string }) =>
+  invoke<string>("modio_subscribe", { args });
+// Download a mod archive from a URL to the local archives folder
+export const downloadModArchive = (url: string, filename: string) =>
+  invoke<void>("download_mod_archive", { url, filename });
+// Fetch modpack JSON via Tauri backend to avoid CORS
+export const fetchModpackJson = (url: string) =>
+  invoke<any>("fetch_modpack_json", { url });
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppConfig,
@@ -87,6 +96,7 @@ export const refreshModMetadata = () =>
 
 export const updateConfig = (updates: {
   nexus_api_key?: string | null;
+  modio_api_key?: string | null;
   active_profile?: string | null;
 }) => invoke<void>("update_config", { updates });
 

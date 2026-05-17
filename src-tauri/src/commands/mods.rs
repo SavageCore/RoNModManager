@@ -435,45 +435,42 @@ pub async fn uninstall_mods(_app: AppHandle, state: State<'_, AppState>) -> Resu
         .ok_or_else(|| AppError::Validation("Game path is not configured".to_string()))?;
     let mods_path = steam::get_mods_path(&game_path);
     let staging_root = get_staging_root()?;
-
-    let Some(active_profile_name) = config.active_profile else {
-        return Ok(());
-    };
-
-    let Some(mut active_profile) = profiles::get_profile(&active_profile_name)? else {
-        return Ok(());
-    };
-
-    let mods_to_remove = active_profile.installed_mod_names.clone();
-    if mods_to_remove.is_empty() {
-        return Ok(());
-    }
-
-    active_profile.installed_mod_names.clear();
-    profiles::save_profile(&active_profile)?;
-
     let manager = manifest::ManifestManager::new(&staging_root);
-    for mod_name in mods_to_remove {
-        if is_mod_used_by_any_profile(&mod_name)? {
-            continue;
-        }
 
-        if let Ok(Some(manifest_data)) = manager.load_manifest(&mod_name) {
-            for file_path in &manifest_data.installed_files {
-                if file_path.exists() && fs::remove_file(file_path).is_ok() {
-                    cleanup_empty_install_dirs(file_path, &staging_root, &mods_path);
-                }
-            }
-            cleanup_mod_staging_directories(&mod_name, &staging_root);
-            let _ = manager.delete_manifest(&mod_name);
-            continue;
-        }
+    // List ALL manifests to find every installed mod
+    let all_manifests = manager.list_all_manifests().unwrap_or_default();
 
-        let loose_mod_path = mods_path.join(&mod_name);
-        if loose_mod_path.exists() && fs::remove_file(&loose_mod_path).is_ok() {
-            cleanup_empty_install_dirs(&loose_mod_path, &staging_root, &mods_path);
+    // 1. Clear all installed_mod_names from all profiles
+    let all_profiles = profiles::list_profiles()?;
+    for mut profile in all_profiles {
+        if !profile.installed_mod_names.is_empty() {
+            profile.installed_mod_names.clear();
+            profiles::save_profile(&profile)?;
         }
     }
+
+    // 2. Delete files and manifests
+    for manifest_data in all_manifests.into_values() {
+        let mod_name = manifest_data.source_archive.clone();
+
+        for file_path in &manifest_data.installed_files {
+            if file_path.exists() && fs::remove_file(file_path).is_ok() {
+                cleanup_empty_install_dirs(file_path, &staging_root, &mods_path);
+            }
+        }
+        cleanup_mod_staging_directories(&mod_name, &staging_root);
+        let _ = manager.delete_manifest(&mod_name);
+    }
+
+    // 3. Clear archives
+    let archives_root = get_archives_root()?;
+    if archives_root.exists() {
+        let _ = fs::remove_dir_all(&archives_root);
+        let _ = fs::create_dir_all(&archives_root);
+    }
+
+    // 4. Sync links (should result in empty mods folder)
+    game::sync_mod_links_for_game_path(&game_path, Vec::new()).map_err(AppError::Validation)?;
 
     Ok(())
 }
@@ -492,7 +489,7 @@ pub async fn add_modio_mod(
     })?;
 
     let (explicit_id, slug) = parse_modio_input_to_slug_or_id(&input)?;
-    let modio_service = ModioApiService::new(state.client.clone());
+    let modio_service = ModioApiService::new(state.client.clone(), config.modio_game_id);
 
     let mod_id = match explicit_id {
         Some(id) => id,
@@ -665,7 +662,7 @@ pub async fn refresh_mod_metadata(state: State<'_, AppState>) -> Result<RefreshM
     let manifests = manager.list_all_manifests()?;
 
     let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
-    let modio_service = ModioApiService::new(state.client.clone());
+    let modio_service = ModioApiService::new(state.client.clone(), config.modio_game_id);
 
     let mut result = RefreshModMetadataResult {
         checked: 0,
@@ -756,6 +753,14 @@ pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String)
     }
     cleanup_mod_staging_directories(&archive_name, &staging_root);
     manager.delete_manifest(&archive_name)?;
+
+    // Delete the archive if it exists
+    let archives_root = get_archives_root()?;
+    let archive_path = archives_root.join(&archive_name);
+    if archive_path.exists() {
+        let _ = fs::remove_file(archive_path);
+    }
+
     Ok(())
 }
 
@@ -789,7 +794,7 @@ pub async fn update_mod_source_url(
     let staging_root = get_staging_root()?;
     let manager = manifest::ManifestManager::new(&staging_root);
     let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
-    let modio_service = ModioApiService::new(state.client.clone());
+    let modio_service = ModioApiService::new(state.client.clone(), config.modio_game_id);
 
     let mut manifest_data = manager.load_manifest(&archive_name)?.ok_or_else(|| {
         AppError::Validation(format!("Archive manifest not found: {}", archive_name))

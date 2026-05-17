@@ -9,6 +9,8 @@ use crate::state::AppState;
 #[derive(Debug, Deserialize)]
 pub struct ConfigUpdate {
     pub nexus_api_key: Option<String>,
+    pub modio_api_key: Option<String>,
+    pub modio_game_id: Option<u32>,
     pub active_profile: Option<String>,
 }
 
@@ -19,16 +21,56 @@ pub async fn get_config(state: State<'_, AppState>) -> Result<AppConfig> {
 
 #[tauri::command]
 pub async fn update_config(state: State<'_, AppState>, updates: ConfigUpdate) -> Result<()> {
-    state
-        .update_config(|config: &mut AppConfig| {
-            if let Some(key) = updates.nexus_api_key {
-                config.nexus_api_key = Some(key);
+    let mut should_lookup_game_id = false;
+    let mut new_api_key: Option<String> = None;
+    state.update_config(|config: &mut AppConfig| {
+        if let Some(key) = updates.nexus_api_key {
+            config.nexus_api_key = if key.is_empty() { None } else { Some(key) };
+        }
+        match updates.modio_api_key {
+            Some(ref key) if key.is_empty() => {
+                config.modio_api_key = None;
+                config.modio_game_id = None;
+            },
+            Some(ref key) => {
+                let changed = config.modio_api_key.as_deref() != Some(key);
+                config.modio_api_key = Some(key.clone());
+                if changed {
+                    should_lookup_game_id = true;
+                    new_api_key = Some(key.clone());
+                }
+            },
+            None => {},
+        }
+        match updates.modio_game_id {
+            Some(id) => config.modio_game_id = Some(id),
+            None => {},
+        }
+        if let Some(profile) = updates.active_profile {
+            config.active_profile = Some(profile);
+        }
+    })?;
+
+    // If a new modio_api_key was set, look up and save the game ID for 'readyornot'
+    if should_lookup_game_id {
+        if let Some(api_key) = new_api_key {
+            let client = &state.client;
+            // Use the current config's modio_game_id if available
+            let config = state.get_config()?;
+            let service = crate::services::modio_api::ModioApiService::new(client.clone(), config.modio_game_id);
+            match service.lookup_game_id(&api_key, "readyornot").await {
+                Ok(game_id) => {
+                    state.update_config(|config| {
+                        config.modio_game_id = Some(game_id);
+                    })?;
+                },
+                Err(e) => {
+                    eprintln!("[update_config] Failed to look up mod.io game_id: {}", e);
+                }
             }
-            if let Some(profile) = updates.active_profile {
-                config.active_profile = Some(profile);
-            }
-        })
-        .map(|_| ())
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]

@@ -20,6 +20,8 @@
     updateModSourceUrl,
   } from "$lib/api/commands";
   import AddModModal from "$lib/components/AddModModal.svelte";
+  import AddModpackModal from "$lib/components/AddModpackModal.svelte";
+  let showAddModpackModal = false;
   import CollectionPickerModal from "$lib/components/CollectionPickerModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
@@ -738,12 +740,20 @@
   on:dragleave={handleWindowDragLeave}
 />
 
+
 <AddModModal
   isVisible={showAddModModal}
   on:close={() => {
     showAddModModal = false;
   }}
   on:modAdded={handleModAdded}
+/>
+
+<AddModpackModal
+  isVisible={showAddModpackModal}
+  on:close={() => {
+    showAddModpackModal = false;
+  }}
 />
 
 <ConfirmModal
@@ -815,6 +825,16 @@
       >
         <Plus size={16} class="inline mr-1" />
         Add Mod
+      </button>
+      <button
+        on:click={() => {
+          showAddModpackModal = true;
+        }}
+        class="btn btn-sm btn-primary"
+        title="Add Modpack"
+      >
+        <Globe size={16} class="inline mr-1" />
+        Add Modpack
       </button>
       <button
         class="btn btn-sm btn-danger"

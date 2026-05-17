@@ -23,6 +23,10 @@ pub struct AppConfig {
     #[serde(default)]
     pub oauth_token: Option<String>,
     #[serde(default)]
+    pub modio_api_key: Option<String>,
+    #[serde(default)]
+    pub modio_game_id: Option<u32>,
+    #[serde(default)]
     pub nexus_api_key: Option<String>,
     #[serde(default)]
     pub active_profile: Option<String>,
@@ -47,6 +51,8 @@ impl Default for AppConfig {
             modpack_url: None,
             modpack_version: None,
             oauth_token: None,
+            modio_api_key: None,
+            modio_game_id: None,
             nexus_api_key: None,
             active_profile: None,
             theme: ThemeMode::System,

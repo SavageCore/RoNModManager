@@ -42,7 +42,7 @@ impl AppState {
         let config_path = default_config_path()?;
         println!("[AppState] Loading config from {:?}", config_path);
 
-        let config = load_config_from_path(&config_path).map_err(|e| {
+        let mut config = load_config_from_path(&config_path).map_err(|e| {
             eprintln!("[AppState] Error loading config: {}", e);
             e
         })?;
@@ -51,6 +51,29 @@ impl AppState {
             .user_agent("RoNModManager/0.1.0")
             .build()
             .map_err(|e| AppError::Validation(format!("failed to create http client: {}", e)))?;
+
+        // If modio_game_id is missing but modio_api_key is present, look up and cache it
+        if config.modio_game_id.is_none() {
+            if let Some(api_key) = config.modio_api_key.clone() {
+                let rt = tokio::runtime::Runtime::new().map_err(|e| AppError::Validation(format!("tokio runtime error: {}", e)))?;
+                match rt.block_on(async {
+                    let service = crate::services::modio_api::ModioApiService::new(client.clone(), config.modio_game_id);
+                    service.lookup_game_id(&api_key, "readyornot").await
+                }) {
+                    Ok(game_id) => {
+                        println!("[AppState] Looked up mod.io game_id: {}", game_id);
+                        config.modio_game_id = Some(game_id);
+                        // Save to config file
+                        if let Err(e) = save_config_to_path(&config_path, &config) {
+                            eprintln!("[AppState] Failed to save config with game_id: {}", e);
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("[AppState] Failed to look up mod.io game_id: {}", e);
+                    }
+                }
+            }
+        }
 
         Ok(Self {
             config: RwLock::new(config),

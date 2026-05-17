@@ -61,7 +61,6 @@
   };
 
   let gamePath = "";
-  let modpackUrl = "";
   let authConnected = false;
   let hasSavedToken = false;
   let modioTokenValid: boolean | null = null;
@@ -77,6 +76,13 @@
   let validatingNexusKey = false;
   let showNexusKeyText = false;
   let nexusKeyModalError = "";
+  let modioApiKey = "";
+  let hasModioApiKey = false;
+  let showModioApiKeyModal = false;
+  let modioApiKeyInput = "";
+  let validatingModioApiKey = false;
+  let showModioApiKeyText = false;
+  let modioApiKeyModalError = "";
   let theme: "light" | "dark" | "system" = "system";
   let introSkipApplied = false;
   let applyingIntroSkip = false;
@@ -136,6 +142,8 @@
     const config = await getConfig();
     nexusApiKey = config.nexus_api_key ?? "";
     hasNexusKey = Boolean(config.nexus_api_key?.trim());
+    modioApiKey = typeof config.modio_api_key === "string" ? config.modio_api_key.trim() : "";
+    hasModioApiKey = !!modioApiKey;
     hasSavedToken = Boolean(config.oauth_token?.trim());
     authConnected = await getAuthStatus().catch(() => false);
 
@@ -176,9 +184,85 @@
 
     introSkipApplied = await isIntroSkipApplied().catch(() => false);
     gamePath = config.game_path ?? "";
-    modpackUrl = config.modpack_url ?? "";
     theme = config.theme;
     applyThemeClass(theme);
+  }
+  function openModioApiKeyModal() {
+    modioApiKeyInput = modioApiKey;
+    showModioApiKeyModal = true;
+    showModioApiKeyText = false;
+    modioApiKeyModalError = "";
+  }
+
+  function closeModioApiKeyModal() {
+    modioApiKeyInput = "";
+    showModioApiKeyModal = false;
+    showModioApiKeyText = false;
+    modioApiKeyModalError = "";
+  }
+
+  async function openModioApiKeyPage() {
+    try {
+      await openUrl("https://mod.io/me/access");
+    } catch (error) {
+      toastStore.error(`Failed to open mod.io API key page: ${String(error)}`);
+    }
+  }
+
+  async function saveModioApiKey() {
+    const trimmed = modioApiKeyInput.trim();
+    modioApiKeyModalError = "";
+    console.debug("[mod.io API] saveModioApiKey: input=", modioApiKeyInput, "trimmed=", trimmed);
+
+    // If removing the key, just save and return
+    if (!trimmed) {
+      try {
+        console.debug("[mod.io API] Removing key (set to empty string)");
+        await updateConfig({ modio_api_key: "" });
+        await refresh();
+        closeModioApiKeyModal();
+        toastStore.success("mod.io API Access key removed.");
+      } catch (error) {
+        modioApiKeyModalError = `Failed to remove key: ${String(error)}`;
+        toastStore.error(`Failed to remove mod.io API Access key: ${String(error)}`);
+      }
+      return;
+    }
+
+    validatingModioApiKey = true;
+    try {
+      // Validate API key by calling mod.io games endpoint
+      const url = `https://api.mod.io/v1/games?api_key=${encodeURIComponent(trimmed)}&name_id=readyornot`;
+      console.debug("[mod.io API] Validating key with fetch:", url);
+      const res = await fetch(url);
+      console.debug("[mod.io API] Fetch response status:", res.status);
+      if (!res.ok) {
+        modioApiKeyModalError = `API key validation failed: HTTP ${res.status}`;
+        toastStore.error(`mod.io API key validation failed: HTTP ${res.status}`);
+        validatingModioApiKey = false;
+        return;
+      }
+      const data = await res.json();
+      console.debug("[mod.io API] Fetch response data:", data);
+      if (!data || !Array.isArray(data.data) || data.data.length === 0) {
+        modioApiKeyModalError = "API key validation failed: No game found.";
+        toastStore.error("mod.io API key validation failed: No game found.");
+        validatingModioApiKey = false;
+        return;
+      }
+      // Save the key if valid
+      console.debug("[mod.io API] Saving key to config:", trimmed);
+      await updateConfig({ modio_api_key: trimmed });
+      await refresh();
+      closeModioApiKeyModal();
+      toastStore.success("mod.io API Access key validated and saved successfully!");
+    } catch (error) {
+      modioApiKeyModalError = `Failed to validate/save key: ${String(error)}`;
+      toastStore.error(`Failed to validate/save mod.io API Access key: ${String(error)}`);
+      console.error("[mod.io API] Exception in saveModioApiKey:", error);
+    } finally {
+      validatingModioApiKey = false;
+    }
   }
 
   async function autodetect() {
@@ -217,11 +301,6 @@
       errors.push(`Game path: ${String(error)}`);
     }
 
-    try {
-      await setModpackUrl(modpackUrl.trim());
-    } catch (error) {
-      errors.push(`Modpack URL: ${String(error)}`);
-    }
 
     if (errors.length === 0) {
       toastStore.success("Settings saved.");
@@ -533,12 +612,6 @@
       <button class="btn btn-sm mt-2" on:click={autodetect}>Auto Detect</button>
     </label>
 
-    <label class="block text-sm">
-      <span style="color: var(--clr-text-secondary);" class="mb-1 block"
-        >Modpack URL</span
-      >
-      <input class="input w-full" bind:value={modpackUrl} />
-    </label>
   </div>
 
   <div class="card mt-4">
@@ -617,8 +690,11 @@
     <div class="flex items-center justify-between gap-3">
       <div>
         <h3 style="color: var(--clr-text);" class="font-semibold">
-          mod.io API Token
+          mod.io OAuth Access
         </h3>
+        <p style="color: var(--clr-text-secondary);" class="text-sm mb-2">
+          <strong>Required for subscribing and downloading mods as a user.</strong> This is your <b>OAuth Access</b> token from the <a href="https://mod.io/me/access" target="_blank" style="color: var(--clr-primary-300);text-decoration:underline;">mod.io Access page</a>. Must have <b>Read</b> and <b>Write</b> permissions.
+        </p>
         <p style="color: var(--clr-text-secondary);" class="text-sm">
           Status:
           <span
@@ -643,16 +719,120 @@
       </div>
       <div class="flex gap-2">
         <button class="btn btn-sm primary" on:click={openTokenSetupModal}
-          >Set Token</button
+          >Set OAuth Access</button
         >
         <button
           class="btn btn-sm danger"
           disabled={!hasSavedToken}
-          on:click={disconnect}>Remove Token</button
+          on:click={disconnect}>Remove OAuth</button
         >
       </div>
     </div>
   </div>
+
+  <div class="card mt-4">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <h3 style="color: var(--clr-text);" class="font-semibold">
+          mod.io API Access
+        </h3>
+        <p style="color: var(--clr-text-secondary);" class="text-sm mb-2">
+          <strong>Required for looking up mod IDs from slugs.</strong> This is your <b>API Access</b> key from the <a href="https://mod.io/me/access" target="_blank" style="color: var(--clr-primary-300);text-decoration:underline;">mod.io Access page</a>. Use the <b>API Access</b> key (not OAuth) for public API requests.
+        </p>
+        <p style="color: var(--clr-text-secondary);" class="text-sm">
+          Status:
+          <span
+            style="color: {hasModioApiKey ? 'var(--clr-success-300)' : 'var(--clr-danger-300)'};"
+            class="font-medium"
+          >
+            {hasModioApiKey ? "✓ Configured" : "✗ Not configured"}
+          </span>
+        </p>
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-sm primary" on:click={openModioApiKeyModal}>
+          {hasModioApiKey ? "Update API Key" : "Set API Key"}
+        </button>
+        {#if hasModioApiKey}
+          <button
+            class="btn btn-sm danger"
+            on:click={async () => {
+              modioApiKeyInput = "";
+              await saveModioApiKey();
+            }}
+          >
+            Remove API Key
+          </button>
+        {/if}
+      </div>
+    </div>
+  </div>
+{#if showModioApiKeyModal}
+  <div
+    class="fixed inset-0 z-[1200] flex items-center justify-center p-4"
+    style="background: rgba(0, 0, 0, 0.65);"
+  >
+    <div class="card w-full max-w-xl">
+      <h2 style="color: var(--clr-text);" class="text-lg font-semibold">
+        Set mod.io API Access Key
+      </h2>
+      <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
+        Get your <strong>API Access</strong> key from the <a href="https://mod.io/me/access" target="_blank" style="color: var(--clr-primary-300);text-decoration:underline;">mod.io Access page</a> (not OAuth). This is used for public API requests, such as looking up mod IDs from slugs.
+      </p>
+
+      <div class="mt-4 flex flex-wrap gap-2">
+        <button class="btn btn-sm" on:click={openModioApiKeyPage}
+          >Open API Access Page</button
+        >
+      </div>
+
+      <label class="mt-4 block text-sm">
+        <span style="color: var(--clr-text-secondary);" class="mb-1 block"
+          >Paste API Access key</span
+        >
+        <div class="flex gap-2">
+          <input
+            class="input w-full"
+            bind:value={modioApiKeyInput}
+            on:input={() => (modioApiKeyModalError = "")}
+            placeholder="Paste your mod.io API Access key"
+            type={showModioApiKeyText ? "text" : "password"}
+            aria-invalid={Boolean(modioApiKeyModalError)}
+          />
+          <button
+            type="button"
+            class="btn btn-sm"
+            on:click={() => (showModioApiKeyText = !showModioApiKeyText)}
+            title={showModioApiKeyText ? "Hide key" : "Show key"}
+          >
+            {showModioApiKeyText ? "👁️" : "👁️‍🗨️"}
+          </button>
+        </div>
+      </label>
+
+      {#if modioApiKeyModalError}
+        <p class="mt-3 text-sm" style="color: var(--clr-danger-300);">
+          {modioApiKeyModalError}
+        </p>
+      {/if}
+
+      <div class="mt-5 flex justify-end gap-2">
+        <button
+          class="btn btn-sm"
+          on:click={closeModioApiKeyModal}
+          disabled={validatingModioApiKey}>Cancel</button
+        >
+        <button
+          class="btn btn-sm primary"
+          on:click={saveModioApiKey}
+          disabled={validatingModioApiKey}
+        >
+          {validatingModioApiKey ? "Saving..." : "Save"}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
   <div class="card mt-4">
     <div class="flex items-center justify-between">
