@@ -66,6 +66,8 @@
     readManifestForArchive,
     fetchModioRemoteInfo,
     getModioSubscriptionStatus,
+    fileExists,
+    getArchiveRootPath
   } from "$lib/api/commands";
   import { tick } from "svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
@@ -77,6 +79,7 @@
     isValid = false;
     let hadError = false;
     let data;
+    const archiveRootPath = await getArchiveRootPath();
     try {
       // Basic URL validation
       let parsed;
@@ -142,34 +145,53 @@
             log = log;
             await tick();
           }
+          const archivePath = `${archiveRootPath}/${modFile}`;
           if (
             manifest &&
             manifest.content_hash &&
             modInfo.content_hash &&
             manifest.content_hash === modInfo.content_hash
           ) {
-            log.push("Found hash of archive in local manifest");
-            log.push("Hash matches modpack");
-            log.push("Skipping download");
-            log.push(`Installing...`);
+            // Check file existence using backend Tauri command
+            let fileExistsResult = false;
+            try {
+              fileExistsResult = await fileExists(archivePath);
+            } catch {
+              log.push(`Error checking file existence for ${archivePath}. Will attempt download. (Error details hidden)`);
+              log = log;
+              await tick();
+            }
+            if (fileExistsResult) {
+              log.push("Found hash of archive in local manifest");
+              log.push("Hash matches modpack");
+              log.push("Skipping download");
+              log.push("Installing...");
+              log = log;
+              await tick();
+              try {
+                await installLocalMod(archivePath);
+                log.push("Installed");
+                log = log;
+                await tick();
+              } catch (installErr) {
+                log.push(
+                  `Error installing archive: ${installErr.message || String(installErr)}`,
+                );
+                log = log;
+                await tick();
+                error = installErr.message || String(installErr);
+                hadError = true;
+              }
+              manifestHashMatched = true;
+            } else {
+              log.push(`Hash matches modpack but archive not found at expected path: ${archivePath}`);
+              log = log;
+              await tick();
+            }
+          } else {
+            log.push(`File does not exist or hash mismatch (manifest hash: ${manifest && manifest.content_hash ? manifest.content_hash : "N/A"}, modpack hash: ${modInfo.content_hash ? modInfo.content_hash : "N/A"})`);
             log = log;
             await tick();
-            const archivePath = `/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${modFile}`;
-            try {
-              await installLocalMod(archivePath);
-              log.push("Installed");
-              log = log;
-              await tick();
-            } catch (installErr) {
-              log.push(
-                `Error installing archive: ${installErr.message || String(installErr)}`,
-              );
-              log = log;
-              await tick();
-              error = installErr.message || String(installErr);
-              hadError = true;
-            }
-            manifestHashMatched = true;
           }
         } catch {}
         if (!manifestHashMatched) {
@@ -185,7 +207,7 @@
             log.push(`Downloaded '${modFile}'.`);
             log = log;
             await tick();
-            const archivePath = `/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${modFile}`;
+            const archivePath = `${archiveRootPath}/${modFile}`;
             // log.push(`Checking file exists: ${archivePath}`); // REMOVE per requirements
             // log = log;
             // await tick();
@@ -322,7 +344,15 @@
               log.push("Remote mod.io file hash matches manifest and modpack. Skipping download.");
               log = log;
               await tick();
-              continue;
+
+              const fileExistsResult = await fileExists(`/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${remoteInfo.archive_name}`);
+              if (fileExistsResult) {
+                continue;
+              } else {
+                log.push(`Hash matches modpack but archive not found at expected path: /home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${remoteInfo.archive_name}`);
+                log = log;
+                await tick();
+              }
             }
             const result = await addModIoMod(subUrl);
             log.push(`Downloading '${result.name}' from mod.io...`);

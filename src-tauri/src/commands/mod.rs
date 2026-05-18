@@ -11,3 +11,5 @@ pub mod updater;
 pub mod fetch_archive;
 pub mod window;
 pub mod modio;
+pub mod fs;
+pub use fs::get_archive_root_path;

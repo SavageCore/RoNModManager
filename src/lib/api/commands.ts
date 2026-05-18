@@ -13,7 +13,11 @@ export const downloadModArchive = (url: string, filename: string) =>
 // Fetch modpack JSON via Tauri backend to avoid CORS
 export const fetchModpackJson = (url: string) =>
   invoke<any>("fetch_modpack_json", { url });
+// Check if a file exists
+export const fileExists = (path: string) => invoke<boolean>("file_exists", { path });
 import { invoke } from "@tauri-apps/api/core";
+// Get the archive root path from backend
+export const getArchiveRootPath = () => invoke<string>("get_archive_root_path");
 import type {
   AppConfig,
   Collection,
