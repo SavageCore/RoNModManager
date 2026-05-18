@@ -104,6 +104,7 @@ pub fn run() {
             commands::fetch::fetch_modpack_json,
             commands::fetch_archive::download_mod_archive,
             commands::modio::modio_subscribe,
+            commands::modio::get_modio_subscription_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -65,6 +65,7 @@
     updateModSourceUrl,
     readManifestForArchive,
     fetchModioRemoteInfo,
+    getModioSubscriptionStatus,
   } from "$lib/api/commands";
   import { tick } from "svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
@@ -278,15 +279,28 @@
                 "No OAuth token available for mod.io subscription.",
               );
             }
-            await modioSubscribe({
+            const subscriptionStatus = await getModioSubscriptionStatus({
               mod_id: String(modId),
               oauth_token: oauthToken,
             });
-            log.push(
-              `Subscribed to mod.io mod '${modSlug}' (ID ${modId}).`,
-            );
-            log = log;
-            await tick();
+
+            if (subscriptionStatus === "subscribed") {
+              log.push(
+                `Already subscribed to mod '${modSlug}' (ID ${modId}). Skipping subscription.`,
+              );
+              log = log;
+              await tick();
+            } else {
+              await modioSubscribe({
+                mod_id: String(modId),
+                oauth_token: oauthToken,
+              });
+              log.push(
+                `Subscribed to mod.io mod '${modSlug}' (ID ${modId}).`,
+              );
+              log = log;
+              await tick();
+            }
 
             // Fetch remote md5 and archive name from backend
             const remoteInfo = await fetchModioRemoteInfo(subUrl);

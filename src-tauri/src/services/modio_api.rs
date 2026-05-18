@@ -1,3 +1,5 @@
+
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct ModioGameSummary {
     pub id: u32,
@@ -102,12 +104,7 @@ impl ModioApiService {
     ) -> Result<u32> {
 
         let url = format!("{}/games?name_id={}&api_key={}", self.base_url, slug, api_key);
-        // Debug: print the API key (masked) and URL
-        let masked_key = if api_key.len() > 4 {
-            format!("{}****", &api_key[..api_key.len()-4])
-        } else {
-            "****".to_string()
-        };
+
 
         let response = self
             .client
@@ -127,6 +124,7 @@ impl ModioApiService {
                 return Err(AppError::Validation(format!("Error decoding response body: {}", e)));
             }
         };
+
         payload
             .data
             .first()
@@ -157,6 +155,7 @@ impl ModioApiService {
         self.execute_with_retry(|| self.client.post(&url).bearer_auth(oauth_token))
             .await?;
 
+        log::info!("Successfully subscribed to mod ID: {}", mod_id);
         Ok(())
     }
 
@@ -171,6 +170,11 @@ impl ModioApiService {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn is_subscribed(&self, oauth_token: &str, mod_id: u64) -> Result<bool> {
+        let subs = self.fetch_subscribed_mods(oauth_token).await?;
+        Ok(subs.iter().any(|m| m.id == mod_id))
     }
 
     pub async fn resolve_slug_to_mod_id(&self, oauth_token: &str, slug: &str) -> Result<u64> {

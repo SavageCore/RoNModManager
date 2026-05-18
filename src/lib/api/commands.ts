@@ -1,6 +1,9 @@
 // Read manifest for a given archive name (calls Tauri backend)
 export const readManifestForArchive = (archiveName: string) =>
   invoke<any>("read_manifest_for_archive", { archiveName: archiveName });
+// Get subscription status for a mod.io mod
+export const getModioSubscriptionStatus = (args: { mod_id: string; oauth_token: string }) =>
+  invoke<string>("get_modio_subscription_status", { args });
 // Subscribe to a mod.io mod by mod ID and OAuth token
 export const modioSubscribe = (args: { mod_id: string; oauth_token: string }) =>
   invoke<string>("modio_subscribe", { args });
