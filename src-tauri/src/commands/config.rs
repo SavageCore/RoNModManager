@@ -12,6 +12,8 @@ pub struct ConfigUpdate {
     pub modio_api_key: Option<String>,
     pub modio_game_id: Option<u32>,
     pub active_profile: Option<String>,
+    pub modpack_url: Option<String>,
+    pub modpack_version: Option<String>,
 }
 
 #[tauri::command]
@@ -47,6 +49,12 @@ pub async fn update_config(state: State<'_, AppState>, updates: ConfigUpdate) ->
         }
         if let Some(profile) = updates.active_profile {
             config.active_profile = Some(profile);
+        }
+        if let Some(url) = updates.modpack_url {
+            config.modpack_url = Some(url);
+        }
+        if let Some(version) = updates.modpack_version {
+            config.modpack_version = Some(version);
         }
     })?;
 

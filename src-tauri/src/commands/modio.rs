@@ -41,17 +41,13 @@ pub async fn get_modio_subscription_status(
     let client = state.client.clone();
     let api = ModioApiService::new(client, Some(game_id));
     let mod_id_num = args.mod_id.parse::<u64>().map_err(|e| e.to_string())?;
-    // DEBUG: log the mod ID being checked for subscription
-    log::info!("Checking subscription status for mod ID: {}", mod_id_num);
     let is_subbed = api
         .is_subscribed(&args.oauth_token, mod_id_num)
         .await
         .map_err(|e| e.to_string())?;
     if is_subbed {
-        log::info!("User is subscribed to mod ID: {}", mod_id_num);
         Ok("subscribed".to_string())
     } else {
-        log::info!("User is NOT subscribed to mod ID: {}", mod_id_num);
         Ok("not_subscribed".to_string())
     }
 }

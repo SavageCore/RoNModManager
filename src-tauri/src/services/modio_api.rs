@@ -152,7 +152,6 @@ impl ModioApiService {
         self.execute_with_retry(|| self.client.post(&url).bearer_auth(oauth_token))
             .await?;
 
-        log::info!("Successfully subscribed to mod ID: {}", mod_id);
         Ok(())
     }
 

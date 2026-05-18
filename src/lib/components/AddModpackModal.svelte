@@ -68,6 +68,7 @@
     getModioSubscriptionStatus,
     fileExists,
     getArchiveRootPath,
+    updateConfig,
   } from "$lib/api/commands";
   import { tick } from "svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
@@ -94,6 +95,17 @@
         isLoading = false;
         return;
       }
+
+      // Update config with modpack_url and modpack_version
+      try {
+        await updateConfig({ modpack_url: url, modpack_version: data.version });
+        log.push("Saved modpack URL and version to config.");
+        await tick();
+      } catch (e) {
+        log.push("Warning: Could not update config with modpack URL/version.");
+        await tick();
+      }
+
       const modEntries = Object.entries(data.mods);
       log.push("Checking mods folder...");
       await tick();

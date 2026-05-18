@@ -14,7 +14,7 @@ pub async fn fetch_modpack_json(
     let bytes = response.bytes().await.map_err(AppError::from)?;
     match std::str::from_utf8(&bytes) {
         Ok(_) => {}
-        Err(_) => log::info!("Response body: <non-UTF8 bytes, length={}>", bytes.len()),
+        Err(_) => log::error!("Response body: <non-UTF8 bytes, length={}>", bytes.len()),
     }
     let json = serde_json::from_slice::<serde_json::Value>(&bytes).map_err(AppError::from)?;
     Ok(json)

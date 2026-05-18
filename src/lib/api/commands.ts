@@ -117,6 +117,8 @@ export const updateConfig = (updates: {
   nexus_api_key?: string | null;
   modio_api_key?: string | null;
   active_profile?: string | null;
+  modpack_url?: string | null;
+  modpack_version?: string | null;
 }) => invoke<void>("update_config", { updates });
 
 export const verifyNexusApiKey = (apiKey: string) =>
