@@ -122,209 +122,118 @@
         await tick();
       }
 
-      // Collect all mod.io URLs from mods and subscriptions, avoid duplicates
-      const processedModIoUrls = new Set();
       // 1. Process all mods in the mods object
       for (const [modFile, modInfo] of modEntries) {
         const src = modInfo.source_url || "";
-        if (src.includes("mod.io")) {
-          processedModIoUrls.add(src);
-          log.push(`Subscribing to mod '${src}' on mod.io (from mods)...`);
-          log = log;
-          await tick();
-          operationStatusStore.setTemporaryMessage(
-            `Subscribing to mod '${src}'...`,
-          );
+        log.push(`Processing self-hosted mod: ${modFile} ...`);
+        log = log;
+        // Download from self-hosted server or Nexus
+        // Manifest hash check logic
+        let manifestHashMatched = false;
+        try {
+          let manifest = null;
           try {
-            const match = src.match(/\/m\/([^/]+)/);
-            if (!match) {
-              throw new Error(
-                "Could not extract mod slug from mod.io URL: " + src,
-              );
-            }
-            const modSlug = match[1];
-            // Resolve mod slug to numeric mod ID
-            let modId = null;
-            if (!modioApiKey || !modioGameId) {
-              throw new Error("mod.io API key or game ID not set in config.");
-            }
-            try {
-              const resp = await fetch(
-                `https://api.mod.io/v1/games/${modioGameId}/mods?name_id=${modSlug}&api_key=${modioApiKey}`,
-              );
-              const data = await resp.json();
-              if (data && data.data && data.data[0] && data.data[0].id) {
-                modId = data.data[0].id;
-              } else {
-                throw new Error(
-                  "Could not resolve mod slug to numeric ID: " + modSlug,
-                );
-              }
-            } catch (e) {
-              throw new Error(
-                "Failed to resolve mod slug to numeric ID: " +
-                  modSlug +
-                  ", " +
-                  (e.message || e),
-              );
-            }
-            if (!oauthToken) {
-              throw new Error(
-                "No OAuth token available for mod.io subscription.",
-              );
-            }
-            await modioSubscribe({
-              mod_id: String(modId),
-              oauth_token: oauthToken,
-            });
+            manifest = await readManifestForArchive(modFile);
+          } catch (err) {
             log.push(
-              `Subscribed to mod.io mod '${modSlug}' (ID ${modId}).`,
+              `Could not read manifest for ${modFile} (backend error: ${err && err.message ? err.message : String(err)})`,
             );
             log = log;
             await tick();
-            const result = await addModIoMod(src);
-            log.push(`Downloading '${result.name}' from mod.io...`);
+          }
+          if (
+            manifest &&
+            manifest.content_hash &&
+            modInfo.content_hash &&
+            manifest.content_hash === modInfo.content_hash
+          ) {
+            log.push("Found hash of archive in local manifest");
+            log.push("Hash matches modpack");
+            log.push("Skipping download");
+            log.push(`Installing...`);
             log = log;
             await tick();
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            log.push(`Downloaded '${result.archiveName}'. Extracting...`);
-            log = log;
-            await tick();
-            await new Promise((resolve) => setTimeout(resolve, 500));
+            const archivePath = `/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${modFile}`;
             try {
-              await updateModSourceUrl(result.archiveName, src);
-              // log.push(`Set source_url for '${result.archiveName}' to '${src}'.`);
-              // log = log;
-              // await tick();
-            } catch (setUrlErr) {
+              await installLocalMod(archivePath);
+              log.push("Installed");
+              log = log;
+              await tick();
+            } catch (installErr) {
               log.push(
-                `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
+                `Error installing archive: ${installErr.message || String(installErr)}`,
               );
               log = log;
               await tick();
+              error = installErr.message || String(installErr);
+              hadError = true;
             }
-            log.push(`Finished installing '${result.name}'.`);
+            manifestHashMatched = true;
+          }
+        } catch {}
+        if (!manifestHashMatched) {
+          const downloadUrl = `${baseUrl}/mods/${encodeURIComponent(modFile)}`;
+          log.push(`Downloading...`);
+          log = log;
+          await tick();
+          operationStatusStore.setTemporaryMessage(
+            `Downloading ${modFile} ...`,
+          );
+          try {
+            await downloadModArchive(downloadUrl, modFile);
+            log.push(`Downloaded '${modFile}'.`);
             log = log;
             await tick();
+            const archivePath = `/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${modFile}`;
+            // log.push(`Checking file exists: ${archivePath}`); // REMOVE per requirements
+            // log = log;
+            // await tick();
+            try {
+              await installLocalMod(archivePath);
+              log.push(`Installed '${modFile}'.`);
+              log = log;
+              await tick();
+              try {
+                await updateModSourceUrl(modFile, src);
+                // log.push(`Set source_url for '${modFile}'.`);
+                // log = log;
+                // await tick();
+              } catch (setUrlErr) {
+                log.push(
+                  `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
+                );
+                log = log;
+                await tick();
+              }
+            } catch (installErr) {
+              log.push(
+                `Error installing archive: ${installErr.message || String(installErr)}`,
+              );
+              log = log;
+              await tick();
+              error = installErr.message || String(installErr);
+              hadError = true;
+            }
           } catch (modErr) {
             log.push(
-              `Error installing mod: ${modErr.message || String(modErr)}`,
+              `Error downloading mod: ${modErr.message || String(modErr)}`,
             );
             log = log;
             await tick();
             error = modErr.message || String(modErr);
             hadError = true;
           }
-        } else {
-          log.push(`Processing self-hosted mod: ${modFile} ...`);
-          log = log;
-          // Download from self-hosted server or Nexus
-          // Manifest hash check logic
-          let manifestHashMatched = false;
-          try {
-            let manifest = null;
-            try {
-              manifest = await readManifestForArchive(modFile);
-            } catch (err) {
-              log.push(
-                `Could not read manifest for ${modFile} (backend error: ${err && err.message ? err.message : String(err)})`,
-              );
-              log = log;
-              await tick();
-            }
-            if (
-              manifest &&
-              manifest.content_hash &&
-              modInfo.content_hash &&
-              manifest.content_hash === modInfo.content_hash
-            ) {
-              log.push("Found hash of archive in local manifest");
-              log.push("Hash matches modpack");
-              log.push("Skipping download");
-              log.push(`Installing...`);
-              log = log;
-              await tick();
-              const archivePath = `/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${modFile}`;
-              try {
-                await installLocalMod(archivePath);
-                log.push("Installed");
-                log = log;
-                await tick();
-              } catch (installErr) {
-                log.push(
-                  `Error installing archive: ${installErr.message || String(installErr)}`,
-                );
-                log = log;
-                await tick();
-                error = installErr.message || String(installErr);
-                hadError = true;
-              }
-              manifestHashMatched = true;
-            }
-          } catch {}
-          if (!manifestHashMatched) {
-            const downloadUrl = `${baseUrl}/mods/${encodeURIComponent(modFile)}`;
-            log.push(`Downloading...`);
-            log = log;
-            await tick();
-            operationStatusStore.setTemporaryMessage(
-              `Downloading ${modFile} ...`,
-            );
-            try {
-              await downloadModArchive(downloadUrl, modFile);
-              log.push(`Downloaded '${modFile}'.`);
-              log = log;
-              await tick();
-              const archivePath = `/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${modFile}`;
-              // log.push(`Checking file exists: ${archivePath}`); // REMOVE per requirements
-              // log = log;
-              // await tick();
-              try {
-                await installLocalMod(archivePath);
-                log.push(`Installed '${modFile}'.`);
-                log = log;
-                await tick();
-                try {
-                  await updateModSourceUrl(modFile, src);
-                  // log.push(`Set source_url for '${modFile}'.`);
-                  // log = log;
-                  // await tick();
-                } catch (setUrlErr) {
-                  log.push(
-                    `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
-                  );
-                  log = log;
-                  await tick();
-                }
-              } catch (installErr) {
-                log.push(
-                  `Error installing archive: ${installErr.message || String(installErr)}`,
-                );
-                log = log;
-                await tick();
-                error = installErr.message || String(installErr);
-                hadError = true;
-              }
-            } catch (modErr) {
-              log.push(
-                `Error downloading mod: ${modErr.message || String(modErr)}`,
-              );
-              log = log;
-              await tick();
-              error = modErr.message || String(modErr);
-              hadError = true;
-            }
-          }
         }
       }
-      // 2. Process all mod.io subscriptions not already handled
+      // 2. Process all mod.io subscriptions
       if (data.subscriptions && typeof data.subscriptions === "object") {
+        const processedModIoUrls = new Set();
         for (const [subUrl, enabled] of Object.entries(data.subscriptions)) {
           if (!enabled) continue;
           if (!subUrl.includes("mod.io")) continue;
           if (processedModIoUrls.has(subUrl)) continue;
           log.push(
-            `Subscribing to mod '${subUrl}' on mod.io (from subscriptions)...`,
+            `Subscribing to mod '${subUrl}' on mod.io...`,
           );
           log = log;
           await tick();
