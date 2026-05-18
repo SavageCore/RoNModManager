@@ -192,9 +192,9 @@
             await new Promise((resolve) => setTimeout(resolve, 500));
             try {
               await updateModSourceUrl(result.archiveName, src);
-              log.push(`Set source_url for '${result.archiveName}'.`);
-              log = log;
-              await tick();
+              // log.push(`Set source_url for '${result.archiveName}' to '${src}'.`);
+              // log = log;
+              // await tick();
             } catch (setUrlErr) {
               log.push(
                 `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
@@ -283,19 +283,18 @@
                 log.push(`Installed '${modFile}'.`);
                 log = log;
                 await tick();
-                // REMOVE Set source_url log per requirements
-                // try {
-                //   await updateModSourceUrl(modFile, src);
-                //   log.push(`Set source_url for '${modFile}'.`);
-                //   log = log;
-                //   await tick();
-                // } catch (setUrlErr) {
-                //   log.push(
-                //     `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
-                //   );
-                //   log = log;
-                //   await tick();
-                // }
+                try {
+                  await updateModSourceUrl(modFile, src);
+                  // log.push(`Set source_url for '${modFile}'.`);
+                  // log = log;
+                  // await tick();
+                } catch (setUrlErr) {
+                  log.push(
+                    `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
+                  );
+                  log = log;
+                  await tick();
+                }
               } catch (installErr) {
                 log.push(
                   `Error installing archive: ${installErr.message || String(installErr)}`,
@@ -389,9 +388,9 @@
             await new Promise((resolve) => setTimeout(resolve, 500));
             try {
               await updateModSourceUrl(result.archiveName, subUrl);
-              log.push(`Set source_url for '${result.archiveName}'.`);
-              log = log;
-              await tick();
+              // log.push(`Set source_url for '${result.archiveName}'.`);
+              // log = log;
+              // await tick();
             } catch (setUrlErr) {
               log.push(
                 `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
