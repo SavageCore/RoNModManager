@@ -2,8 +2,10 @@
 export const readManifestForArchive = (archiveName: string) =>
   invoke<any>("read_manifest_for_archive", { archiveName: archiveName });
 // Get subscription status for a mod.io mod
-export const getModioSubscriptionStatus = (args: { mod_id: string; oauth_token: string }) =>
-  invoke<string>("get_modio_subscription_status", { args });
+export const getModioSubscriptionStatus = (args: {
+  mod_id: string;
+  oauth_token: string;
+}) => invoke<string>("get_modio_subscription_status", { args });
 // Subscribe to a mod.io mod by mod ID and OAuth token
 export const modioSubscribe = (args: { mod_id: string; oauth_token: string }) =>
   invoke<string>("modio_subscribe", { args });
@@ -14,7 +16,8 @@ export const downloadModArchive = (url: string, filename: string) =>
 export const fetchModpackJson = (url: string) =>
   invoke<any>("fetch_modpack_json", { url });
 // Check if a file exists
-export const fileExists = (path: string) => invoke<boolean>("file_exists", { path });
+export const fileExists = (path: string) =>
+  invoke<boolean>("file_exists", { path });
 import { invoke } from "@tauri-apps/api/core";
 // Get the archive root path from backend
 export const getArchiveRootPath = () => invoke<string>("get_archive_root_path");

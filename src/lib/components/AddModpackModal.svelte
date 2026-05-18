@@ -67,7 +67,7 @@
     fetchModioRemoteInfo,
     getModioSubscriptionStatus,
     fileExists,
-    getArchiveRootPath
+    getArchiveRootPath,
   } from "$lib/api/commands";
   import { tick } from "svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
@@ -157,7 +157,9 @@
             try {
               fileExistsResult = await fileExists(archivePath);
             } catch {
-              log.push(`Error checking file existence for ${archivePath}. Will attempt download. (Error details hidden)`);
+              log.push(
+                `Error checking file existence for ${archivePath}. Will attempt download. (Error details hidden)`,
+              );
               log = log;
               await tick();
             }
@@ -184,12 +186,16 @@
               }
               manifestHashMatched = true;
             } else {
-              log.push(`Hash matches modpack but archive not found at expected path: ${archivePath}`);
+              log.push(
+                `Hash matches modpack but archive not found at expected path: ${archivePath}`,
+              );
               log = log;
               await tick();
             }
           } else {
-            log.push(`File does not exist or hash mismatch (manifest hash: ${manifest && manifest.content_hash ? manifest.content_hash : "N/A"}, modpack hash: ${modInfo.content_hash ? modInfo.content_hash : "N/A"})`);
+            log.push(
+              `File does not exist or hash mismatch (manifest hash: ${manifest && manifest.content_hash ? manifest.content_hash : "N/A"}, modpack hash: ${modInfo.content_hash ? modInfo.content_hash : "N/A"})`,
+            );
             log = log;
             await tick();
           }
@@ -255,9 +261,7 @@
           if (!enabled) continue;
           if (!subUrl.includes("mod.io")) continue;
           if (processedModIoUrls.has(subUrl)) continue;
-          log.push(
-            `Subscribing to mod '${subUrl}' on mod.io...`,
-          );
+          log.push(`Subscribing to mod '${subUrl}' on mod.io...`);
           log = log;
           await tick();
           operationStatusStore.setTemporaryMessage(
@@ -317,9 +321,7 @@
                 mod_id: String(modId),
                 oauth_token: oauthToken,
               });
-              log.push(
-                `Subscribed to mod.io mod '${modSlug}' (ID ${modId}).`,
-              );
+              log.push(`Subscribed to mod.io mod '${modSlug}' (ID ${modId}).`);
               log = log;
               await tick();
             }
@@ -338,18 +340,25 @@
             }
             if (
               remoteInfo.remote_md5 &&
-              manifest && manifest.content_hash &&
+              manifest &&
+              manifest.content_hash &&
               remoteInfo.remote_md5 === manifest.content_hash
             ) {
-              log.push("Remote mod.io file hash matches manifest and modpack. Skipping download.");
+              log.push(
+                "Remote mod.io file hash matches manifest and modpack. Skipping download.",
+              );
               log = log;
               await tick();
 
-              const fileExistsResult = await fileExists(`/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${remoteInfo.archive_name}`);
+              const fileExistsResult = await fileExists(
+                `/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${remoteInfo.archive_name}`,
+              );
               if (fileExistsResult) {
                 continue;
               } else {
-                log.push(`Hash matches modpack but archive not found at expected path: /home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${remoteInfo.archive_name}`);
+                log.push(
+                  `Hash matches modpack but archive not found at expected path: /home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${remoteInfo.archive_name}`,
+                );
                 log = log;
                 await tick();
               }

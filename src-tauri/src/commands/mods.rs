@@ -15,7 +15,10 @@ pub async fn get_modio_remote_info(
             "mod.io token is not configured. Set token in Settings first.".to_string(),
         )
     })?;
-    let modio_service = crate::services::modio_api::ModioApiService::new(state.client.clone(), config.modio_game_id);
+    let modio_service = crate::services::modio_api::ModioApiService::new(
+        state.client.clone(),
+        config.modio_game_id,
+    );
     let (explicit_id, slug) = parse_modio_input_to_slug_or_id(&input)?;
     let mod_id = match explicit_id {
         Some(id) => id,

@@ -31,7 +31,7 @@ pub async fn update_config(state: State<'_, AppState>, updates: ConfigUpdate) ->
             Some(ref key) if key.is_empty() => {
                 config.modio_api_key = None;
                 config.modio_game_id = None;
-            },
+            }
             Some(ref key) => {
                 let changed = config.modio_api_key.as_deref() != Some(key);
                 config.modio_api_key = Some(key.clone());
@@ -39,12 +39,11 @@ pub async fn update_config(state: State<'_, AppState>, updates: ConfigUpdate) ->
                     should_lookup_game_id = true;
                     new_api_key = Some(key.clone());
                 }
-            },
-            None => {},
+            }
+            None => {}
         }
-        match updates.modio_game_id {
-            Some(id) => config.modio_game_id = Some(id),
-            None => {},
+        if let Some(id) = updates.modio_game_id {
+            config.modio_game_id = Some(id);
         }
         if let Some(profile) = updates.active_profile {
             config.active_profile = Some(profile);
@@ -57,13 +56,16 @@ pub async fn update_config(state: State<'_, AppState>, updates: ConfigUpdate) ->
             let client = &state.client;
             // Use the current config's modio_game_id if available
             let config = state.get_config()?;
-            let service = crate::services::modio_api::ModioApiService::new(client.clone(), config.modio_game_id);
+            let service = crate::services::modio_api::ModioApiService::new(
+                client.clone(),
+                config.modio_game_id,
+            );
             match service.lookup_game_id(&api_key, "readyornot").await {
                 Ok(game_id) => {
                     state.update_config(|config| {
                         config.modio_game_id = Some(game_id);
                     })?;
-                },
+                }
                 Err(e) => {
                     eprintln!("[update_config] Failed to look up mod.io game_id: {}", e);
                 }

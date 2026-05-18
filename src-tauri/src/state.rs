@@ -55,9 +55,13 @@ impl AppState {
         // If modio_game_id is missing but modio_api_key is present, look up and cache it
         if config.modio_game_id.is_none() {
             if let Some(api_key) = config.modio_api_key.clone() {
-                let rt = tokio::runtime::Runtime::new().map_err(|e| AppError::Validation(format!("tokio runtime error: {}", e)))?;
+                let rt = tokio::runtime::Runtime::new()
+                    .map_err(|e| AppError::Validation(format!("tokio runtime error: {}", e)))?;
                 match rt.block_on(async {
-                    let service = crate::services::modio_api::ModioApiService::new(client.clone(), config.modio_game_id);
+                    let service = crate::services::modio_api::ModioApiService::new(
+                        client.clone(),
+                        config.modio_game_id,
+                    );
                     service.lookup_game_id(&api_key, "readyornot").await
                 }) {
                     Ok(game_id) => {
@@ -67,7 +71,7 @@ impl AppState {
                         if let Err(e) = save_config_to_path(&config_path, &config) {
                             eprintln!("[AppState] Failed to save config with game_id: {}", e);
                         }
-                    },
+                    }
                     Err(e) => {
                         eprintln!("[AppState] Failed to look up mod.io game_id: {}", e);
                     }

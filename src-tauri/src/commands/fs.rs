@@ -1,7 +1,7 @@
-use tauri::State;
+use crate::state;
 use crate::state::AppState;
 use std::path::PathBuf;
-use crate::state;
+use tauri::State;
 
 #[tauri::command]
 pub fn file_exists(_state: State<'_, AppState>, path: String) -> bool {
