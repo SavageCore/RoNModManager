@@ -1,3 +1,15 @@
+#[tauri::command]
+pub fn read_manifest_for_archive(archive_name: String) -> Result<Option<serde_json::Value>> {
+    let manager = manifest::ManifestManager::new(&get_staging_root()?);
+    let manifest_opt = manager.load_manifest(&archive_name)?;
+    if let Some(manifest) = manifest_opt {
+        let json = serde_json::to_value(manifest)
+            .map_err(|e| AppError::Validation(format!("Failed to serialize manifest: {}", e)))?;
+        Ok(Some(json))
+    } else {
+        Ok(None)
+    }
+}
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};

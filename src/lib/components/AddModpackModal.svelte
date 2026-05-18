@@ -63,6 +63,7 @@
     getConfig,
     modioSubscribe,
     updateModSourceUrl,
+    readManifestForArchive,
   } from "$lib/api/commands";
   import { tick } from "svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
@@ -214,57 +215,105 @@
             hadError = true;
           }
         } else {
-          // Download from self-hosted server or Nexus
-          const downloadUrl = `${baseUrl}/mods/${encodeURIComponent(modFile)}`;
-          log.push(`Downloading self-hosted mod: ${modFile} ...`);
+          log.push(`Processing self-hosted mod: ${modFile} ...`);
           log = log;
-          await tick();
-          operationStatusStore.setTemporaryMessage(
-            `Downloading ${modFile} ...`,
-          );
+          // Download from self-hosted server or Nexus
+          // Manifest hash check logic
+          let manifestHashMatched = false;
           try {
-            await downloadModArchive(downloadUrl, modFile);
-            log.push(`Downloaded '${modFile}'.`);
-            log = log;
-            await tick();
-            const archivePath = `/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${modFile}`;
-            log.push(`Checking file exists: ${archivePath}`);
-            log = log;
-            await tick();
+            let manifest = null;
             try {
-              await installLocalMod(archivePath);
-              log.push(`Installed '${modFile}'.`);
-              log = log;
-              await tick();
-              try {
-                await updateModSourceUrl(modFile, src);
-                log.push(`Set source_url for '${modFile}'.`);
-                log = log;
-                await tick();
-              } catch (setUrlErr) {
-                log.push(
-                  `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
-                );
-                log = log;
-                await tick();
-              }
-            } catch (installErr) {
+              manifest = await readManifestForArchive(modFile);
+            } catch (err) {
               log.push(
-                `Error installing archive: ${installErr.message || String(installErr)}`,
+                `Could not read manifest for ${modFile} (backend error: ${err && err.message ? err.message : String(err)})`,
               );
               log = log;
               await tick();
-              error = installErr.message || String(installErr);
-              hadError = true;
             }
-          } catch (modErr) {
-            log.push(
-              `Error downloading mod: ${modErr.message || String(modErr)}`,
-            );
+            if (
+              manifest &&
+              manifest.content_hash &&
+              modInfo.content_hash &&
+              manifest.content_hash === modInfo.content_hash
+            ) {
+              log.push("Found hash of archive in local manifest");
+              log.push("Hash matches modpack");
+              log.push("Skipping download");
+              log.push(`Installing...`);
+              log = log;
+              await tick();
+              const archivePath = `/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${modFile}`;
+              try {
+                await installLocalMod(archivePath);
+                log.push("Installed");
+                log = log;
+                await tick();
+              } catch (installErr) {
+                log.push(
+                  `Error installing archive: ${installErr.message || String(installErr)}`,
+                );
+                log = log;
+                await tick();
+                error = installErr.message || String(installErr);
+                hadError = true;
+              }
+              manifestHashMatched = true;
+            }
+          } catch {}
+          if (!manifestHashMatched) {
+            const downloadUrl = `${baseUrl}/mods/${encodeURIComponent(modFile)}`;
+            log.push(`Downloading...`);
             log = log;
             await tick();
-            error = modErr.message || String(modErr);
-            hadError = true;
+            operationStatusStore.setTemporaryMessage(
+              `Downloading ${modFile} ...`,
+            );
+            try {
+              await downloadModArchive(downloadUrl, modFile);
+              log.push(`Downloaded '${modFile}'.`);
+              log = log;
+              await tick();
+              const archivePath = `/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${modFile}`;
+              // log.push(`Checking file exists: ${archivePath}`); // REMOVE per requirements
+              // log = log;
+              // await tick();
+              try {
+                await installLocalMod(archivePath);
+                log.push(`Installed '${modFile}'.`);
+                log = log;
+                await tick();
+                // REMOVE Set source_url log per requirements
+                // try {
+                //   await updateModSourceUrl(modFile, src);
+                //   log.push(`Set source_url for '${modFile}'.`);
+                //   log = log;
+                //   await tick();
+                // } catch (setUrlErr) {
+                //   log.push(
+                //     `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
+                //   );
+                //   log = log;
+                //   await tick();
+                // }
+              } catch (installErr) {
+                log.push(
+                  `Error installing archive: ${installErr.message || String(installErr)}`,
+                );
+                log = log;
+                await tick();
+                error = installErr.message || String(installErr);
+                hadError = true;
+              }
+            } catch (modErr) {
+              log.push(
+                `Error downloading mod: ${modErr.message || String(modErr)}`,
+              );
+              log = log;
+              await tick();
+              error = modErr.message || String(modErr);
+              hadError = true;
+            }
           }
         }
       }

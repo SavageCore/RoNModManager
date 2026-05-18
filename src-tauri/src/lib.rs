@@ -85,6 +85,7 @@ pub fn run() {
             mods::uninstall_archive,
             mods::update_mod_display_name,
             mods::update_mod_source_url,
+            mods::read_manifest_for_archive,
             profiles::list_profiles,
             profiles::get_profile,
             profiles::save_profile,
