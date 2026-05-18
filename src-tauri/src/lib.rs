@@ -86,6 +86,7 @@ pub fn run() {
             mods::update_mod_display_name,
             mods::update_mod_source_url,
             mods::read_manifest_for_archive,
+            mods::get_modio_remote_info,
             profiles::list_profiles,
             profiles::get_profile,
             profiles::save_profile,

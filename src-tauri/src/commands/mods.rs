@@ -1,3 +1,39 @@
+#[derive(Debug, Serialize)]
+pub struct ModioRemoteMd5Result {
+    pub remote_md5: Option<String>,
+    pub archive_name: String,
+}
+
+#[tauri::command]
+pub async fn get_modio_remote_info(
+    state: tauri::State<'_, crate::state::AppState>,
+    input: String,
+) -> crate::models::Result<ModioRemoteMd5Result> {
+    let config = state.get_config()?;
+    let token = config.oauth_token.ok_or_else(|| {
+        crate::models::AppError::Validation(
+            "mod.io token is not configured. Set token in Settings first.".to_string(),
+        )
+    })?;
+    let modio_service = crate::services::modio_api::ModioApiService::new(state.client.clone(), config.modio_game_id);
+    let (explicit_id, slug) = parse_modio_input_to_slug_or_id(&input)?;
+    let mod_id = match explicit_id {
+        Some(id) => id,
+        None => {
+            let slug_value = slug.ok_or_else(|| {
+                crate::models::AppError::Validation("Could not determine mod.io stub".to_string())
+            })?;
+            modio_service
+                .resolve_slug_to_mod_id(&token, &slug_value)
+                .await?
+        }
+    };
+    let mod_details = modio_service.get_mod_download_info(&token, mod_id).await?;
+    Ok(ModioRemoteMd5Result {
+        remote_md5: mod_details.remote_md5,
+        archive_name: mod_details.filename,
+    })
+}
 #[tauri::command]
 pub fn read_manifest_for_archive(archive_name: String) -> Result<Option<serde_json::Value>> {
     let manager = manifest::ManifestManager::new(&get_staging_root()?);

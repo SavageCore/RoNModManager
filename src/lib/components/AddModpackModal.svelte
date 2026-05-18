@@ -64,6 +64,7 @@
     modioSubscribe,
     updateModSourceUrl,
     readManifestForArchive,
+    fetchModioRemoteInfo,
   } from "$lib/api/commands";
   import { tick } from "svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
@@ -177,7 +178,7 @@
               oauth_token: oauthToken,
             });
             log.push(
-              `Subscribed to mod.io mod '${modSlug}' (ID ${modId}). Downloading...`,
+              `Subscribed to mod.io mod '${modSlug}' (ID ${modId}).`,
             );
             log = log;
             await tick();
@@ -373,10 +374,33 @@
               oauth_token: oauthToken,
             });
             log.push(
-              `Subscribed to mod.io mod '${modSlug}' (ID ${modId}). Downloading...`,
+              `Subscribed to mod.io mod '${modSlug}' (ID ${modId}).`,
             );
             log = log;
             await tick();
+
+            // Fetch remote md5 and archive name from backend
+            const remoteInfo = await fetchModioRemoteInfo(subUrl);
+            let manifest = null;
+            try {
+              manifest = await readManifestForArchive(remoteInfo.archive_name);
+            } catch (err) {
+              log.push(
+                `Could not read manifest for ${remoteInfo.archive_name} (backend error: ${err && err.message ? err.message : String(err)})`,
+              );
+              log = log;
+              await tick();
+            }
+            if (
+              remoteInfo.remote_md5 &&
+              manifest && manifest.content_hash &&
+              remoteInfo.remote_md5 === manifest.content_hash
+            ) {
+              log.push("Remote mod.io file hash matches manifest and modpack. Skipping download.");
+              log = log;
+              await tick();
+              continue;
+            }
             const result = await addModIoMod(subUrl);
             log.push(`Downloading '${result.name}' from mod.io...`);
             log = log;

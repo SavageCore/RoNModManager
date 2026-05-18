@@ -38,6 +38,7 @@ pub struct ModioModDownload {
     pub profile_url: String,
     pub filename: String,
     pub download_url: String,
+    pub remote_md5: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,9 +52,15 @@ struct ModioDownloadInfo {
 }
 
 #[derive(Debug, Deserialize)]
+struct ModioFileHash {
+    md5: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct ModioFileInfo {
     filename: Option<String>,
     download: Option<ModioDownloadInfo>,
+    filehash: Option<ModioFileHash>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -218,6 +225,7 @@ impl ModioApiService {
             .profile_url
             .unwrap_or_else(|| format!("https://mod.io/g/readyornot/m/{}", name_id));
 
+        let remote_md5 = modfile.filehash.as_ref().and_then(|fh| fh.md5.clone());
         Ok(ModioModDownload {
             id: payload.id,
             name: payload.name,
@@ -225,6 +233,7 @@ impl ModioApiService {
             profile_url,
             filename,
             download_url,
+            remote_md5,
         })
     }
 

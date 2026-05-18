@@ -89,6 +89,12 @@ export const fetchNexusModInfo = (input: string) =>
     summary: string | null;
     modUrl: string;
   }>("fetch_nexus_mod_info", { input });
+export interface ModioRemoteInfo {
+  remote_md5: string | null;
+  archive_name: string;
+}
+export const fetchModioRemoteInfo = (input: string): Promise<ModioRemoteInfo> =>
+  invoke<ModioRemoteInfo>("get_modio_remote_info", { input });
 export const refreshModMetadata = () =>
   invoke<{
     checked: number;
