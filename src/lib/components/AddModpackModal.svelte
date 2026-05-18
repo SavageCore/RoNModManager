@@ -1,9 +1,12 @@
 <script lang="ts">
-  import { createEventDispatcher } from "svelte";
-  import { onMount, afterUpdate } from "svelte";
+  import { afterUpdate, createEventDispatcher } from "svelte";
   const dispatch = createEventDispatcher();
+  import type { ModInfo } from "$lib/types/modpack";
 
   export let isVisible = false;
+  export let mode: "add" | "update" = "add";
+  export let currentVersion: string | null = null;
+  export let newVersion: string | null = null;
 
   let url = "";
   let log: string[] = [];
@@ -46,7 +49,7 @@
   }
 
   function close() {
-    url = "";
+    if (mode === "add") url = "";
     log = [];
     isLoading = false;
     isValid = false;
@@ -56,22 +59,22 @@
 
   import {
     addModIoMod,
-    fetchModpackJson,
     downloadModArchive,
-    installLocalMod,
-    getInstalledModGroups,
-    getConfig,
-    modioSubscribe,
-    updateModSourceUrl,
-    readManifestForArchive,
     fetchModioRemoteInfo,
-    getModioSubscriptionStatus,
+    fetchModpackJson,
     fileExists,
     getArchiveRootPath,
+    getConfig,
+    getInstalledModGroups,
+    getModioSubscriptionStatus,
+    installLocalMod,
+    modioSubscribe,
+    readManifestForArchive,
     updateConfig,
+    updateModSourceUrl,
   } from "$lib/api/commands";
-  import { tick } from "svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
+  import { tick } from "svelte";
 
   async function handleSave() {
     log = ["Validating URL..."];
@@ -83,17 +86,30 @@
     const archiveRootPath = await getArchiveRootPath();
     try {
       // Basic URL validation
-      let parsed;
-      try {
-        data = await fetchModpackJson(url);
-      } catch (fetchErr) {
-        log.push(
-          `Failed to fetch modpack: ${fetchErr.message || String(fetchErr)}`,
+      let modpackUrl: string | null = url;
+      if (mode === "update") {
+        console.log(
+          "Update mode: Ignoring input URL and using existing config value",
         );
-        await tick();
-        error = `Failed to fetch modpack: ${fetchErr.message || String(fetchErr)}`;
-        isLoading = false;
-        return;
+        // Always use config value for update
+        const config = await getConfig();
+        modpackUrl = config.modpack_url;
+        url = modpackUrl || "";
+      }
+
+      if (modpackUrl) {
+        log.push(`Fetching modpack from URL: ${modpackUrl} ...`);
+        try {
+          data = await fetchModpackJson(modpackUrl);
+        } catch (fetchErr: any) {
+          log.push(
+            `Failed to fetch modpack: ${fetchErr.message || String(fetchErr)}`,
+          );
+          await tick();
+          error = `Failed to fetch modpack: ${fetchErr.message || String(fetchErr)}`;
+          isLoading = false;
+          return;
+        }
       }
 
       // Update config with modpack_url and modpack_version
@@ -139,7 +155,8 @@
       }
 
       // 1. Process all mods in the mods object
-      for (const [modFile, modInfo] of modEntries) {
+      // Define the type for modInfo based on expected modpack.json structure
+      for (const [modFile, modInfo] of modEntries as [string, ModInfo][]) {
         const src = modInfo.source_url || "";
         log.push(`Processing self-hosted mod: ${modFile} ...`);
         log = log;
@@ -150,7 +167,7 @@
           let manifest = null;
           try {
             manifest = await readManifestForArchive(modFile);
-          } catch (err) {
+          } catch (err: any) {
             log.push(
               `Could not read manifest for ${modFile} (backend error: ${err && err.message ? err.message : String(err)})`,
             );
@@ -187,7 +204,7 @@
                 log.push("Installed");
                 log = log;
                 await tick();
-              } catch (installErr) {
+              } catch (installErr: any) {
                 log.push(
                   `Error installing archive: ${installErr.message || String(installErr)}`,
                 );
@@ -239,14 +256,14 @@
                 // log.push(`Set source_url for '${modFile}'.`);
                 // log = log;
                 // await tick();
-              } catch (setUrlErr) {
+              } catch (setUrlErr: any) {
                 log.push(
                   `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
                 );
                 log = log;
                 await tick();
               }
-            } catch (installErr) {
+            } catch (installErr: any) {
               log.push(
                 `Error installing archive: ${installErr.message || String(installErr)}`,
               );
@@ -255,7 +272,7 @@
               error = installErr.message || String(installErr);
               hadError = true;
             }
-          } catch (modErr) {
+          } catch (modErr: any) {
             log.push(
               `Error downloading mod: ${modErr.message || String(modErr)}`,
             );
@@ -304,12 +321,12 @@
                   "Could not resolve mod slug to numeric ID: " + modSlug,
                 );
               }
-            } catch (e) {
+            } catch (e: any) {
               throw new Error(
                 "Failed to resolve mod slug to numeric ID: " +
                   modSlug +
                   ", " +
-                  (e.message || e),
+                  (e.message || String(e)),
               );
             }
             if (!oauthToken) {
@@ -343,7 +360,7 @@
             let manifest = null;
             try {
               manifest = await readManifestForArchive(remoteInfo.archive_name);
-            } catch (err) {
+            } catch (err: any) {
               log.push(
                 `Could not read manifest for ${remoteInfo.archive_name} (backend error: ${err && err.message ? err.message : String(err)})`,
               );
@@ -389,7 +406,7 @@
               // log.push(`Set source_url for '${result.archiveName}'.`);
               // log = log;
               // await tick();
-            } catch (setUrlErr) {
+            } catch (setUrlErr: any) {
               log.push(
                 `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
               );
@@ -399,7 +416,7 @@
             log.push(`Finished installing '${result.name}'.`);
             log = log;
             await tick();
-          } catch (modErr) {
+          } catch (modErr: any) {
             log.push(
               `Error installing mod: ${modErr.message || String(modErr)}`,
             );
@@ -417,7 +434,7 @@
         log.push("Refreshed mod list.");
         log = log;
         await tick();
-      } catch (refreshErr) {
+      } catch (refreshErr: any) {
         log.push(
           `Error refreshing mod list: ${refreshErr.message || String(refreshErr)}`,
         );
@@ -434,7 +451,7 @@
         log = log;
         await tick();
       }
-    } catch (e) {
+    } catch (e: any) {
       log.push(`Unexpected error: ${e.message || String(e)}`);
       await tick();
       error = e.message || String(e);
@@ -449,25 +466,48 @@
     <div
       class="bg-white dark:bg-zinc-900 rounded-lg shadow-2xl w-[480px] p-6 border border-gray-300 dark:border-zinc-700"
     >
-      <h2 class="text-xl font-bold mb-4">Add Modpack</h2>
-      <label for="modpack-url" class="block mb-2 text-sm font-medium"
-        >Modpack URL</label
-      >
-      <input
-        id="modpack-url"
-        class="input w-full mb-2"
-        type="text"
-        bind:value={url}
-        placeholder="https://.../modpack.json"
-        disabled={isLoading}
-      />
-      <button
-        class="btn btn-sm btn-primary mb-4"
-        on:click={handleSave}
-        disabled={isLoading || !url}
-      >
-        {isLoading ? "Validating..." : "Save"}
-      </button>
+      <h2 class="text-xl font-bold mb-4">
+        {mode === "update" ? "Updating Modpack" : "Add Modpack"}
+      </h2>
+      {#if mode === "add"}
+        <label for="modpack-url" class="block mb-2 text-sm font-medium"
+          >Modpack URL</label
+        >
+        <input
+          id="modpack-url"
+          class="input w-full mb-2"
+          type="text"
+          bind:value={url}
+          placeholder="https://.../modpack.json"
+          disabled={isLoading}
+        />
+        <button
+          class="btn btn-sm btn-primary mb-4"
+          on:click={handleSave}
+          disabled={isLoading || !url}
+        >
+          {isLoading ? "Validating..." : "Save"}
+        </button>
+      {:else}
+        <div class="mb-4 text-sm text-gray-700 dark:text-gray-300">
+          The modpack will be updated from the configured URL.<br />
+          {#if currentVersion && newVersion}
+            <div class="mt-2">
+              <span class="font-semibold">Current version:</span>
+              <span class="font-mono">{currentVersion}</span><br />
+              <span class="font-semibold">New version:</span>
+              <span class="font-mono">{newVersion}</span>
+            </div>
+          {/if}
+        </div>
+        <button
+          class="btn btn-sm btn-primary mb-4"
+          on:click={handleSave}
+          disabled={isLoading}
+        >
+          {isLoading ? "Updating..." : "Start Update"}
+        </button>
+      {/if}
       {#if error}
         <div class="text-red-500 text-sm mb-2">{error}</div>
       {/if}

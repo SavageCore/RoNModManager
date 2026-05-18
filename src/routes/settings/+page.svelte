@@ -1,35 +1,32 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
-  import { listen } from "@tauri-apps/api/event";
-  import { openUrl } from "@tauri-apps/plugin-opener";
   import {
     applyIntroSkip,
     buildModpackFromInstalled,
     checkForUpdate,
     detectGamePath,
-    installUpdate,
     exportModpackToFile,
     getAuthStatus,
     getConfig,
+    installUpdate,
     isIntroSkipApplied,
     logout,
     saveToken,
     setGamePath,
-    setModpackUrl,
     setTheme,
     undoIntroSkip,
-    validateToken,
     updateConfig,
+    validateToken,
     verifyNexusApiKey,
   } from "$lib/api/commands";
-  import { applyThemeClass } from "$lib/theme";
-  import { toastStore } from "$lib/stores/toast";
+  import ExportModpackModal from "$lib/components/ExportModpackModal.svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
-  import { revealItemInDir } from "@tauri-apps/plugin-opener";
-  import { downloadDir } from "@tauri-apps/api/path";
+  import { toastStore } from "$lib/stores/toast";
   import { tokenStore } from "$lib/stores/token";
   import { updateCheckStore } from "$lib/stores/updateCheck";
-  import ExportModpackModal from "$lib/components/ExportModpackModal.svelte";
+  import { applyThemeClass } from "$lib/theme";
+  import { downloadDir } from "@tauri-apps/api/path";
+  import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+  import { onDestroy, onMount } from "svelte";
   // Persist modpack export metadata in localStorage
   const MODPACK_META_KEY = "ronmodmanager.modpackMeta";
   function loadModpackMeta() {

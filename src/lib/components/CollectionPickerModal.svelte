@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
-  import { createEventDispatcher } from "svelte";
+  import { createEventDispatcher, tick } from "svelte";
 
   export let isVisible = false;
   export let modName = "";

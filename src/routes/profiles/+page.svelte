@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import type { Profile } from "$lib/types";
   import * as commands from "$lib/api/commands";
   import { toastStore } from "$lib/stores/toast";
+  import type { Profile } from "$lib/types";
+  import { onMount } from "svelte";
 
   let profiles: Profile[] = [];
   let loading = false;

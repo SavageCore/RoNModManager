@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { operationStatusStore } from "$lib/stores/operationStatus";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
+  import { operationStatusStore } from "$lib/stores/operationStatus";
 
   function formatBytes(value: number): string {
     if (!Number.isFinite(value) || value <= 0) {

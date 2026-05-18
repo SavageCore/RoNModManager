@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import {
-    addModToCollection,
     addModIoMod,
+    addModToCollection,
     applyProfile,
     createCollection,
     getConfig,
@@ -14,36 +13,37 @@
     saveProfile,
     syncModLinks,
     uninstallArchive,
-    uninstallMods,
     uninstallMod,
+    uninstallMods,
     updateModDisplayName,
     updateModSourceUrl,
   } from "$lib/api/commands";
   import AddModModal from "$lib/components/AddModModal.svelte";
   import AddModpackModal from "$lib/components/AddModpackModal.svelte";
-  let showAddModpackModal = false;
   import CollectionPickerModal from "$lib/components/CollectionPickerModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
+  import { modAddQueueStore } from "$lib/stores/modAddQueue";
+  import { toastStore } from "$lib/stores/toast";
+  import type { InstalledModGroup, Profile } from "$lib/types";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import {
     ExternalLink,
-    Link as LinkIcon,
     Globe,
+    Link as LinkIcon,
     Pencil,
     Plus,
     Trash2,
   } from "lucide-svelte";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
-  import type { InstalledModGroup, Profile } from "$lib/types";
-  import { modAddQueueStore } from "$lib/stores/modAddQueue";
-  import { toastStore } from "$lib/stores/toast";
+  import { onMount } from "svelte";
 
   let modGroups: InstalledModGroup[] = [];
   let modSearch = "";
   let modSourceFilter: "all" | "nexus" | "modio" = "all";
   let modsForActiveProfile: string[] = [];
   let showAddModModal = false;
+  let showAddModpackModal = false;
   let confirmModal: {
     isVisible: boolean;
     title: string;
