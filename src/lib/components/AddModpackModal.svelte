@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
-  import { onMount } from "svelte";
+  import { onMount, afterUpdate } from "svelte";
   const dispatch = createEventDispatcher();
 
   export let isVisible = false;
@@ -10,6 +10,40 @@
   let isLoading = false;
   let isValid = false;
   let error = "";
+  let logDiv: HTMLDivElement | null;
+
+  function scrollLog() {
+    if (logDiv) {
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+  }
+
+  afterUpdate(scrollLog);
+
+  function copyLog() {
+    navigator.clipboard
+      .writeText(log.join("\n"))
+      .then(() => {
+        // optional feedback
+      })
+      .catch((err) => {
+        console.error("Failed to copy: ", err);
+      });
+  }
+
+  function saveLog() {
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const filename = `modpack-log-${timestamp}.txt`;
+    const blob = new Blob([log.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   function close() {
     url = "";
@@ -20,7 +54,16 @@
     dispatch("close");
   }
 
-  import { addModIoMod, fetchModpackJson, downloadModArchive, installLocalMod, getInstalledModGroups, getConfig, modioSubscribe, updateModSourceUrl } from "$lib/api/commands";
+  import {
+    addModIoMod,
+    fetchModpackJson,
+    downloadModArchive,
+    installLocalMod,
+    getInstalledModGroups,
+    getConfig,
+    modioSubscribe,
+    updateModSourceUrl,
+  } from "$lib/api/commands";
   import { tick } from "svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
 
@@ -37,7 +80,9 @@
       try {
         data = await fetchModpackJson(url);
       } catch (fetchErr) {
-        log.push(`Failed to fetch modpack: ${fetchErr.message || String(fetchErr)}`);
+        log.push(
+          `Failed to fetch modpack: ${fetchErr.message || String(fetchErr)}`,
+        );
         await tick();
         error = `Failed to fetch modpack: ${fetchErr.message || String(fetchErr)}`;
         isLoading = false;
@@ -46,7 +91,10 @@
       const modEntries = Object.entries(data.mods);
       log.push("Checking mods folder...");
       await tick();
-      if (modEntries.length === 0 && (!data.subscriptions || Object.keys(data.subscriptions).length === 0)) {
+      if (
+        modEntries.length === 0 &&
+        (!data.subscriptions || Object.keys(data.subscriptions).length === 0)
+      ) {
         log.push("No mods or subscriptions found in modpack.");
         error = "No mods or subscriptions found in modpack.";
         isLoading = false;
@@ -64,7 +112,9 @@
         const config = await getConfig();
         oauthToken = config.oauth_token;
         modioApiKey = config.modio_api_key;
-        modioGameId = config.modio_game_id ? String(config.modio_game_id) : null;
+        modioGameId = config.modio_game_id
+          ? String(config.modio_game_id)
+          : null;
       } catch (e) {
         log.push("Warning: Could not retrieve mod.io credentials from config.");
         await tick();
@@ -78,12 +128,17 @@
         if (src.includes("mod.io")) {
           processedModIoUrls.add(src);
           log.push(`Subscribing to mod '${src}' on mod.io (from mods)...`);
+          log = log;
           await tick();
-          operationStatusStore.setTemporaryMessage(`Subscribing to mod '${src}'...`);
+          operationStatusStore.setTemporaryMessage(
+            `Subscribing to mod '${src}'...`,
+          );
           try {
             const match = src.match(/\/m\/([^/]+)/);
             if (!match) {
-              throw new Error("Could not extract mod slug from mod.io URL: " + src);
+              throw new Error(
+                "Could not extract mod slug from mod.io URL: " + src,
+              );
             }
             const modSlug = match[1];
             // Resolve mod slug to numeric mod ID
@@ -92,41 +147,68 @@
               throw new Error("mod.io API key or game ID not set in config.");
             }
             try {
-              const resp = await fetch(`https://api.mod.io/v1/games/${modioGameId}/mods?name_id=${modSlug}&api_key=${modioApiKey}`);
+              const resp = await fetch(
+                `https://api.mod.io/v1/games/${modioGameId}/mods?name_id=${modSlug}&api_key=${modioApiKey}`,
+              );
               const data = await resp.json();
               if (data && data.data && data.data[0] && data.data[0].id) {
                 modId = data.data[0].id;
               } else {
-                throw new Error("Could not resolve mod slug to numeric ID: " + modSlug);
+                throw new Error(
+                  "Could not resolve mod slug to numeric ID: " + modSlug,
+                );
               }
             } catch (e) {
-              throw new Error("Failed to resolve mod slug to numeric ID: " + modSlug + ", " + (e.message || e));
+              throw new Error(
+                "Failed to resolve mod slug to numeric ID: " +
+                  modSlug +
+                  ", " +
+                  (e.message || e),
+              );
             }
             if (!oauthToken) {
-              throw new Error("No OAuth token available for mod.io subscription.");
+              throw new Error(
+                "No OAuth token available for mod.io subscription.",
+              );
             }
-            await modioSubscribe({ mod_id: String(modId), oauth_token: oauthToken });
-            log.push(`Subscribed to mod.io mod '${modSlug}' (ID ${modId}). Downloading...`);
+            await modioSubscribe({
+              mod_id: String(modId),
+              oauth_token: oauthToken,
+            });
+            log.push(
+              `Subscribed to mod.io mod '${modSlug}' (ID ${modId}). Downloading...`,
+            );
+            log = log;
             await tick();
             const result = await addModIoMod(src);
             log.push(`Downloading '${result.name}' from mod.io...`);
+            log = log;
             await tick();
             await new Promise((resolve) => setTimeout(resolve, 500));
             log.push(`Downloaded '${result.archiveName}'. Extracting...`);
+            log = log;
             await tick();
             await new Promise((resolve) => setTimeout(resolve, 500));
             try {
               await updateModSourceUrl(result.archiveName, src);
               log.push(`Set source_url for '${result.archiveName}'.`);
+              log = log;
               await tick();
             } catch (setUrlErr) {
-              log.push(`Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`);
+              log.push(
+                `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
+              );
+              log = log;
               await tick();
             }
             log.push(`Finished installing '${result.name}'.`);
+            log = log;
             await tick();
           } catch (modErr) {
-            log.push(`Error installing mod: ${modErr.message || String(modErr)}`);
+            log.push(
+              `Error installing mod: ${modErr.message || String(modErr)}`,
+            );
+            log = log;
             await tick();
             error = modErr.message || String(modErr);
             hadError = true;
@@ -135,35 +217,51 @@
           // Download from self-hosted server or Nexus
           const downloadUrl = `${baseUrl}/mods/${encodeURIComponent(modFile)}`;
           log.push(`Downloading self-hosted mod: ${modFile} ...`);
+          log = log;
           await tick();
-          operationStatusStore.setTemporaryMessage(`Downloading ${modFile} ...`);
+          operationStatusStore.setTemporaryMessage(
+            `Downloading ${modFile} ...`,
+          );
           try {
             await downloadModArchive(downloadUrl, modFile);
             log.push(`Downloaded '${modFile}'.`);
+            log = log;
             await tick();
             const archivePath = `/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${modFile}`;
             log.push(`Checking file exists: ${archivePath}`);
+            log = log;
             await tick();
             try {
               await installLocalMod(archivePath);
               log.push(`Installed '${modFile}'.`);
+              log = log;
               await tick();
               try {
                 await updateModSourceUrl(modFile, src);
                 log.push(`Set source_url for '${modFile}'.`);
+                log = log;
                 await tick();
               } catch (setUrlErr) {
-                log.push(`Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`);
+                log.push(
+                  `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
+                );
+                log = log;
                 await tick();
               }
             } catch (installErr) {
-              log.push(`Error installing archive: ${installErr.message || String(installErr)}`);
+              log.push(
+                `Error installing archive: ${installErr.message || String(installErr)}`,
+              );
+              log = log;
               await tick();
               error = installErr.message || String(installErr);
               hadError = true;
             }
           } catch (modErr) {
-            log.push(`Error downloading mod: ${modErr.message || String(modErr)}`);
+            log.push(
+              `Error downloading mod: ${modErr.message || String(modErr)}`,
+            );
+            log = log;
             await tick();
             error = modErr.message || String(modErr);
             hadError = true;
@@ -176,13 +274,20 @@
           if (!enabled) continue;
           if (!subUrl.includes("mod.io")) continue;
           if (processedModIoUrls.has(subUrl)) continue;
-          log.push(`Subscribing to mod '${subUrl}' on mod.io (from subscriptions)...`);
+          log.push(
+            `Subscribing to mod '${subUrl}' on mod.io (from subscriptions)...`,
+          );
+          log = log;
           await tick();
-          operationStatusStore.setTemporaryMessage(`Subscribing to mod '${subUrl}'...`);
+          operationStatusStore.setTemporaryMessage(
+            `Subscribing to mod '${subUrl}'...`,
+          );
           try {
             const match = subUrl.match(/\/m\/([^/]+)/);
             if (!match) {
-              throw new Error("Could not extract mod slug from mod.io URL: " + subUrl);
+              throw new Error(
+                "Could not extract mod slug from mod.io URL: " + subUrl,
+              );
             }
             const modSlug = match[1];
             // Resolve mod slug to numeric mod ID
@@ -191,41 +296,68 @@
               throw new Error("mod.io API key or game ID not set in config.");
             }
             try {
-              const resp = await fetch(`https://api.mod.io/v1/games/${modioGameId}/mods?name_id=${modSlug}&api_key=${modioApiKey}`);
+              const resp = await fetch(
+                `https://api.mod.io/v1/games/${modioGameId}/mods?name_id=${modSlug}&api_key=${modioApiKey}`,
+              );
               const data = await resp.json();
               if (data && data.data && data.data[0] && data.data[0].id) {
                 modId = data.data[0].id;
               } else {
-                throw new Error("Could not resolve mod slug to numeric ID: " + modSlug);
+                throw new Error(
+                  "Could not resolve mod slug to numeric ID: " + modSlug,
+                );
               }
             } catch (e) {
-              throw new Error("Failed to resolve mod slug to numeric ID: " + modSlug + ", " + (e.message || e));
+              throw new Error(
+                "Failed to resolve mod slug to numeric ID: " +
+                  modSlug +
+                  ", " +
+                  (e.message || e),
+              );
             }
             if (!oauthToken) {
-              throw new Error("No OAuth token available for mod.io subscription.");
+              throw new Error(
+                "No OAuth token available for mod.io subscription.",
+              );
             }
-            await modioSubscribe({ mod_id: String(modId), oauth_token: oauthToken });
-            log.push(`Subscribed to mod.io mod '${modSlug}' (ID ${modId}). Downloading...`);
+            await modioSubscribe({
+              mod_id: String(modId),
+              oauth_token: oauthToken,
+            });
+            log.push(
+              `Subscribed to mod.io mod '${modSlug}' (ID ${modId}). Downloading...`,
+            );
+            log = log;
             await tick();
             const result = await addModIoMod(subUrl);
             log.push(`Downloading '${result.name}' from mod.io...`);
+            log = log;
             await tick();
             await new Promise((resolve) => setTimeout(resolve, 500));
             log.push(`Downloaded '${result.archiveName}'. Extracting...`);
+            log = log;
             await tick();
             await new Promise((resolve) => setTimeout(resolve, 500));
             try {
               await updateModSourceUrl(result.archiveName, subUrl);
               log.push(`Set source_url for '${result.archiveName}'.`);
+              log = log;
               await tick();
             } catch (setUrlErr) {
-              log.push(`Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`);
+              log.push(
+                `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
+              );
+              log = log;
               await tick();
             }
             log.push(`Finished installing '${result.name}'.`);
+            log = log;
             await tick();
           } catch (modErr) {
-            log.push(`Error installing mod: ${modErr.message || String(modErr)}`);
+            log.push(
+              `Error installing mod: ${modErr.message || String(modErr)}`,
+            );
+            log = log;
             await tick();
             error = modErr.message || String(modErr);
             hadError = true;
@@ -237,17 +369,23 @@
       try {
         await getInstalledModGroups();
         log.push("Refreshed mod list.");
+        log = log;
         await tick();
       } catch (refreshErr) {
-        log.push(`Error refreshing mod list: ${refreshErr.message || String(refreshErr)}`);
+        log.push(
+          `Error refreshing mod list: ${refreshErr.message || String(refreshErr)}`,
+        );
+        log = log;
         await tick();
       }
       if (!hadError) {
         log.push("All mods processed.");
+        log = log;
         await tick();
-        setTimeout(() => close(), 1200);
+        // Do not auto-close modal; let user close it manually
       } else {
         log.push("Some mods failed. Please review the log above.");
+        log = log;
         await tick();
       }
     } catch (e) {
@@ -257,14 +395,18 @@
     } finally {
       isLoading = false;
     }
-}
+  }
 </script>
 
 {#if isVisible}
   <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-2xl w-[480px] p-6 border border-gray-300 dark:border-zinc-700">
+    <div
+      class="bg-white dark:bg-zinc-900 rounded-lg shadow-2xl w-[480px] p-6 border border-gray-300 dark:border-zinc-700"
+    >
       <h2 class="text-xl font-bold mb-4">Add Modpack</h2>
-      <label for="modpack-url" class="block mb-2 text-sm font-medium">Modpack URL</label>
+      <label for="modpack-url" class="block mb-2 text-sm font-medium"
+        >Modpack URL</label
+      >
       <input
         id="modpack-url"
         class="input w-full mb-2"
@@ -273,24 +415,35 @@
         placeholder="https://.../modpack.json"
         disabled={isLoading}
       />
-      <button class="btn btn-sm btn-primary mb-4" on:click={handleSave} disabled={isLoading || !url}>
+      <button
+        class="btn btn-sm btn-primary mb-4"
+        on:click={handleSave}
+        disabled={isLoading || !url}
+      >
         {isLoading ? "Validating..." : "Save"}
       </button>
       {#if error}
         <div class="text-red-500 text-sm mb-2">{error}</div>
       {/if}
-      <div class="bg-zinc-100 dark:bg-zinc-800 rounded p-2 text-xs h-32 overflow-y-auto mb-4">
+      <div
+        bind:this={logDiv}
+        class="bg-zinc-100 dark:bg-zinc-800 rounded p-2 text-xs h-32 overflow-y-auto mb-4"
+      >
         {#each log as line}
           <div>{line}</div>
         {/each}
       </div>
       <div class="flex justify-end gap-2">
-        <button class="btn btn-sm" on:click={close} disabled={isLoading}>Close</button>
+        <button class="btn btn-sm" on:click={copyLog}>Copy Log</button>
+        <button class="btn btn-sm" on:click={saveLog}>Save Log</button>
+        <button class="btn btn-sm" on:click={close} disabled={isLoading}
+          >Close</button
+        >
       </div>
     </div>
   </div>
 {/if}
 
 <style>
-/* All Tailwind classes should be used directly in class attributes. Remove @apply usage. */
+  /* All Tailwind classes should be used directly in class attributes. Remove @apply usage. */
 </style>

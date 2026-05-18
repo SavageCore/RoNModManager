@@ -740,7 +740,6 @@
   on:dragleave={handleWindowDragLeave}
 />
 
-
 <AddModModal
   isVisible={showAddModModal}
   on:close={() => {
