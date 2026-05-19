@@ -1,32 +1,31 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import "../app.css";
-  import { page } from "$app/stores";
   import { goto } from "$app/navigation";
-  import { listen } from "@tauri-apps/api/event";
+  import { page } from "$app/stores";
+  import {
+    applyProfile,
+    detectGamePath,
+    fetchModpackJson,
+    getConfig,
+    launchGameWithGroups,
+    listProfiles,
+    refreshModMetadata,
+    saveWindowState,
+    setGamePath,
+    setWindowTitle,
+  } from "$lib/api/commands";
+  import FooterStatusBar from "$lib/components/FooterStatusBar.svelte";
+  import Toast from "$lib/components/Toast.svelte";
+  import { operationStatusStore } from "$lib/stores/operationStatus";
+  import { tokenStore } from "$lib/stores/token";
+  import { initTheme } from "$lib/theme";
+  import type { ModProgressEvent, Profile } from "$lib/types";
   import type { UnlistenFn } from "@tauri-apps/api/event";
+  import { listen } from "@tauri-apps/api/event";
   import {
     LogicalPosition,
     LogicalSize,
     getCurrentWindow,
   } from "@tauri-apps/api/window";
-  import {
-    getConfig,
-    listProfiles,
-    applyProfile,
-    setWindowTitle,
-    saveWindowState,
-    launchGameWithGroups,
-    getInstalledModGroups,
-    syncModLinks,
-    detectGamePath,
-    setGamePath,
-    refreshModMetadata,
-  } from "$lib/api/commands";
-  import { initTheme } from "$lib/theme";
-  import type { Profile, ModProgressEvent } from "$lib/types";
-  import { modToggleState } from "$lib/stores/modState";
-  import { operationStatusStore } from "$lib/stores/operationStatus";
   import {
     Layers,
     Package,
@@ -35,9 +34,11 @@
     Settings,
     User,
   } from "lucide-svelte";
-  import FooterStatusBar from "$lib/components/FooterStatusBar.svelte";
-  import Toast from "$lib/components/Toast.svelte";
-  import { tokenStore } from "$lib/stores/token";
+  import semver from "semver";
+  import { onMount } from "svelte";
+  import "../app.css";
+
+  import AddModpackModal from "$lib/components/AddModpackModal.svelte";
 
   const APP_NAME = "Mod Manager";
 
@@ -57,6 +58,11 @@
   let isRefreshingMetadata = false;
   let metadataRefreshMessage = "";
   let metadataRefreshTone: "idle" | "success" | "error" = "idle";
+  let showUpdatePrompt = false;
+  let modpackCurrentVersion: string | null = null;
+  let modpackNewVersion: string | null = null;
+  let showAddModpackModal = false;
+  let updateAvailable = false;
 
   function resolveSelectedProfile(
     activeProfile: string | null | undefined,
@@ -156,13 +162,24 @@
     }
   }
 
+  // Called when user accepts update
+  function startModpackUpdate() {
+    showUpdatePrompt = false;
+    showAddModpackModal = true;
+  }
+
+  // Called when update modal closes
+  function closeAddModpackModal() {
+    showAddModpackModal = false;
+  }
+
   onMount(() => {
     const unsubscribe = tokenStore.subscribe((val) => {
       hasSavedToken = val;
     });
 
     let cleanup = () => {};
-    let unlistenProgress: UnlistenFn | null = null;
+    let unlistenFunctions: UnlistenFn[] = [];
     let unlistenResize: (() => void) | null = null;
     let unlistenMove: (() => void) | null = null;
     const appWindow = getCurrentWindow();
@@ -216,6 +233,28 @@
 
         cleanup = initTheme(config.theme);
 
+        // Modpack update check
+        if (config.modpack_url && config.modpack_version) {
+          try {
+            const remote = await fetchModpackJson(config.modpack_url);
+            if (
+              remote &&
+              remote.version &&
+              semver.valid(remote.version) &&
+              semver.valid(config.modpack_version) &&
+              semver.gt(remote.version, config.modpack_version)
+            ) {
+              console.log("Update available now");
+              modpackCurrentVersion = config.modpack_version;
+              modpackNewVersion = remote.version;
+              updateAvailable = true;
+              showUpdatePrompt = true;
+            }
+          } catch (e) {
+            console.error("Failed to check for modpack update:", e);
+          }
+        }
+
         if (!hasGamePath) {
           try {
             const detectedPath = await detectGamePath();
@@ -237,7 +276,6 @@
             // Ignore if current platform rejects programmatic resize.
           }
         }
-
         if (config.window_x != null && config.window_y != null) {
           try {
             await appWindow.setPosition(
@@ -282,7 +320,13 @@
     void listen<ModProgressEvent>("install_progress", (event) => {
       operationStatusStore.updateFromProgress(event.payload);
     }).then((fn) => {
-      unlistenProgress = fn;
+      unlistenFunctions.push(fn);
+    });
+
+    void listen<ModProgressEvent>("export_progress", (event) => {
+      operationStatusStore.updateFromProgress(event.payload);
+    }).then((fn) => {
+      unlistenFunctions.push(fn);
     });
 
     return () => {
@@ -293,9 +337,7 @@
       if (moveDebounce) {
         clearTimeout(moveDebounce);
       }
-      if (unlistenProgress) {
-        unlistenProgress();
-      }
+      unlistenFunctions.forEach((fn) => fn());
       if (unlistenResize) {
         unlistenResize();
       }
@@ -313,7 +355,7 @@
   <!-- Global Toast Notifications -->
   <Toast />
 
-  <!-- Gale-style HeaderBar -->
+  <!-- HeaderBar -->
   <header
     style="background: var(--clr-surface); border-bottom: 1px solid var(--adw-border-color); color: var(--clr-text);"
     class="sticky top-0 z-50 flex h-14 items-center justify-between px-4 shadow-sm gap-4"
@@ -382,6 +424,17 @@
       </button>
     </div>
   </header>
+
+  {#if showUpdatePrompt}
+    <AddModpackModal
+      isVisible={true}
+      mode="update"
+      currentVersion={modpackCurrentVersion}
+      newVersion={modpackNewVersion}
+      on:close={() => (showUpdatePrompt = false)}
+      on:confirm={startModpackUpdate}
+    />
+  {/if}
 
   {#if metadataRefreshMessage}
     <div

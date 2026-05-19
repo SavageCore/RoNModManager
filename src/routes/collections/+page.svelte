@@ -1,19 +1,19 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { X } from "lucide-svelte";
-  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import {
     createCollection,
     deleteCollection,
+    getCollectionMods,
     getCollections,
     getConfig,
-    getCollectionMods,
     getInstalledModGroups,
     getProfile,
     removeModFromCollection,
     toggleCollection,
   } from "$lib/api/commands";
+  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import { toastStore } from "$lib/stores/toast";
+  import { X } from "lucide-svelte";
+  import { onMount } from "svelte";
 
   let collectionMods: Record<string, string[]> = {};
   let collections: Record<string, boolean> = {};

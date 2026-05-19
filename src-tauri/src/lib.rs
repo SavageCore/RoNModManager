@@ -23,6 +23,13 @@ pub fn run() {
         }
     }
 
+    #[cfg(debug_assertions)]
+    {
+        let _ = env_logger::builder()
+            .filter_level(log::LevelFilter::Info)
+            .is_test(false)
+            .try_init();
+    }
     let builder = tauri::Builder::default();
     #[cfg(debug_assertions)]
     let builder = builder.setup(|app| {
@@ -78,6 +85,8 @@ pub fn run() {
             mods::uninstall_archive,
             mods::update_mod_display_name,
             mods::update_mod_source_url,
+            mods::read_manifest_for_archive,
+            mods::get_modio_remote_info,
             profiles::list_profiles,
             profiles::get_profile,
             profiles::save_profile,
@@ -92,6 +101,12 @@ pub fn run() {
             window::set_window_title,
             window::save_window_state,
             window::get_window_state,
+            commands::fetch::fetch_modpack_json,
+            commands::fetch_archive::download_mod_archive,
+            commands::modio::modio_subscribe,
+            commands::modio::get_modio_subscription_status,
+            commands::fs::file_exists,
+            commands::fs::get_archive_root_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -37,7 +37,7 @@
         <svelte:component this={getIcon(toast.type)} size={20} />
       </div>
       <div class="toast-message">
-        {toast.message}
+        {@html toast.message}
       </div>
       <button
         class="toast-close"

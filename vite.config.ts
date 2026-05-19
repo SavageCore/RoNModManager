@@ -25,6 +25,7 @@ export default defineConfig({
         "**/build-dir/**",
         "**/.flatpak/**",
         "**/.flatpak-builder/**",
+        "**/test-build-dir/**",
       ],
     },
   },

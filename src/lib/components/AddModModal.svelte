@@ -1,7 +1,4 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount, onDestroy } from "svelte";
-  import { open } from "@tauri-apps/plugin-dialog";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
     addModIoMod,
     fetchNexusModInfo,
@@ -9,6 +6,9 @@
   } from "$lib/api/commands";
   import { alertStore } from "$lib/stores/alert";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { open } from "@tauri-apps/plugin-dialog";
+  import { createEventDispatcher, onDestroy, onMount } from "svelte";
 
   export let isVisible = false;
 

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import {
     detectGamePath,
     getConfig,
@@ -10,6 +9,7 @@
     uninstallMods,
   } from "$lib/api/commands";
   import { toastStore } from "$lib/stores/toast";
+  import { onMount } from "svelte";
 
   let modpackUrl = "";
   let gamePath = "";

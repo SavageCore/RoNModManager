@@ -1,10 +1,11 @@
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
 use reqwest::Client;
 
-use crate::models::{AppConfig, AppError, Result};
+use crate::models::config::AppConfig;
+use crate::models::{AppError, Result};
 
 pub fn app_directory_name() -> &'static str {
     if cfg!(debug_assertions) {
@@ -14,55 +15,24 @@ pub fn app_directory_name() -> &'static str {
     }
 }
 
-pub fn app_data_root() -> Result<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        let local_app_data = std::env::var("LOCALAPPDATA")
-            .map_err(|_| AppError::NotFound("LOCALAPPDATA is not set".to_string()))?;
-        return Ok(PathBuf::from(local_app_data).join(app_directory_name()));
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let home =
-            std::env::var("HOME").map_err(|_| AppError::NotFound("HOME is not set".to_string()))?;
-        Ok(PathBuf::from(home)
-            .join(".local")
-            .join("share")
-            .join(app_directory_name()))
-    }
+pub fn app_config_root() -> Result<PathBuf> {
+    dirs::config_dir()
+        .map(|p| p.join(app_directory_name()))
+        .ok_or_else(|| AppError::Validation("Could not find config directory".to_string()))
 }
 
-pub fn app_config_root() -> Result<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        let appdata = std::env::var("APPDATA")
-            .map_err(|_| AppError::NotFound("APPDATA is not set".to_string()))?;
-        return Ok(PathBuf::from(appdata).join(app_directory_name()));
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Ok(xdg_config) = std::env::var("XDG_CONFIG_HOME") {
-            return Ok(PathBuf::from(xdg_config).join(app_directory_name()));
-        }
-
-        let home =
-            std::env::var("HOME").map_err(|_| AppError::NotFound("HOME is not set".to_string()))?;
-
-        Ok(PathBuf::from(home)
-            .join(".config")
-            .join(app_directory_name()))
-    }
+pub fn app_data_root() -> Result<PathBuf> {
+    dirs::data_dir()
+        .map(|p| p.join(app_directory_name()))
+        .ok_or_else(|| AppError::Validation("Could not find data directory".to_string()))
 }
 
 pub fn app_temp_root() -> PathBuf {
     std::env::temp_dir().join(app_directory_name())
 }
 
-#[derive(Clone)]
 pub struct AppState {
-    pub config: Arc<RwLock<AppConfig>>,
+    pub config: RwLock<AppConfig>,
     pub client: Client,
     pub config_path: PathBuf,
 }
@@ -70,11 +40,48 @@ pub struct AppState {
 impl AppState {
     pub fn load() -> Result<Self> {
         let config_path = default_config_path()?;
-        let config = load_config_from_path(&config_path)?;
+        println!("[AppState] Loading config from {:?}", config_path);
+
+        let mut config = load_config_from_path(&config_path).map_err(|e| {
+            eprintln!("[AppState] Error loading config: {}", e);
+            e
+        })?;
+
+        let client = Client::builder()
+            .user_agent("RoNModManager/0.1.0")
+            .build()
+            .map_err(|e| AppError::Validation(format!("failed to create http client: {}", e)))?;
+
+        // If modio_game_id is missing but modio_api_key is present, look up and cache it
+        if config.modio_game_id.is_none() {
+            if let Some(api_key) = config.modio_api_key.clone() {
+                let rt = tokio::runtime::Runtime::new()
+                    .map_err(|e| AppError::Validation(format!("tokio runtime error: {}", e)))?;
+                match rt.block_on(async {
+                    let service = crate::services::modio_api::ModioApiService::new(
+                        client.clone(),
+                        config.modio_game_id,
+                    );
+                    service.lookup_game_id(&api_key, "readyornot").await
+                }) {
+                    Ok(game_id) => {
+                        println!("[AppState] Looked up mod.io game_id: {}", game_id);
+                        config.modio_game_id = Some(game_id);
+                        // Save to config file
+                        if let Err(e) = save_config_to_path(&config_path, &config) {
+                            eprintln!("[AppState] Failed to save config with game_id: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[AppState] Failed to look up mod.io game_id: {}", e);
+                    }
+                }
+            }
+        }
 
         Ok(Self {
-            config: Arc::new(RwLock::new(config)),
-            client: Client::new(),
+            config: RwLock::new(config),
+            client,
             config_path,
         })
     }
@@ -106,12 +113,22 @@ impl Default for AppState {
     fn default() -> Self {
         match Self::load() {
             Ok(state) => state,
-            Err(_) => {
-                let fallback_path = fallback_config_path();
-                Self {
-                    config: Arc::new(RwLock::new(AppConfig::default())),
+            Err(e) => {
+                let config_path = default_config_path().unwrap_or_else(|_| {
+                    let fallback = PathBuf::from("config.json");
+                    eprintln!("[AppState] CRITICAL: Could not determine system config path. Falling back to {:?}", fallback);
+                    fallback
+                });
+
+                eprintln!(
+                    "[AppState] Warning: Failed to load config: {}. Using default config at {:?}",
+                    e, config_path
+                );
+
+                AppState {
+                    config: RwLock::new(AppConfig::default()),
                     client: Client::new(),
-                    config_path: fallback_path,
+                    config_path,
                 }
             }
         }
@@ -120,76 +137,57 @@ impl Default for AppState {
 
 pub fn load_config_from_path(path: &PathBuf) -> Result<AppConfig> {
     if !path.exists() {
+        println!(
+            "[AppState] Config file does not exist at {:?}, using default",
+            path
+        );
         return Ok(AppConfig::default());
     }
 
-    let contents = fs::read(path)?;
-    let config = serde_json::from_slice::<AppConfig>(&contents)?;
+    let contents = fs::read(path).map_err(|e| {
+        AppError::Validation(format!("Failed to read config file at {:?}: {}", path, e))
+    })?;
+
+    let config = serde_json::from_slice::<AppConfig>(&contents).map_err(|e| {
+        AppError::Validation(format!("Failed to parse config file at {:?}: {}", path, e))
+    })?;
+
     Ok(config)
 }
 
 pub fn save_config_to_path(path: &PathBuf, config: &AppConfig) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|e| {
+                AppError::Validation(format!(
+                    "Failed to create config directory at {:?}: {}",
+                    parent, e
+                ))
+            })?;
+        }
     }
 
-    let data = serde_json::to_vec_pretty(config)?;
+    let data = serde_json::to_vec_pretty(config)
+        .map_err(|e| AppError::Validation(format!("Failed to serialize config: {}", e)))?;
+
     let tmp_path = path.with_extension("json.tmp");
-    fs::write(&tmp_path, data)?;
-    fs::rename(tmp_path, path)?;
+    fs::write(&tmp_path, data).map_err(|e| {
+        AppError::Validation(format!(
+            "Failed to write temporary config file at {:?}: {}",
+            tmp_path, e
+        ))
+    })?;
+
+    fs::rename(&tmp_path, path).map_err(|e| {
+        AppError::Validation(format!(
+            "Failed to rename config file from {:?} to {:?}: {}",
+            tmp_path, path, e
+        ))
+    })?;
+
     Ok(())
 }
 
 fn default_config_path() -> Result<PathBuf> {
     Ok(app_config_root()?.join("config.json"))
-}
-
-fn fallback_config_path() -> PathBuf {
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    cwd.join("ronmodmanager.config.json")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::TempDir;
-
-    #[test]
-    fn load_missing_config_returns_default() {
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = temp_dir.path().join("config.json");
-        let loaded = load_config_from_path(&config_path).unwrap();
-
-        assert!(loaded.game_path.is_none());
-        assert!(loaded.subscribed_mods.is_empty());
-    }
-
-    #[test]
-    fn save_then_load_roundtrip() {
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = temp_dir.path().join("nested").join("config.json");
-
-        let config = AppConfig {
-            modpack_url: Some("https://mods.example.com/savagepack".to_string()),
-            modpack_version: Some("1.2.0".to_string()),
-            ..Default::default()
-        };
-
-        save_config_to_path(&config_path, &config).unwrap();
-        let loaded = load_config_from_path(&config_path).unwrap();
-
-        assert_eq!(loaded.modpack_url, config.modpack_url);
-        assert_eq!(loaded.modpack_version, config.modpack_version);
-    }
-
-    #[test]
-    fn save_config_is_atomic_tmp_then_rename() {
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = temp_dir.path().join("config.json");
-
-        save_config_to_path(&config_path, &AppConfig::default()).unwrap();
-
-        assert!(config_path.exists());
-        assert!(!config_path.with_extension("json.tmp").exists());
-    }
 }

@@ -1,4 +1,26 @@
+// Read manifest for a given archive name (calls Tauri backend)
+export const readManifestForArchive = (archiveName: string) =>
+  invoke<any>("read_manifest_for_archive", { archiveName: archiveName });
+// Get subscription status for a mod.io mod
+export const getModioSubscriptionStatus = (args: {
+  mod_id: string;
+  oauth_token: string;
+}) => invoke<string>("get_modio_subscription_status", { args });
+// Subscribe to a mod.io mod by mod ID and OAuth token
+export const modioSubscribe = (args: { mod_id: string; oauth_token: string }) =>
+  invoke<string>("modio_subscribe", { args });
+// Download a mod archive from a URL to the local archives folder
+export const downloadModArchive = (url: string, filename: string) =>
+  invoke<void>("download_mod_archive", { url, filename });
+// Fetch modpack JSON via Tauri backend to avoid CORS
+export const fetchModpackJson = (url: string) =>
+  invoke<any>("fetch_modpack_json", { url });
+// Check if a file exists
+export const fileExists = (path: string) =>
+  invoke<boolean>("file_exists", { path });
 import { invoke } from "@tauri-apps/api/core";
+// Get the archive root path from backend
+export const getArchiveRootPath = () => invoke<string>("get_archive_root_path");
 import type {
   AppConfig,
   Collection,
@@ -31,8 +53,8 @@ export const getModpackCollections = () =>
   invoke<Record<string, Collection>>("get_modpack_collections");
 export const buildModpackFromInstalled = () =>
   invoke<ModPack>("build_modpack_from_installed");
-export const exportModpackToFile = (modpack: ModPack, path: string) =>
-  invoke<void>("export_modpack_to_file", { modpack, path });
+export const exportModpackToFile = (modpack: ModPack, dirPath: string) =>
+  invoke<void>("export_modpack_to_file", { modpack, dirPath });
 
 export const getCollections = () =>
   invoke<Record<string, boolean>>("get_collections");
@@ -77,6 +99,12 @@ export const fetchNexusModInfo = (input: string) =>
     summary: string | null;
     modUrl: string;
   }>("fetch_nexus_mod_info", { input });
+export interface ModioRemoteInfo {
+  remote_md5: string | null;
+  archive_name: string;
+}
+export const fetchModioRemoteInfo = (input: string): Promise<ModioRemoteInfo> =>
+  invoke<ModioRemoteInfo>("get_modio_remote_info", { input });
 export const refreshModMetadata = () =>
   invoke<{
     checked: number;
@@ -87,8 +115,10 @@ export const refreshModMetadata = () =>
 
 export const updateConfig = (updates: {
   nexus_api_key?: string | null;
-  enabled_collections?: string[];
+  modio_api_key?: string | null;
   active_profile?: string | null;
+  modpack_url?: string | null;
+  modpack_version?: string | null;
 }) => invoke<void>("update_config", { updates });
 
 export const verifyNexusApiKey = (apiKey: string) =>
