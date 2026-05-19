@@ -234,14 +234,6 @@
             </span>
           </div>
 
-          <div class="mb-3">
-            <p style="color: var(--clr-text-secondary);" class="text-sm">
-              Enabled mods: {profile.installed_mod_names.length > 0
-                ? profile.installed_mod_names.join(", ")
-                : "None"}
-            </p>
-          </div>
-
           <div class="flex gap-2">
             <button
               on:click={() => handleApply(profile.name)}
