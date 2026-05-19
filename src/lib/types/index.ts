@@ -52,6 +52,7 @@ export interface ModInfo {
   source: ModSource;
   status: ModStatus;
   filename: string;
+  addOns?: InstalledModFile[]; // Add-on files associated with this mod
 }
 
 export interface InstalledModFile {
@@ -67,6 +68,7 @@ export interface InstalledModGroup {
   managedByManifest: boolean;
   installedAt: number | null;
   files: InstalledModFile[];
+  addonFiles?: InstalledModFile[]; // Add-on files for this mod group
 }
 
 export interface ModProgressEvent {

@@ -20,12 +20,47 @@
   } from "$lib/api/commands";
   import AddModModal from "$lib/components/AddModModal.svelte";
   import AddModpackModal from "$lib/components/AddModpackModal.svelte";
+  import ManageAddOnsModal from "$lib/components/ManageAddOnsModal.svelte";
+  let showAddOnsModal = false;
+  let selectedModName = "";
+  let selectedAddOns: InstalledModFile[] = [];
+  function openAddOnsModal(modName: string) {
+    selectedModName = modName;
+    selectedAddOns = getAddOnsForMod(modName);
+    showAddOnsModal = true;
+  }
+
+  function closeAddOnsModal() {
+    showAddOnsModal = false;
+    selectedModName = "";
+    selectedAddOns = [];
+    refresh();
+  }
+
+  function handleAddAddOns(event: CustomEvent) {
+    const files = event.detail.files || [];
+    const newAddOns = files.map((f: any) => ({
+      name: typeof f === "string" ? f.split(/[\\/]/).pop() : f.name,
+      path: typeof f === "string" ? f : f.path || f.name,
+      exists: true,
+    }));
+    selectedAddOns = [...selectedAddOns, ...newAddOns];
+    setAddOnsForMod(selectedModName, selectedAddOns);
+  }
+
+  function handleRemoveAddOn(event: CustomEvent) {
+    const idx = event.detail.index;
+    if (idx >= 0) {
+      selectedAddOns = selectedAddOns.slice(0, idx).concat(selectedAddOns.slice(idx + 1));
+      setAddOnsForMod(selectedModName, selectedAddOns);
+    }
+  }
   import CollectionPickerModal from "$lib/components/CollectionPickerModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { toastStore } from "$lib/stores/toast";
-  import type { InstalledModGroup, Profile } from "$lib/types";
+  import type { InstalledModGroup, InstalledModFile, Profile } from "$lib/types";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import {
@@ -38,7 +73,24 @@
   } from "lucide-svelte";
   import { onMount } from "svelte";
 
-  let modGroups: InstalledModGroup[] = [];
+  let modGroups: (InstalledModGroup & { addonFiles?: InstalledModFile[] })[] = [];
+  // Add-on persistence helpers
+  function getAddOnsForMod(modName: string): InstalledModFile[] {
+    if (typeof window === "undefined") return [];
+    const raw = localStorage.getItem(`modAddOns:${modName}`);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  function setAddOnsForMod(modName: string, addOns: InstalledModFile[]) {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(`modAddOns:${modName}`,
+      JSON.stringify(addOns || []));
+  }
   let modSearch = "";
   let modSourceFilter: "all" | "nexus" | "modio" = "all";
   let modsForActiveProfile: string[] = [];
@@ -246,7 +298,11 @@
         pendingIncludeNewModsForActiveProfile = false;
       }
 
-      modGroups = sortModGroups(groups);
+      // Attach add-ons to each group
+      modGroups = sortModGroups(groups).map((g) => ({
+        ...g,
+        addonFiles: getAddOnsForMod(g.name),
+      }));
       hasGamePath = config.game_path != null;
       profiles = await ensureDefaultProfile(profileList);
       expandedGroups = Object.fromEntries(
@@ -968,9 +1024,10 @@
                   </div>
                 {/if}
                 <p style="color: var(--clr-text-secondary);" class="text-xs">
-                  {group.files.length} installed file{group.files.length === 1
-                    ? ""
-                    : "s"}
+                  {group.files.length + (group.addonFiles?.length || 0)} installed file{(group.files.length + (group.addonFiles?.length || 0)) === 1 ? "" : "s"}
+                  {#if group.addonFiles?.length}
+                    <span style="color: var(--clr-primary-300);"> (+{group.addonFiles.length} add-on)</span>
+                  {/if}
                 </p>
               </div>
             </button>
@@ -1063,8 +1120,15 @@
                   >
                     Edit Link
                   </button>
-                {/if}
-              </div>
+                  <button
+                    class="btn btn-sm flex-shrink-0"
+                    on:click={() => openAddOnsModal(group.name)}
+                    title="Manage add-ons for this mod"
+                  >
+                    Manage Add-ons
+                  </button>
+              {/if}
+            </div>
 
               {#each group.files as file (file.path)}
                 <div class="flex items-center justify-between gap-3 text-xs">
@@ -1089,12 +1153,48 @@
                   </span>
                 </div>
               {/each}
+              {#if group.addonFiles?.length}
+                <div class="mt-2 text-xs font-semibold" style="color: var(--clr-primary-300);">Add-ons:</div>
+                {#each group.addonFiles as file (file.path)}
+                  <div class="flex items-center justify-between gap-3 text-xs">
+                    <button
+                      style="color: var(--clr-text);"
+                      class="truncate text-left hover:underline"
+                      title={file.path}
+                      on:click={() => {
+                        void openInstalledFile(file.path, file.exists);
+                      }}
+                    >
+                      {file.name}
+                    </button>
+                    <span
+                      style="color: {file.exists
+                        ? 'var(--clr-success-300)'
+                        : 'var(--clr-danger-300)'};"
+                      class="flex-shrink-0"
+                      title={file.path}
+                    >
+                      {file.exists ? "installed" : "missing"}
+                    </span>
+                  </div>
+                {/each}
+              {/if}
             </div>
           {/if}
         </li>
       {/each}
     </ul>
   {/if}
+
+<ManageAddOnsModal
+  isVisible={showAddOnsModal}
+  modName={selectedModName}
+  addOns={selectedAddOns}
+  on:close={closeAddOnsModal}
+  on:addAddOns={handleAddAddOns}
+  on:removeAddOn={handleRemoveAddOn}
+/>
+
 </div>
 
 <style>

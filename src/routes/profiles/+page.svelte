@@ -1,10 +1,15 @@
 <script lang="ts">
   import * as commands from "$lib/api/commands";
   import { toastStore } from "$lib/stores/toast";
-  import type { Profile } from "$lib/types";
+  import type { Profile, InstalledModFile } from "$lib/types";
   import { onMount } from "svelte";
+  // import ManageAddOnsModal from "$lib/components/ManageAddOnsModal.svelte";
+  // import { goto } from "$app/navigation";
 
   let profiles: Profile[] = [];
+  let showAddOnsModal = false;
+  let selectedModName = "";
+  let selectedAddOns: InstalledModFile[] = [];
   let loading = false;
   let error: string | null = null;
   let showForm = false;
@@ -250,9 +255,11 @@
             >
               Delete
             </button>
+            <!-- Manage Add-ons button removed: add-ons are managed per-mod, not per-profile -->
           </div>
         </div>
       {/each}
+      <!-- ManageAddOnsModal removed: add-ons are managed per-mod, not per-profile -->
     {/if}
   </div>
 </div>
