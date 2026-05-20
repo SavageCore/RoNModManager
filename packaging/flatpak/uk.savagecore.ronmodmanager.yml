@@ -34,5 +34,8 @@ modules:
       - type: dir
         path: ../../src-tauri/vendor
         dest: src-tauri/vendor
+      - type: file
+        path: ../../src-tauri/.cargo/config.toml
+        dest: src-tauri/.cargo
       - type: dir
         path: ../..
