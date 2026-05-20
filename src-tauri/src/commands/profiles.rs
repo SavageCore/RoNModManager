@@ -60,6 +60,7 @@ pub async fn save_profile(
     if let Some(existing) = services::profiles::get_profile(&profile.name)? {
         profile.enabled_collections = existing.enabled_collections;
         profile.collections = existing.collections;
+        profile.tags = existing.tags;
     }
     if let Some(desc) = description {
         profile = profile.with_description(desc);
