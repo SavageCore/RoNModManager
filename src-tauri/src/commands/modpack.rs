@@ -145,6 +145,13 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
         }
     }
 
+    let mut tags: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (tag_name, mod_archives) in &profile.tags {
+        let mut sorted = mod_archives.clone();
+        sorted.sort_by_key(|a| a.to_lowercase());
+        tags.insert(tag_name.clone(), sorted);
+    }
+
     Ok(ModPack {
         schema_version: 1,
         name: format!("{} ModPack", active_profile_name),
@@ -155,6 +162,7 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
         mods,
         collections,
         addons,
+        tags,
     })
 }
 

@@ -12,6 +12,8 @@
     launchGameWithGroups,
     listProfiles,
     saveProfile,
+    setModTags,
+    deleteTag,
     syncModLinks,
     uninstallArchive,
     uninstallMod,
@@ -133,6 +135,7 @@
     }
   }
   import CollectionPickerModal from "$lib/components/CollectionPickerModal.svelte";
+  import TagPickerModal from "$lib/components/TagPickerModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
@@ -148,9 +151,11 @@
   import {
     ExternalLink,
     Globe,
+    Layers,
     Link as LinkIcon,
     Pencil,
     Plus,
+    Tag,
     Trash2,
   } from "lucide-svelte";
   import { onMount } from "svelte";
@@ -214,6 +219,13 @@
   let activeCollectionNames: string[] = [];
   let activeProfileCollections: Record<string, string[]> = {};
 
+  let showTagPickerModal = false;
+  let tagPickerModName = "";
+  let tagPickerModLabel = "";
+  let activeProfileTags: Record<string, string[]> = {};
+  let allTagNames: string[] = [];
+  let activeTagFilters = new Set<string>();
+
   function extractModIoInputFromDroppedText(raw: string): string | null {
     const candidates = raw
       .split(/\r?\n/)
@@ -251,13 +263,26 @@
     const source = getModSource(group.sourceUrl);
     const matchesSource =
       modSourceFilter === "all" || source === modSourceFilter;
-    return matchesSearch && matchesSource;
+    const matchesTags =
+      activeTagFilters.size === 0 ||
+      (modToTagsMap[group.name] ?? []).some((t) => activeTagFilters.has(t));
+    return matchesSearch && matchesSource && matchesTags;
   });
 
   $: modToCollectionsMap = Object.entries(activeProfileCollections).reduce(
     (acc, [colName, mods]) => {
       for (const mod of mods) {
         (acc[mod] ??= []).push(colName);
+      }
+      return acc;
+    },
+    {} as Record<string, string[]>,
+  );
+
+  $: modToTagsMap = Object.entries(activeProfileTags).reduce(
+    (acc, [tagName, mods]) => {
+      for (const mod of mods) {
+        (acc[mod] ??= []).push(tagName);
       }
       return acc;
     },
@@ -366,11 +391,19 @@
           modsForActiveProfile = [...activeProfile.installed_mod_names];
           activeProfileCollections = activeProfile.collections ?? {};
           activeCollectionNames = Object.keys(activeProfileCollections);
+          activeProfileTags = activeProfile.tags ?? {};
+          allTagNames = Object.keys(activeProfileTags).sort((a, b) =>
+            a.localeCompare(b),
+          );
         } else {
           activeCollectionNames = [];
+          activeProfileTags = {};
+          allTagNames = [];
         }
       } else {
         activeCollectionNames = [];
+        activeProfileTags = {};
+        allTagNames = [];
       }
 
       if (activeProfileName && pendingIncludeNewModsForActiveProfile) {
@@ -574,6 +607,36 @@
       await refresh();
     } catch (error) {
       toastStore.error(`Failed to update collection: ${String(error)}`);
+    }
+  }
+
+  function openTagPicker(modName: string, modLabel: string) {
+    if (!activeProfileName) {
+      toastStore.error("Select an active profile first.");
+      return;
+    }
+    tagPickerModName = modName;
+    tagPickerModLabel = modLabel;
+    showTagPickerModal = true;
+  }
+
+  async function handleTagSubmit(
+    event: CustomEvent<{ modName: string; selectedTags: string[] }>,
+  ) {
+    try {
+      await setModTags(event.detail.modName, event.detail.selectedTags);
+      await refresh();
+    } catch (error) {
+      toastStore.error(`Failed to update tags: ${String(error)}`);
+    }
+  }
+
+  async function handleTagDelete(event: CustomEvent<{ tagName: string }>) {
+    try {
+      await deleteTag(event.detail.tagName);
+      await refresh();
+    } catch (error) {
+      toastStore.error(`Failed to delete tag: ${String(error)}`);
     }
   }
 
@@ -941,6 +1004,21 @@
   }}
 />
 
+<TagPickerModal
+  isVisible={showTagPickerModal}
+  modName={tagPickerModName}
+  modLabel={tagPickerModLabel || tagPickerModName}
+  allTags={allTagNames}
+  currentTags={modToTagsMap[tagPickerModName] ?? []}
+  on:close={() => {
+    showTagPickerModal = false;
+    tagPickerModName = "";
+    tagPickerModLabel = "";
+  }}
+  on:submit={handleTagSubmit}
+  on:deleteTag={handleTagDelete}
+/>
+
 <!-- Filter Controls -->
 <div class="flex flex-col sm:flex-row gap-2 mb-4 items-center">
   <input
@@ -961,6 +1039,48 @@
     <option value="nexus">Nexus</option>
   </select>
 </div>
+
+{#if allTagNames.length > 0}
+  <div class="flex flex-wrap items-center gap-1.5 mb-3">
+    <span
+      style="color: var(--clr-text-secondary);"
+      class="text-xs flex items-center gap-1 mr-1"
+    >
+      <Tag size={12} />
+      Filter by tag:
+    </span>
+    {#each allTagNames as tagName (tagName)}
+      <button
+        on:click={() => {
+          if (activeTagFilters.has(tagName)) {
+            activeTagFilters.delete(tagName);
+          } else {
+            activeTagFilters.add(tagName);
+          }
+          activeTagFilters = activeTagFilters;
+        }}
+        style={activeTagFilters.has(tagName)
+          ? "background: color-mix(in srgb, var(--clr-success-300) 20%, transparent); border-color: var(--clr-success-300); color: var(--clr-success-300);"
+          : "border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
+        class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs cursor-pointer"
+      >
+        <Tag size={10} />
+        {tagName}
+      </button>
+    {/each}
+    {#if activeTagFilters.size > 0}
+      <button
+        on:click={() => {
+          activeTagFilters = new Set();
+        }}
+        style="color: var(--clr-text-secondary);"
+        class="text-xs underline ml-1 cursor-pointer"
+      >
+        Clear
+      </button>
+    {/if}
+  </div>
+{/if}
 
 <!-- Gale-style Mod List -->
 <div
@@ -1059,12 +1179,17 @@
             const menu = await Menu.new({
               items: [
                 await MenuItem.new({
-                  text: "Add to collection",
+                  text: "Manage collection",
                   action: () =>
                     openCollectionPicker(
                       group.name,
                       group.displayName || group.name,
                     ),
+                }),
+                await MenuItem.new({
+                  text: "Manage tags",
+                  action: () =>
+                    openTagPicker(group.name, group.displayName || group.name),
                 }),
               ],
             });
@@ -1158,14 +1283,24 @@
             </button>
 
             <div class="flex items-center gap-2">
-              {#if (modToCollectionsMap[group.name] ?? []).length > 0}
+              {#if (modToCollectionsMap[group.name] ?? []).length > 0 || (modToTagsMap[group.name] ?? []).length > 0}
                 <div class="flex items-center gap-1 flex-wrap">
-                  {#each modToCollectionsMap[group.name] as col (col)}
+                  {#each modToCollectionsMap[group.name] ?? [] as col (col)}
                     <span
                       style="background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text-secondary);"
-                      class="inline-flex items-center rounded border px-1.5 py-0.5 text-xs leading-none"
+                      class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none"
                     >
+                      <Layers size={10} />
                       {col}
+                    </span>
+                  {/each}
+                  {#each modToTagsMap[group.name] ?? [] as tag (tag)}
+                    <span
+                      style="background: color-mix(in srgb, var(--clr-success-300) 12%, transparent); border-color: var(--clr-success-300); color: var(--clr-success-300);"
+                      class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none"
+                    >
+                      <Tag size={10} />
+                      {tag}
                     </span>
                   {/each}
                 </div>

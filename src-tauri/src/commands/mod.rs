@@ -10,6 +10,7 @@ pub mod modpack;
 pub mod mods;
 pub mod profiles;
 pub mod sharing;
+pub mod tags;
 pub mod updater;
 pub mod window;
 pub use fs::get_archive_root_path;

@@ -99,6 +99,7 @@ export interface Profile {
   installed_mod_names: string[];
   enabled_collections: string[];
   collections: Record<string, string[]>;
+  tags: Record<string, string[]>;
   created_at: string;
 }
 
