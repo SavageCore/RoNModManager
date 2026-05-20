@@ -17,15 +17,130 @@
     uninstallMods,
     updateModDisplayName,
     updateModSourceUrl,
+    getAddonMap,
+    setAddonMap,
   } from "$lib/api/commands";
   import AddModModal from "$lib/components/AddModModal.svelte";
   import AddModpackModal from "$lib/components/AddModpackModal.svelte";
+  import ManageAddOnsModal from "$lib/components/ManageAddOnsModal.svelte";
+  let showAddOnsModal = false;
+  let selectedModName = "";
+  let selectedAddOns: InstalledModFile[] = [];
+  let addonMap: Record<string, string[]> = {};
+  function openAddOnsModal(modName: string) {
+    selectedModName = modName;
+    selectedAddOns = getAddOnsForMod(modName);
+    showAddOnsModal = true;
+  }
+
+  function closeAddOnsModal() {
+    showAddOnsModal = false;
+    selectedModName = "";
+    selectedAddOns = [];
+    refresh();
+  }
+
+  async function handleAddAddOns(event: CustomEvent) {
+    const files = event.detail.files || [];
+    const newAddOns = files.map((f: any) => ({
+      name: typeof f === "string" ? f.split(/[\\/]/).pop() : f.name,
+      path: typeof f === "string" ? f : f.path || f.name,
+      exists: true,
+    }));
+
+    // Install add-on files
+    for (const addOn of newAddOns) {
+      try {
+        await installLocalMod(addOn.path);
+        toastStore.success(`Installed add-on: ${addOn.name}`);
+      } catch (e) {
+        toastStore.error(`Failed to install add-on: ${addOn.name}`);
+      }
+    }
+
+    // Link the new addon archives to the parent in the addon_map
+    const newArchiveNames = newAddOns.map((a: { name: string }) => a.name);
+    addonMap[selectedModName] = [
+      ...new Set([...(addonMap[selectedModName] ?? []), ...newArchiveNames]),
+    ];
+    await setAddonMap(addonMap);
+
+    // Refresh — backend repopulates addonFiles and modsForActiveProfile is
+    // reloaded from disk (installLocalMod added each addon to the profile).
+    await refresh();
+    selectedAddOns = getAddOnsForMod(selectedModName);
+
+    // installLocalMod adds each addon to the active profile directly, but addons
+    // must only be linked via their parent. Strip all known addon archives from
+    // the profile now that addonMap is fresh (set by refresh()).
+    const allAddonArchives = new Set(Object.values(addonMap).flat());
+    const cleanedProfile = modsForActiveProfile.filter(
+      (n) => !allAddonArchives.has(n),
+    );
+    if (cleanedProfile.length !== modsForActiveProfile.length) {
+      await persistActiveProfileEnabledGroups(cleanedProfile);
+      modsForActiveProfile = cleanedProfile;
+    }
+
+    // Sync: creates addon symlinks only if the parent is enabled.
+    if (hasGamePath) {
+      await syncModLinks(getFullSyncList(modsForActiveProfile));
+    }
+  }
+
+  async function handleRemoveAddOn(event: CustomEvent) {
+    const idx = event.detail.index;
+    if (idx < 0) return;
+
+    const removedAddOn = selectedAddOns[idx];
+    selectedAddOns = selectedAddOns
+      .slice(0, idx)
+      .concat(selectedAddOns.slice(idx + 1));
+
+    // Update addon_map: remove by archive name if available, else by file name
+    const archiveName = removedAddOn?.archiveName;
+    if (archiveName) {
+      const updated = (addonMap[selectedModName] ?? []).filter(
+        (n) => n !== archiveName,
+      );
+      if (updated.length === 0) {
+        delete addonMap[selectedModName];
+      } else {
+        addonMap[selectedModName] = updated;
+      }
+      await setAddonMap(addonMap);
+      try {
+        await uninstallArchive(archiveName);
+        toastStore.success(`Removed add-on: ${removedAddOn.name}`);
+      } catch (e) {
+        toastStore.error(`Failed to remove add-on: ${removedAddOn.name}`);
+      }
+    } else if (removedAddOn) {
+      try {
+        await uninstallMod(removedAddOn.name);
+        toastStore.success(`Removed add-on: ${removedAddOn.name}`);
+      } catch (e) {
+        toastStore.error(`Failed to remove add-on: ${removedAddOn.name}`);
+      }
+    }
+
+    await refresh();
+    selectedAddOns = getAddOnsForMod(selectedModName);
+
+    if (hasGamePath) {
+      await syncModLinks(getFullSyncList(modsForActiveProfile));
+    }
+  }
   import CollectionPickerModal from "$lib/components/CollectionPickerModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { toastStore } from "$lib/stores/toast";
-  import type { InstalledModGroup, Profile } from "$lib/types";
+  import type {
+    InstalledModGroup,
+    InstalledModFile,
+    Profile,
+  } from "$lib/types";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import {
@@ -38,7 +153,26 @@
   } from "lucide-svelte";
   import { onMount } from "svelte";
 
-  let modGroups: InstalledModGroup[] = [];
+  let modGroups: (InstalledModGroup & { addonFiles?: InstalledModFile[] })[] =
+    [];
+  // Add-on helpers
+  function getAddOnsForMod(modName: string): InstalledModFile[] {
+    return modGroups.find((g) => g.name === modName)?.addonFiles ?? [];
+  }
+
+  // Returns enabled archive names plus addon archive names for each enabled mod,
+  // so syncModLinks also creates/removes addon symlinks correctly.
+  function getFullSyncList(enabledGroups: string[]): string[] {
+    const enabled = new Set(enabledGroups);
+    const addonArchives = modGroups
+      .filter((g) => enabled.has(g.name))
+      .flatMap((g) =>
+        (g.addonFiles ?? [])
+          .map((f) => f.archiveName)
+          .filter((n): n is string => !!n),
+      );
+    return [...new Set([...enabledGroups, ...addonArchives])];
+  }
   let modSearch = "";
   let modSourceFilter: "all" | "nexus" | "modio" = "all";
   let modsForActiveProfile: string[] = [];
@@ -103,14 +237,14 @@
   }
 
   // Filtering logic for modGroups
+  // Filter out add-on files that are tracked as standalone mods
+
   $: filteredModGroups = modGroups.filter((group) => {
-    // Filter by search
     const search = modSearch.trim().toLowerCase();
     const name = group.name.toLowerCase();
     const displayName = (group.displayName || "").toLowerCase();
     const matchesSearch =
       !search || name.includes(search) || displayName.includes(search);
-    // Filter by source
     const source = getModSource(group.sourceUrl);
     const matchesSource =
       modSourceFilter === "all" || source === modSourceFilter;
@@ -197,10 +331,11 @@
 
   async function refresh() {
     try {
-      const [groups, config, profileList] = await Promise.all([
+      const [groups, config, profileList, map] = await Promise.all([
         getInstalledModGroups(),
         getConfig(),
         listProfiles().catch(() => []),
+        getAddonMap(),
       ]);
 
       const previousGroupNames = new Set(allInstalledGroupNames);
@@ -246,6 +381,10 @@
         pendingIncludeNewModsForActiveProfile = false;
       }
 
+      // Update add-on map
+      addonMap = map;
+
+      // Backend already filters addon groups and populates addonFiles on parents
       modGroups = sortModGroups(groups);
       hasGamePath = config.game_path != null;
       profiles = await ensureDefaultProfile(profileList);
@@ -255,9 +394,6 @@
           expandedGroups[group.name] ?? false,
         ]),
       );
-
-      // Note: With independent mod lists per profile, toggle state is no longer needed
-      // Mods either belong to the active profile or they don't
 
       if (!profiles.some((profile) => profile.name === selectedProfile)) {
         selectedProfile = DEFAULT_PROFILE_NAME;
@@ -302,7 +438,7 @@
 
       if (hasGamePath) {
         const enabledGroups = [...profile.installed_mod_names];
-        await syncModLinks(enabledGroups);
+        await syncModLinks(getFullSyncList(enabledGroups));
       }
 
       toastStore.success(`Applied profile: ${selectedProfile}`);
@@ -350,6 +486,9 @@
 
       // Toggle membership in profile's installed_mod_names
       const currentMods = new Set(activeProfile.installed_mod_names);
+      const group = modGroups.find((g) => g.name === name);
+      const addOns = group?.addonFiles || [];
+
       if (currentMods.has(name)) {
         currentMods.delete(name);
       } else {
@@ -362,9 +501,9 @@
       await persistActiveProfileEnabledGroups(enabledGroups);
       modsForActiveProfile = enabledGroups;
 
-      // Sync game links if game path is configured
+      // Sync game links — includes addon archives for all enabled mods
       if (hasGamePath) {
-        await syncModLinks(enabledGroups);
+        await syncModLinks(getFullSyncList(enabledGroups));
       }
     } catch (error) {
       toastStore.error(`Failed to update active mods: ${String(error)}`);
@@ -422,7 +561,7 @@
 
       await refresh();
       if (hasGamePath) {
-        await syncModLinks(modsForActiveProfile);
+        await syncModLinks(getFullSyncList(modsForActiveProfile));
       }
     } catch (error) {
       toastStore.error(`Failed to uninstall: ${String(error)}`);
@@ -451,7 +590,7 @@
           toastStore.success(`Uninstalled: ${group.name}`);
           await refresh();
           if (hasGamePath) {
-            await syncModLinks(modsForActiveProfile);
+            await syncModLinks(getFullSyncList(modsForActiveProfile));
           }
         } catch (error) {
           toastStore.error(
@@ -501,7 +640,7 @@
       await persistActiveProfileEnabledGroups(enabledGroups);
       modsForActiveProfile = enabledGroups;
       if (hasGamePath) {
-        await syncModLinks(enabledGroups);
+        await syncModLinks(getFullSyncList(enabledGroups));
       }
       toastStore.success(allEnabled ? "Disabled all mods" : "Enabled all mods");
     } catch (error) {
@@ -968,9 +1107,16 @@
                   </div>
                 {/if}
                 <p style="color: var(--clr-text-secondary);" class="text-xs">
-                  {group.files.length} installed file{group.files.length === 1
+                  {group.files.length + (group.addonFiles?.length || 0)} installed
+                  file{group.files.length + (group.addonFiles?.length || 0) ===
+                  1
                     ? ""
                     : "s"}
+                  {#if group.addonFiles?.length}
+                    <span style="color: var(--clr-primary-300);">
+                      (+{group.addonFiles.length} add-on)</span
+                    >
+                  {/if}
                 </p>
               </div>
             </button>
@@ -1063,6 +1209,13 @@
                   >
                     Edit Link
                   </button>
+                  <button
+                    class="btn btn-sm flex-shrink-0"
+                    on:click={() => openAddOnsModal(group.name)}
+                    title="Manage add-ons for this mod"
+                  >
+                    Manage Add-ons
+                  </button>
                 {/if}
               </div>
 
@@ -1089,12 +1242,54 @@
                   </span>
                 </div>
               {/each}
+              {#if group.addonFiles?.length}
+                <div
+                  class="mt-2 text-xs font-semibold"
+                  style="color: var(--clr-primary-300);"
+                >
+                  Add-ons:
+                </div>
+                {#each group.addonFiles as file (file.path)}
+                  <div class="flex items-center justify-between gap-3 text-xs">
+                    <button
+                      style="color: var(--clr-text);"
+                      class="truncate text-left hover:underline"
+                      title={file.path}
+                      on:click={() => {
+                        void openInstalledFile(file.path, file.exists);
+                      }}
+                    >
+                      {file.name}
+                    </button>
+                    <span
+                      style="color: {file.exists
+                        ? 'var(--clr-success-300)'
+                        : 'var(--clr-danger-300)'};"
+                      class="flex-shrink-0"
+                      title={file.path}
+                    >
+                      {file.exists ? "installed" : "missing"}
+                    </span>
+                  </div>
+                {/each}
+              {/if}
             </div>
           {/if}
         </li>
       {/each}
     </ul>
   {/if}
+
+  <ManageAddOnsModal
+    isVisible={showAddOnsModal}
+    modName={selectedModName}
+    displayName={modGroups.find((g) => g.name === selectedModName)
+      ?.displayName || selectedModName}
+    addOns={selectedAddOns}
+    on:close={closeAddOnsModal}
+    on:addAddOns={handleAddAddOns}
+    on:removeAddOn={handleRemoveAddOn}
+  />
 </div>
 
 <style>

@@ -1,3 +1,4 @@
+pub mod addon_map;
 pub mod config_tweaks;
 pub mod downloader;
 pub mod hasher;

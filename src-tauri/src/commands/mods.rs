@@ -1,3 +1,4 @@
+use tauri::State;
 #[derive(Debug, Serialize)]
 pub struct ModioRemoteMd5Result {
     pub remote_md5: Option<String>,
@@ -54,8 +55,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use serde::Serialize; // This line is kept as it is needed
+use tauri::{AppHandle, Emitter}; // Removed duplicate State import
 
 use super::game;
 use crate::models::{
@@ -475,6 +476,23 @@ pub async fn install_mods(
     }
 
     let _ = app.emit("install_progress", &ProgressEvent::new_complete());
+
+    // Merge addon relationships from the modpack into the local addon_map
+    if let Ok(pack) = modpack_service::fetch_modpack(&state.client, &modpack_url).await {
+        if !pack.addons.is_empty() {
+            let mut local_map = addon_map::read_addon_map().unwrap_or_default();
+            for (parent, addon_archives) in pack.addons {
+                let entry = local_map.entry(parent).or_default();
+                for a in addon_archives {
+                    if !entry.contains(&a) {
+                        entry.push(a);
+                    }
+                }
+            }
+            let _ = addon_map::write_addon_map(&local_map);
+        }
+    }
+
     Ok(())
 }
 
@@ -788,6 +806,39 @@ pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String)
     let mods_path = steam::get_mods_path(&game_path);
     let staging_root = get_staging_root()?;
     let manager = manifest::ManifestManager::new(&staging_root);
+    let archives_root = get_archives_root()?;
+
+    // Cascade-delete any addon archives linked to this parent
+    let mut addon_map_data = addon_map::read_addon_map().unwrap_or_default();
+    if let Some(addon_archives) = addon_map_data.remove(&archive_name) {
+        for addon_archive in &addon_archives {
+            remove_mod_from_active_profile(&state, addon_archive).ok();
+            if let Ok(Some(addon_manifest)) = manager.load_manifest(addon_archive) {
+                for file_path in &addon_manifest.installed_files {
+                    if file_path.exists() && fs::remove_file(file_path).is_ok() {
+                        cleanup_empty_install_dirs(file_path, &staging_root, &mods_path);
+                    }
+                }
+            }
+            cleanup_mod_staging_directories(addon_archive, &staging_root);
+            let _ = manager.delete_manifest(addon_archive);
+            let addon_archive_path = archives_root.join(addon_archive);
+            if addon_archive_path.exists() {
+                let _ = fs::remove_file(addon_archive_path);
+            }
+        }
+        // Also remove the parent from any other addon_map entry where it appears as an addon
+        for entry in addon_map_data.values_mut() {
+            entry.retain(|a| a != &archive_name);
+        }
+        let _ = addon_map::write_addon_map(&addon_map_data);
+    } else {
+        // Not a parent — still clean up: remove it from any entry where it appears as an addon
+        for entry in addon_map_data.values_mut() {
+            entry.retain(|a| a != &archive_name);
+        }
+        let _ = addon_map::write_addon_map(&addon_map_data);
+    }
 
     remove_mod_from_active_profile(&state, &archive_name)?;
     if is_mod_used_by_any_profile(&archive_name)? {
@@ -805,8 +856,6 @@ pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String)
     cleanup_mod_staging_directories(&archive_name, &staging_root);
     manager.delete_manifest(&archive_name)?;
 
-    // Delete the archive if it exists
-    let archives_root = get_archives_root()?;
     let archive_path = archives_root.join(&archive_name);
     if archive_path.exists() {
         let _ = fs::remove_file(archive_path);
@@ -933,6 +982,7 @@ pub async fn get_installed_mod_groups(
                     name,
                     path: path.to_string_lossy().to_string(),
                     exists: path.exists(),
+                    archive_name: None,
                 }
             })
             .collect();
@@ -944,6 +994,7 @@ pub async fn get_installed_mod_groups(
             managed_by_manifest: true,
             installed_at: Some(manifest_data.installed_at),
             files,
+            addon_files: Vec::new(),
         });
     }
 
@@ -980,13 +1031,44 @@ pub async fn get_installed_mod_groups(
                     name: file_name,
                     path: path.to_string_lossy().to_string(),
                     exists: path.exists(),
+                    archive_name: None,
                 }],
+                addon_files: Vec::new(),
             });
         }
     }
 
-    groups.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(groups)
+    // Apply addon relationships: filter addon groups from the top-level list
+    // and attach their files to their parent group's addon_files.
+    let addon_map_data = addon_map::read_addon_map().unwrap_or_default();
+    let addon_archive_set: HashSet<String> = addon_map_data.values().flatten().cloned().collect();
+
+    let groups_by_name: std::collections::HashMap<String, InstalledModGroup> =
+        groups.into_iter().map(|g| (g.name.clone(), g)).collect();
+
+    let mut result: Vec<InstalledModGroup> = groups_by_name
+        .iter()
+        .filter(|(archive_name, _)| !addon_archive_set.contains(*archive_name))
+        .map(|(archive_name, group)| {
+            let mut group = group.clone();
+            if let Some(addon_archives) = addon_map_data.get(archive_name) {
+                group.addon_files = addon_archives
+                    .iter()
+                    .filter_map(|addon_archive| groups_by_name.get(addon_archive))
+                    .flat_map(|addon_group| {
+                        addon_group.files.iter().map(|f| InstalledModFile {
+                            archive_name: Some(addon_group.name.clone()),
+                            ..f.clone()
+                        })
+                    })
+                    .collect();
+            }
+            group
+        })
+        .collect();
+
+    result.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1375,4 +1457,23 @@ fn install_downloaded_file(
     }
 
     Ok(false)
+}
+
+use crate::services::addon_map;
+
+#[tauri::command]
+pub fn get_addon_map(
+    state: tauri::State<'_, crate::state::AppState>,
+) -> crate::models::Result<std::collections::HashMap<String, Vec<String>>> {
+    let _ = state.get_config()?; // Ensure config is loaded
+    addon_map::read_addon_map()
+}
+
+#[tauri::command]
+pub fn set_addon_map(
+    state: tauri::State<'_, crate::state::AppState>,
+    map: std::collections::HashMap<String, Vec<String>>,
+) -> crate::models::Result<()> {
+    let _ = state.get_config()?;
+    addon_map::write_addon_map(&map)
 }

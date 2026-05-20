@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::models::{AppError, Collection, ModEntry, ModPack, Result};
+use crate::services::addon_map;
 use crate::services::manifest::ManifestManager;
 use crate::services::{modpack as modpack_service, profiles};
 use crate::state::AppState;
@@ -122,6 +123,14 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
         );
     }
 
+    let local_addon_map = addon_map::read_addon_map().unwrap_or_default();
+    let mut addons: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (parent, addon_archives) in local_addon_map {
+        if mods.contains_key(&parent) {
+            addons.insert(parent, addon_archives);
+        }
+    }
+
     Ok(ModPack {
         schema_version: 1,
         name: format!("{} ModPack", active_profile_name),
@@ -131,6 +140,7 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
         subscriptions,
         mods,
         collections,
+        addons,
     })
 }
 
@@ -210,6 +220,24 @@ pub async fn export_modpack_to_file(
             fs::copy(&src, &dst).map_err(|e| {
                 AppError::Validation(format!("Failed to copy archive {archive_name}: {e}"))
             })?;
+        }
+    }
+
+    // Copy addon archives that aren't already in the mods list
+    let mut extra_archives: Vec<String> = modpack
+        .addons
+        .values()
+        .flatten()
+        .filter(|a| !modpack.mods.contains_key(*a))
+        .cloned()
+        .collect();
+    extra_archives.dedup();
+
+    for archive_name in extra_archives {
+        let src = archives_root.join(&archive_name);
+        let dst = mods_dir.join(&archive_name);
+        if src.exists() {
+            let _ = fs::copy(&src, &dst);
         }
     }
 
