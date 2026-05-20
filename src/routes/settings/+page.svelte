@@ -541,10 +541,12 @@
         };
       } catch (error) {
         console.error("Export failed:", error);
+        operationStatusStore.clear();
         toastStore.error(`Failed to export modpack: ${error}`);
       }
     } catch (error) {
       console.error("Modpack build failed:", error);
+      operationStatusStore.clear();
       toastStore.error(`Failed to export modpack: ${error}`);
     }
   }

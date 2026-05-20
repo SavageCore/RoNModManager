@@ -1,5 +1,9 @@
 {
   "permissions": {
-    "allow": ["Bash(cargo check *)", "Bash(cargo clippy *)"]
+    "allow": [
+      "Bash(cargo check *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo build *)"
+    ]
   }
 }
