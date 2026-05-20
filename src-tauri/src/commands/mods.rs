@@ -1450,7 +1450,21 @@ fn install_downloaded_file(
     }
 
     if extension.eq_ignore_ascii_case("7z") {
-        return Err(AppError::Validation("7Z archives are not directly supported. Please extract the archive first, then drag the .pak or .zip file.".to_string()));
+        let _ = app.emit(
+            "install_progress",
+            &ProgressEvent {
+                operation: "install".to_string(),
+                file: path.to_string_lossy().to_string(),
+                percent: 50.0,
+                message: "Installing 7Z archive...".to_string(),
+                total_bytes: None,
+                processed_bytes: None,
+            },
+        );
+        let report = installer::install_7z_archive(path, &staged_context)?;
+        backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
+        save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
+        return Ok(false);
     }
 
     if extension.eq_ignore_ascii_case("pak") {
