@@ -14,6 +14,7 @@
   let isValid = false;
   let error = "";
   let logDiv: HTMLDivElement | null;
+  let existingUrl: string | null = null;
 
   function scrollLog() {
     if (logDiv) {
@@ -75,6 +76,18 @@
   } from "$lib/api/commands";
   import { operationStatusStore } from "$lib/stores/operationStatus";
   import { tick } from "svelte";
+
+  $: if (isVisible) {
+    (async () => {
+      try {
+        const config = await getConfig();
+        existingUrl = config.modpack_url || null;
+        console.log("Existing modpack URL from config:", existingUrl);
+      } catch (e) {
+        console.warn("Could not retrieve existing modpack URL from config.");
+      }
+    })();
+  }
 
   async function handleSave() {
     log = ["Validating URL..."];
@@ -469,6 +482,12 @@
       <h2 class="text-xl font-bold mb-4">
         {mode === "update" ? "Updating Modpack" : "Add Modpack"}
       </h2>
+      {#if existingUrl && mode === "add"}
+        <div class="mb-4 text-sm text-gray-700 dark:text-gray-300">
+          A modpack URL is already configured. Adding a new modpack will append
+          mods to the existing installation.
+        </div>
+      {/if}
       {#if mode === "add"}
         <label for="modpack-url" class="block mb-2 text-sm font-medium"
           >Modpack URL</label
