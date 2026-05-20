@@ -37,6 +37,35 @@ pub fn md5_file(path: &Path) -> io::Result<String> {
     md5_file_with_progress(path, |_processed, _total| {})
 }
 
+/// Copy a file chunk-by-chunk, calling `on_progress(processed_bytes, total_bytes)` each chunk.
+pub fn copy_file_with_progress<F>(src: &Path, dst: &Path, mut on_progress: F) -> io::Result<u64>
+where
+    F: FnMut(u64, u64),
+{
+    use std::io::Write;
+
+    let mut src_file = std::fs::File::open(src)?;
+    let total_bytes = src_file.metadata()?.len();
+    let mut dst_file = std::fs::File::create(dst)?;
+    let mut processed = 0u64;
+    let mut buffer = [0u8; 256 * 1024];
+
+    on_progress(0, total_bytes);
+
+    loop {
+        let n = src_file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        dst_file.write_all(&buffer[..n])?;
+        processed += n as u64;
+        on_progress(processed, total_bytes);
+    }
+
+    dst_file.flush()?;
+    Ok(processed)
+}
+
 /// Compute CRC32 hash of a file
 pub fn crc32_file(path: &Path) -> io::Result<u32> {
     let mut file = std::fs::File::open(path)?;
