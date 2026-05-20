@@ -77,7 +77,6 @@
           getInstalledModGroups().catch(() => []),
         ]);
 
-      collections = collectionState;
       collectionMods = profileCollectionMods;
       activeProfileName = config.active_profile;
       modDisplayNames = Object.fromEntries(
@@ -90,8 +89,22 @@
       if (activeProfileName) {
         const profile = await getProfile(activeProfileName);
         activeProfileEnabledCount = profile?.installed_mod_names.length ?? 0;
+
+        // A collection whose mods are all individually enabled should appear enabled
+        // even if it was never toggled through the collection UI.
+        const enabledSet = new Set(profile?.installed_mod_names ?? []);
+        collections = Object.fromEntries(
+          Object.entries(collectionState).map(([name, enabled]) => {
+            const mods = profileCollectionMods[name] ?? [];
+            const effectivelyEnabled =
+              enabled ||
+              (mods.length > 0 && mods.every((mod) => enabledSet.has(mod)));
+            return [name, effectivelyEnabled];
+          }),
+        );
       } else {
         activeProfileEnabledCount = 0;
+        collections = collectionState;
       }
     } catch (error) {
       toastStore.error(`Failed to load collections: ${String(error)}`);
