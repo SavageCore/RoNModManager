@@ -6,6 +6,7 @@ use std::process::Command;
 
 use tauri::State;
 
+use crate::commands::mods::archive_install_key;
 use crate::models::AppError;
 use crate::services::manifest;
 use crate::services::steam;
@@ -168,17 +169,41 @@ pub(crate) fn sync_mod_links_for_game_path(
 ) -> Result<(), String> {
     let live_mods_path = steam::get_mods_path(game_path);
     let live_savegames_path = steam::get_savegames_path().map_err(|e| e.to_string())?;
+    let live_fmod_path = steam::get_fmod_desktop_path(game_path);
     fs::create_dir_all(&live_mods_path).map_err(|e| e.to_string())?;
     fs::create_dir_all(&live_savegames_path).map_err(|e| e.to_string())?;
 
     let enabled: HashSet<String> = enabled_groups.into_iter().collect();
-    let manager = manifest::ManifestManager::new(&get_staging_root()?);
+    let staging_root = get_staging_root()?;
+    let manager = manifest::ManifestManager::new(&staging_root);
     let manifests = manager.list_all_manifests().unwrap_or_default();
 
     // First remove all managed live links/files for tracked staged files.
+    // For .bank files, restore the original from the backup rather than just deleting.
     for manifest_data in manifests.values() {
         for staged_path in &manifest_data.installed_files {
-            if let Some(target) =
+            let is_bank = staged_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("bank"))
+                .unwrap_or(false);
+
+            if is_bank {
+                let Some(file_name) = staged_path.file_name() else {
+                    continue;
+                };
+                let game_dest = live_fmod_path.join(file_name);
+                let install_key = archive_install_key(&manifest_data.source_archive);
+                let backup = staging_root
+                    .join("backups")
+                    .join(&install_key)
+                    .join(file_name);
+                if backup.exists() {
+                    let _ = fs::copy(&backup, &game_dest);
+                } else if game_dest.exists() {
+                    let _ = fs::remove_file(&game_dest);
+                }
+            } else if let Some(target) =
                 target_path_for_staged_file(staged_path, &live_mods_path, &live_savegames_path)
             {
                 if target.exists() {
@@ -188,7 +213,7 @@ pub(crate) fn sync_mod_links_for_game_path(
         }
     }
 
-    // Then link only enabled groups.
+    // Then link/copy only enabled groups.
     for manifest_data in manifests.values() {
         if !enabled.contains(&manifest_data.source_archive) {
             continue;
@@ -197,16 +222,35 @@ pub(crate) fn sync_mod_links_for_game_path(
             if !staged_path.exists() {
                 continue;
             }
-            let Some(target) =
-                target_path_for_staged_file(staged_path, &live_mods_path, &live_savegames_path)
-            else {
-                continue;
-            };
 
-            if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            let is_bank = staged_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("bank"))
+                .unwrap_or(false);
+
+            if is_bank {
+                let Some(file_name) = staged_path.file_name() else {
+                    continue;
+                };
+                fs::create_dir_all(&live_fmod_path).map_err(|e| e.to_string())?;
+                let game_dest = live_fmod_path.join(file_name);
+                // Remove the original (already backed up at install time) then symlink.
+                if game_dest.exists() || game_dest.is_symlink() {
+                    let _ = fs::remove_file(&game_dest);
+                }
+                create_file_link(staged_path, &game_dest)?;
+            } else {
+                let Some(target) =
+                    target_path_for_staged_file(staged_path, &live_mods_path, &live_savegames_path)
+                else {
+                    continue;
+                };
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                }
+                create_file_link(staged_path, &target)?;
             }
-            create_file_link(staged_path, &target)?;
         }
     }
 

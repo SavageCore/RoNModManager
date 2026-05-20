@@ -298,8 +298,8 @@ fn cleanup_empty_install_dirs(file_path: &Path, staging_root: &Path, live_mods_r
     }
 }
 
-fn cleanup_mod_staging_directories(archive_name: &str, staging_root: &Path) {
-    let install_key = PathBuf::from(archive_name)
+pub(crate) fn archive_install_key(archive_name: &str) -> String {
+    PathBuf::from(archive_name)
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown")
@@ -308,8 +308,11 @@ fn cleanup_mod_staging_directories(archive_name: &str, staging_root: &Path) {
             '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
             _ => c,
         })
-        .collect::<String>();
+        .collect()
+}
 
+fn cleanup_mod_staging_directories(archive_name: &str, staging_root: &Path) {
+    let install_key = archive_install_key(archive_name);
     let _ = fs::remove_dir(staging_root.join("mods").join(&install_key));
     let _ = fs::remove_dir(staging_root.join("savegames").join(&install_key));
     let _ = fs::remove_dir(staging_root.join("backups").join(&install_key));
@@ -848,6 +851,33 @@ pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String)
     let manifest_data = manager.load_manifest(&archive_name)?.ok_or_else(|| {
         AppError::Validation(format!("Archive manifest not found: {}", archive_name))
     })?;
+
+    // Restore original bank files before deleting the backup copies.
+    {
+        let install_key = archive_install_key(&archive_name);
+        let backup_dir = staging_root.join("backups").join(&install_key);
+        let fmod_path = steam::get_fmod_desktop_path(&game_path);
+        for file_path in &manifest_data.installed_files {
+            let is_bank = file_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("bank"))
+                .unwrap_or(false);
+            if !is_bank {
+                continue;
+            }
+            if let Some(file_name) = file_path.file_name() {
+                let backup = backup_dir.join(file_name);
+                let game_dest = fmod_path.join(file_name);
+                if backup.exists() {
+                    let _ = fs::copy(&backup, &game_dest);
+                } else if game_dest.exists() {
+                    let _ = fs::remove_file(&game_dest);
+                }
+            }
+        }
+    }
+
     for file_path in &manifest_data.installed_files {
         if file_path.exists() && fs::remove_file(file_path).is_ok() {
             cleanup_empty_install_dirs(file_path, &staging_root, &mods_path);
@@ -1199,6 +1229,32 @@ pub async fn install_local_mod(
     }
 }
 
+fn backup_bank_files_from_report(
+    report: &installer::InstallReport,
+    game_path: &Path,
+    backup_path: &Path,
+) -> Result<()> {
+    let fmod_path = steam::get_fmod_desktop_path(game_path);
+    for installed_file in &report.installed_files {
+        let is_bank = installed_file
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("bank"))
+            .unwrap_or(false);
+        if !is_bank {
+            continue;
+        }
+        if let Some(file_name) = installed_file.file_name() {
+            let original = fmod_path.join(file_name);
+            if original.exists() {
+                fs::create_dir_all(backup_path)?;
+                fs::copy(&original, backup_path.join(file_name))?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn save_install_manifest(
     archive_path: &Path,
     report: &installer::InstallReport,
@@ -1325,16 +1381,11 @@ fn install_downloaded_file(
         },
     );
 
-    let install_key = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown")
-        .chars()
-        .map(|c| match c {
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
-            _ => c,
-        })
-        .collect::<String>();
+    let install_key = archive_install_key(
+        path.file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown"),
+    );
     let staged_context = installer::InstallContext {
         game_path: context
             .backup_path
@@ -1375,6 +1426,7 @@ fn install_downloaded_file(
                 },
             );
         })?;
+        backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
     }
@@ -1392,6 +1444,7 @@ fn install_downloaded_file(
             },
         );
         let report = installer::install_rar_archive(path, &staged_context)?;
+        backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
     }
@@ -1446,6 +1499,40 @@ fn install_downloaded_file(
         fs::create_dir_all(&staged_context.savegames_path)?;
         let destination = staged_context.savegames_path.join(file_name);
         fs::copy(path, &destination)?;
+        let report = installer::InstallReport {
+            installed: 1,
+            skipped: 0,
+            overrides_backed_up: 0,
+            installed_files: vec![destination],
+        };
+        save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
+        return Ok(false);
+    }
+
+    if extension.eq_ignore_ascii_case("bank") {
+        let _ = app.emit(
+            "install_progress",
+            &ProgressEvent {
+                operation: "install".to_string(),
+                file: path.to_string_lossy().to_string(),
+                percent: 75.0,
+                message: "Installing FMOD bank file...".to_string(),
+                total_bytes: None,
+                processed_bytes: None,
+            },
+        );
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| AppError::Validation("invalid bank file path".to_string()))?;
+        fs::create_dir_all(&staged_context.mods_path)?;
+        let destination = staged_context.mods_path.join(file_name);
+        fs::copy(path, &destination)?;
+        // Backup the original game bank file so it can be restored when the mod is toggled off.
+        let game_bank = steam::get_fmod_desktop_path(&context.game_path).join(file_name);
+        if game_bank.exists() {
+            fs::create_dir_all(&staged_context.backup_path)?;
+            fs::copy(&game_bank, staged_context.backup_path.join(file_name))?;
+        }
         let report = installer::InstallReport {
             installed: 1,
             skipped: 0,

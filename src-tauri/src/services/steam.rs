@@ -139,6 +139,15 @@ pub fn get_mods_path(game_path: &Path) -> PathBuf {
         .join("~mods")
 }
 
+/// Get the FMOD Desktop directory path for Ready or Not
+pub fn get_fmod_desktop_path(game_path: &Path) -> PathBuf {
+    game_path
+        .join("ReadyOrNot")
+        .join("Content")
+        .join("FMOD")
+        .join("Desktop")
+}
+
 /// Get the SaveGames directory path for Ready or Not
 #[cfg(target_os = "windows")]
 pub fn get_savegames_path() -> Result<PathBuf> {

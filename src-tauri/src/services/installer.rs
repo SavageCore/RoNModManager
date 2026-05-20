@@ -13,6 +13,7 @@ pub enum ModFileType {
     PakMod,
     WorldGenSave,
     Override,
+    BankMod,
     Unknown,
 }
 
@@ -51,8 +52,9 @@ pub fn classify_archive_entry(path: &Path) -> ModFileType {
     }
 
     match path.extension().and_then(|ext| ext.to_str()) {
-        Some("pak") => ModFileType::PakMod,
-        Some("sav") => ModFileType::WorldGenSave,
+        Some(ext) if ext.eq_ignore_ascii_case("pak") => ModFileType::PakMod,
+        Some(ext) if ext.eq_ignore_ascii_case("sav") => ModFileType::WorldGenSave,
+        Some(ext) if ext.eq_ignore_ascii_case("bank") => ModFileType::BankMod,
         _ => ModFileType::Unknown,
     }
 }
@@ -146,6 +148,25 @@ where
                 })?;
                 fs::create_dir_all(&context.savegames_path)?;
                 let destination = context.savegames_path.join(file_name);
+                let entry_size = entry.size();
+                if copy_entry_if_changed_with_progress(&mut entry, &destination, |chunk| {
+                    processed_bytes = processed_bytes.saturating_add(chunk);
+                    emit_progress(&entry_name, processed_bytes);
+                })? {
+                    report.installed += 1;
+                    report.installed_files.push(destination);
+                } else {
+                    report.skipped += 1;
+                    processed_bytes = processed_bytes.saturating_add(entry_size);
+                    emit_progress(&entry_name, processed_bytes);
+                }
+            }
+            ModFileType::BankMod => {
+                let file_name = entry_path.file_name().ok_or_else(|| {
+                    AppError::Validation(format!("invalid bank path in archive: {}", entry.name()))
+                })?;
+                fs::create_dir_all(&context.mods_path)?;
+                let destination = context.mods_path.join(file_name);
                 let entry_size = entry.size();
                 if copy_entry_if_changed_with_progress(&mut entry, &destination, |chunk| {
                     processed_bytes = processed_bytes.saturating_add(chunk);
@@ -277,6 +298,19 @@ pub fn install_rar_archive(archive_path: &Path, context: &InstallContext) -> Res
                     report.skipped += 1;
                 }
             }
+            ModFileType::BankMod => {
+                let file_name = entry_path.file_name().ok_or_else(|| {
+                    AppError::Validation(format!("invalid bank path in archive: {}", entry_name))
+                })?;
+                fs::create_dir_all(&context.mods_path)?;
+                let destination = context.mods_path.join(file_name);
+                if copy_file_if_changed(&temp_file, &destination)? {
+                    report.installed += 1;
+                    report.installed_files.push(destination);
+                } else {
+                    report.skipped += 1;
+                }
+            }
             ModFileType::Override => {
                 let override_relative = entry_path.strip_prefix("_overrides").map_err(|_| {
                     AppError::Validation(format!(
@@ -367,7 +401,7 @@ where
     Ok(true)
 }
 
-fn backup_existing_file(source: &Path, backup_root: &Path) -> Result<()> {
+pub fn backup_existing_file(source: &Path, backup_root: &Path) -> Result<()> {
     let relative_name = source
         .to_string_lossy()
         .replace(['/', '\\'], "__")
