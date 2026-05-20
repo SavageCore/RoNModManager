@@ -21,6 +21,7 @@
     "**/__pycache__/**": true,
     "**/.venv/**": true,
     "**/dist/**": true,
+    "**/.dart_tool": true,
     "**/.git/objects/**": true,
     "**/.git/subtree-cache/**": true,
     "**/.hg/store/**": true,

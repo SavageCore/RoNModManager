@@ -3,11 +3,12 @@
   import { alertStore } from "$lib/stores/alert";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { open } from "@tauri-apps/plugin-dialog";
+  import type { InstalledModFile } from "$lib/types";
 
   export let isVisible = false;
   export let modName = "";
   export let displayName = "";
-  export let addOns = [];
+  export let addOns: InstalledModFile[] = [];
 
   const dispatch = createEventDispatcher();
   let isDraggingOver = false;

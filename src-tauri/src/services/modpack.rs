@@ -96,16 +96,16 @@ mod tests {
 
     fn example_pack_json() -> &'static str {
         r#"{
-			"schema_version": 1,
+			"schemaVersion": 1,
 			"name": "SavagePack",
 			"version": "1.2.0",
 			"description": "Example",
 			"author": "SavageCore",
-			"subscriptions": ["fairfax-residence-remake"],
+			"subscriptions": {"fairfax-residence-remake": true},
+			"mods": {},
 			"collections": {
 				"Beat Cop": {
 					"default_enabled": true,
-					"description": "Realistic",
 					"mods": ["A.pak"]
 				}
 			}
