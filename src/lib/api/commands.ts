@@ -71,6 +71,11 @@ export const deleteCollection = (name: string) =>
 export const toggleCollection = (name: string, enabled: boolean) =>
   invoke<void>("toggle_collection", { name, enabled });
 
+export const getTags = () => invoke<Record<string, string[]>>("get_tags");
+export const setModTags = (modName: string, newTags: string[]) =>
+  invoke<void>("set_mod_tags", { modName, newTags });
+export const deleteTag = (name: string) => invoke<void>("delete_tag", { name });
+
 export const getAuthStatus = () => invoke<boolean>("get_auth_status");
 export const openModioLogin = () => invoke<void>("open_modio_login");
 export const saveToken = (token: string) =>

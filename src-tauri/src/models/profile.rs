@@ -14,6 +14,8 @@ pub struct Profile {
     #[serde(default)]
     pub collections: HashMap<String, Vec<String>>,
     #[serde(default)]
+    pub tags: HashMap<String, Vec<String>>,
+    #[serde(default)]
     pub created_at: String,
 }
 
@@ -25,6 +27,7 @@ impl Profile {
             installed_mod_names,
             enabled_collections: Vec::new(),
             collections: HashMap::new(),
+            tags: HashMap::new(),
             created_at: chrono::Utc::now().to_rfc3339(),
         }
     }

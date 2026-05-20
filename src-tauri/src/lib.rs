@@ -6,7 +6,7 @@ pub mod services;
 pub mod state;
 
 use crate::commands::{
-    auth, collections, config, game, modpack, mods, profiles, sharing, updater, window,
+    auth, collections, config, game, modpack, mods, profiles, sharing, tags, updater, window,
 };
 use state::AppState;
 
@@ -68,6 +68,9 @@ pub fn run() {
             collections::remove_mod_from_collection,
             collections::delete_collection,
             collections::toggle_collection,
+            tags::get_tags,
+            tags::set_mod_tags,
+            tags::delete_tag,
             auth::get_auth_status,
             auth::open_modio_login,
             auth::save_token,

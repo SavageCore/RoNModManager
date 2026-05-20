@@ -27,4 +27,6 @@ pub struct ModPack {
     pub collections: BTreeMap<String, Collection>,
     #[serde(default)]
     pub addons: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    pub tags: BTreeMap<String, Vec<String>>,
 }

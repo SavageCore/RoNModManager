@@ -60,6 +60,8 @@ clippy: ## Run cargo clippy on the Rust backend
 
 lint-all: lint-frontend lint-backend ## Run all linters (frontend + backend)
 
+format-all: format fmt-backend ## Auto-format all code (frontend + backend)
+
 # ── Test ──────────────────────────────────────────────────────────────────────
 
 test-frontend: ## Run Vitest unit tests
