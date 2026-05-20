@@ -8,3 +8,6 @@ package
 src-tauri/target
 .flatpak-builder
 src-tauri/gen/schemas
+src-tauri/vendor
+flatpak-repo
+*.flatpak

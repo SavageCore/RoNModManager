@@ -1,5 +1,6 @@
 build-dir
 src-tauri/target
+.flatpak-builder/
 .flatpak/rust-analyzer.sh
 node_modules/
 .env.keys

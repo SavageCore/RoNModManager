@@ -5,7 +5,9 @@
       "Bash(cargo clippy *)",
       "Bash(cargo build *)",
       "Bash(cargo test *)",
-      "Bash(cargo vendor *)"
+      "Bash(cargo vendor *)",
+      "Bash(time npx prettier --check \".flatpak-builder\")",
+      "Bash(npx prettier *)"
     ]
   }
 }
