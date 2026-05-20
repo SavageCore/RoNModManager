@@ -59,6 +59,7 @@ export interface InstalledModFile {
   name: string;
   path: string;
   exists: boolean;
+  archiveName?: string;
 }
 
 export interface InstalledModGroup {

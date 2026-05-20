@@ -34,6 +34,8 @@ pub struct InstalledModFile {
     pub name: String,
     pub path: String,
     pub exists: bool,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub archive_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -45,4 +47,6 @@ pub struct InstalledModGroup {
     pub managed_by_manifest: bool,
     pub installed_at: Option<u64>,
     pub files: Vec<InstalledModFile>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub addon_files: Vec<InstalledModFile>,
 }

@@ -69,8 +69,6 @@ pub fn install_archive_with_progress<F>(
 where
     F: FnMut(ArchiveProgress),
 {
-    fs::create_dir_all(&context.mods_path)?;
-
     let file = fs::File::open(archive_path)?;
     let mut archive = ZipArchive::new(file)
         .map_err(|error| AppError::Validation(format!("invalid zip archive: {error}")))?;
@@ -122,9 +120,11 @@ where
         let entry_name = entry.name().to_string();
         match classify_archive_entry(&entry_path) {
             ModFileType::PakMod => {
+                // Always install .pak files to mods_path
                 let file_name = entry_path.file_name().ok_or_else(|| {
                     AppError::Validation(format!("invalid pak path in archive: {}", entry.name()))
                 })?;
+                fs::create_dir_all(&context.mods_path)?;
                 let destination = context.mods_path.join(file_name);
                 let entry_size = entry.size();
                 if copy_entry_if_changed_with_progress(&mut entry, &destination, |chunk| {
@@ -140,9 +140,11 @@ where
                 }
             }
             ModFileType::WorldGenSave => {
+                // Always install .sav files to savegames_path
                 let file_name = entry_path.file_name().ok_or_else(|| {
                     AppError::Validation(format!("invalid save path in archive: {}", entry.name()))
                 })?;
+                fs::create_dir_all(&context.savegames_path)?;
                 let destination = context.savegames_path.join(file_name);
                 let entry_size = entry.size();
                 if copy_entry_if_changed_with_progress(&mut entry, &destination, |chunk| {
@@ -201,8 +203,6 @@ where
 }
 
 pub fn install_rar_archive(archive_path: &Path, context: &InstallContext) -> Result<InstallReport> {
-    fs::create_dir_all(&context.mods_path)?;
-
     let mut report = InstallReport::default();
 
     // Create temporary directory for extraction
@@ -255,6 +255,7 @@ pub fn install_rar_archive(archive_path: &Path, context: &InstallContext) -> Res
                 let file_name = entry_path.file_name().ok_or_else(|| {
                     AppError::Validation(format!("invalid pak path in archive: {}", entry_name))
                 })?;
+                fs::create_dir_all(&context.mods_path)?;
                 let destination = context.mods_path.join(file_name);
                 if copy_file_if_changed(&temp_file, &destination)? {
                     report.installed += 1;
@@ -267,6 +268,7 @@ pub fn install_rar_archive(archive_path: &Path, context: &InstallContext) -> Res
                 let file_name = entry_path.file_name().ok_or_else(|| {
                     AppError::Validation(format!("invalid save path in archive: {}", entry_name))
                 })?;
+                fs::create_dir_all(&context.savegames_path)?;
                 let destination = context.savegames_path.join(file_name);
                 if copy_file_if_changed(&temp_file, &destination)? {
                     report.installed += 1;
