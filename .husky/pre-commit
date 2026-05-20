@@ -13,4 +13,19 @@ if git diff --cached --name-only | grep -q '^src-tauri/'; then
     echo "❌ cargo clippy failed. Fix warnings above."
     exit 1
   }
+
+  echo "🦀 Running cargo test..."
+  cargo test --manifest-path src-tauri/Cargo.toml || {
+    echo "❌ cargo test failed. Fix failing tests above."
+    exit 1
+  }
+fi
+
+# Type-check frontend when any Svelte/TS/JS files are staged
+if git diff --cached --name-only | grep -qE '\.(svelte|ts|js)$'; then
+  echo "🔷 Running svelte-check..."
+  npm run check || {
+    echo "❌ svelte-check failed. Fix type errors above."
+    exit 1
+  }
 fi
