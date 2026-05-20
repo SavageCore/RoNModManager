@@ -2,6 +2,7 @@
   import {
     addModIoMod,
     addModToCollection,
+    removeModFromCollection,
     applyProfile,
     createCollection,
     getConfig,
@@ -211,6 +212,7 @@
   let collectionPickerModName = "";
   let collectionPickerModLabel = "";
   let activeCollectionNames: string[] = [];
+  let activeProfileCollections: Record<string, string[]> = {};
 
   function extractModIoInputFromDroppedText(raw: string): string | null {
     const candidates = raw
@@ -251,6 +253,16 @@
       modSourceFilter === "all" || source === modSourceFilter;
     return matchesSearch && matchesSource;
   });
+
+  $: modToCollectionsMap = Object.entries(activeProfileCollections).reduce(
+    (acc, [colName, mods]) => {
+      for (const mod of mods) {
+        (acc[mod] ??= []).push(colName);
+      }
+      return acc;
+    },
+    {} as Record<string, string[]>,
+  );
 
   async function handleModIoLinkDrop(input: string) {
     try {
@@ -352,7 +364,8 @@
         const activeProfile = await getProfile(activeProfileName);
         if (activeProfile) {
           modsForActiveProfile = [...activeProfile.installed_mod_names];
-          activeCollectionNames = Object.keys(activeProfile.collections ?? {});
+          activeProfileCollections = activeProfile.collections ?? {};
+          activeCollectionNames = Object.keys(activeProfileCollections);
         } else {
           activeCollectionNames = [];
         }
@@ -522,13 +535,10 @@
     showCollectionPickerModal = true;
   }
 
-  async function handleCollectionPickerSubmit(collectionName: string) {
+  async function handleCollectionToggle(collectionName: string) {
     const modName = collectionPickerModName;
     const modLabel = collectionPickerModLabel;
     const trimmedCollectionName = collectionName.trim();
-    showCollectionPickerModal = false;
-    collectionPickerModName = "";
-    collectionPickerModLabel = "";
 
     if (!modName || !trimmedCollectionName) {
       return;
@@ -538,20 +548,32 @@
       const existingCollectionName = activeCollectionNames.find(
         (name) => name.toLowerCase() === trimmedCollectionName.toLowerCase(),
       );
+      const currentCols = modToCollectionsMap[modName] ?? [];
 
-      if (existingCollectionName) {
+      if (
+        existingCollectionName &&
+        currentCols.includes(existingCollectionName)
+      ) {
+        await removeModFromCollection(existingCollectionName, modName);
+        toastStore.success(
+          `Removed ${modLabel || modName} from ${existingCollectionName}.`,
+        );
+      } else if (existingCollectionName) {
         await addModToCollection(existingCollectionName, modName);
+        toastStore.success(
+          `Added ${modLabel || modName} to ${existingCollectionName}.`,
+        );
       } else {
         await createCollection(trimmedCollectionName, [modName]);
+        toastStore.success(
+          `Created "${trimmedCollectionName}" and added ${modLabel || modName}.`,
+        );
       }
 
-      toastStore.success(
-        `Added ${modLabel || modName} to ${existingCollectionName ?? trimmedCollectionName}.`,
-      );
       window.dispatchEvent(new CustomEvent("ron:collections-changed"));
       await refresh();
     } catch (error) {
-      toastStore.error(`Failed to add mod to collection: ${String(error)}`);
+      toastStore.error(`Failed to update collection: ${String(error)}`);
     }
   }
 
@@ -908,13 +930,14 @@
   isVisible={showCollectionPickerModal}
   modName={collectionPickerModLabel || collectionPickerModName}
   collections={activeCollectionNames}
+  currentCollections={modToCollectionsMap[collectionPickerModName] ?? []}
   on:close={() => {
     showCollectionPickerModal = false;
     collectionPickerModName = "";
     collectionPickerModLabel = "";
   }}
   on:submit={(event) => {
-    void handleCollectionPickerSubmit(event.detail.collectionName);
+    void handleCollectionToggle(event.detail.collectionName);
   }}
 />
 
@@ -1135,6 +1158,18 @@
             </button>
 
             <div class="flex items-center gap-2">
+              {#if (modToCollectionsMap[group.name] ?? []).length > 0}
+                <div class="flex items-center gap-1 flex-wrap">
+                  {#each modToCollectionsMap[group.name] as col (col)}
+                    <span
+                      style="background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text-secondary);"
+                      class="inline-flex items-center rounded border px-1.5 py-0.5 text-xs leading-none"
+                    >
+                      {col}
+                    </span>
+                  {/each}
+                </div>
+              {/if}
               <label
                 class="gale-switch"
                 title={`${modsForActiveProfile.includes(group.name) ? "Disable" : "Enable"} ${group.displayName ?? group.name}`}

@@ -4,6 +4,7 @@
   export let isVisible = false;
   export let modName = "";
   export let collections: string[] = [];
+  export let currentCollections: string[] = [];
 
   const dispatch = createEventDispatcher<{
     close: void;
@@ -11,7 +12,7 @@
   }>();
 
   let query = "";
-  let selectedIndex = 0;
+  let selectedIndex = -1;
   let wasVisible = false;
   let queryInput: HTMLInputElement | null = null;
 
@@ -29,12 +30,12 @@
 
   $: if (selectedIndex >= filteredCollections.length) {
     selectedIndex =
-      filteredCollections.length > 0 ? filteredCollections.length - 1 : 0;
+      filteredCollections.length > 0 ? filteredCollections.length - 1 : -1;
   }
 
   $: if (isVisible && !wasVisible) {
     query = "";
-    selectedIndex = 0;
+    selectedIndex = -1;
     void tick().then(() => {
       queryInput?.focus();
     });
@@ -42,14 +43,14 @@
 
   $: if (!isVisible && wasVisible) {
     query = "";
-    selectedIndex = 0;
+    selectedIndex = -1;
   }
 
   $: wasVisible = isVisible;
 
   function closeModal() {
     query = "";
-    selectedIndex = 0;
+    selectedIndex = -1;
     dispatch("close");
   }
 
@@ -58,8 +59,6 @@
     if (!trimmed) {
       return;
     }
-    query = "";
-    selectedIndex = 0;
     dispatch("submit", { collectionName: trimmed });
   }
 
@@ -91,8 +90,10 @@
 
     if (event.key === "Enter") {
       event.preventDefault();
-      if (filteredCollections.length > 0) {
+      if (selectedIndex >= 0 && filteredCollections.length > 0) {
         submit(filteredCollections[selectedIndex]);
+      } else if (filteredCollections.length > 0 && query.trim() === "") {
+        // no-op, nothing typed and nothing selected
       } else {
         submit(query);
       }
@@ -108,7 +109,7 @@
     >
       <div class="mb-3 flex items-center justify-between gap-3">
         <h2 style="color: var(--clr-text);" class="text-lg font-semibold">
-          Add To Collection
+          Collections
         </h2>
         <button
           on:click={closeModal}
@@ -140,15 +141,24 @@
         {#if filteredCollections.length > 0}
           <ul>
             {#each filteredCollections as name, index (name)}
+              {@const isActive = currentCollections.includes(name)}
               <li>
                 <button
-                  style={index === selectedIndex
+                  style={index === selectedIndex && selectedIndex >= 0
                     ? "background: color-mix(in srgb, var(--clr-primary-300) 18%, transparent); color: var(--clr-text);"
                     : "color: var(--clr-text);"}
-                  class="w-full cursor-pointer px-3 py-2 text-left text-sm hover:opacity-90"
+                  class="collection-item w-full cursor-pointer px-3 py-2 text-left text-sm"
                   on:click={() => submit(name)}
                 >
-                  {name}
+                  <span class="flex items-center justify-between">
+                    <span>{name}</span>
+                    {#if isActive}
+                      <span
+                        style="color: var(--clr-success-300); font-size: 1rem; line-height: 1;"
+                        >✓</span
+                      >
+                    {/if}
+                  </span>
                 </button>
               </li>
             {/each}
@@ -170,8 +180,14 @@
       {/if}
 
       <div class="mt-4 flex justify-end gap-2">
-        <button class="btn" on:click={closeModal}>Cancel</button>
+        <button class="btn" on:click={closeModal}>Done</button>
       </div>
     </div>
   </div>
 {/if}
+
+<style>
+  .collection-item:hover {
+    background: color-mix(in srgb, var(--clr-text) 8%, transparent);
+  }
+</style>
