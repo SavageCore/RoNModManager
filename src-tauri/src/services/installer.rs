@@ -349,6 +349,131 @@ pub fn install_rar_archive(archive_path: &Path, context: &InstallContext) -> Res
     Ok(report)
 }
 
+pub fn install_7z_archive(archive_path: &Path, context: &InstallContext) -> Result<InstallReport> {
+    let mut report = InstallReport::default();
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ronmod_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    ));
+    fs::create_dir_all(&temp_dir)?;
+
+    let src = archive_path.to_string_lossy().to_string();
+    let dest = temp_dir.to_string_lossy().to_string();
+    sevenz_rust2::decompress_file(&src, &dest)
+        .map_err(|e| AppError::Validation(format!("Failed to open 7z archive: {e}")))?;
+
+    for abs_path in walk_files(&temp_dir) {
+        let rel_path = abs_path
+            .strip_prefix(&temp_dir)
+            .unwrap_or(abs_path.as_path())
+            .to_path_buf();
+
+        match classify_archive_entry(&rel_path) {
+            ModFileType::PakMod => {
+                let file_name = rel_path.file_name().ok_or_else(|| {
+                    AppError::Validation(format!(
+                        "invalid pak path in archive: {}",
+                        rel_path.display()
+                    ))
+                })?;
+                fs::create_dir_all(&context.mods_path)?;
+                let destination = context.mods_path.join(file_name);
+                if copy_file_if_changed(&abs_path, &destination)? {
+                    report.installed += 1;
+                    report.installed_files.push(destination);
+                } else {
+                    report.skipped += 1;
+                }
+            }
+            ModFileType::WorldGenSave => {
+                let file_name = rel_path.file_name().ok_or_else(|| {
+                    AppError::Validation(format!(
+                        "invalid save path in archive: {}",
+                        rel_path.display()
+                    ))
+                })?;
+                fs::create_dir_all(&context.savegames_path)?;
+                let destination = context.savegames_path.join(file_name);
+                if copy_file_if_changed(&abs_path, &destination)? {
+                    report.installed += 1;
+                    report.installed_files.push(destination);
+                } else {
+                    report.skipped += 1;
+                }
+            }
+            ModFileType::BankMod => {
+                let file_name = rel_path.file_name().ok_or_else(|| {
+                    AppError::Validation(format!(
+                        "invalid bank path in archive: {}",
+                        rel_path.display()
+                    ))
+                })?;
+                fs::create_dir_all(&context.mods_path)?;
+                let destination = context.mods_path.join(file_name);
+                if copy_file_if_changed(&abs_path, &destination)? {
+                    report.installed += 1;
+                    report.installed_files.push(destination);
+                } else {
+                    report.skipped += 1;
+                }
+            }
+            ModFileType::Override => {
+                let override_relative = rel_path.strip_prefix("_overrides").map_err(|_| {
+                    AppError::Validation(format!(
+                        "invalid override path in archive: {}",
+                        rel_path.display()
+                    ))
+                })?;
+
+                if override_relative.as_os_str().is_empty() {
+                    report.skipped += 1;
+                    continue;
+                }
+
+                let destination = context.game_path.join(override_relative);
+                if destination.exists() {
+                    backup_existing_file(&destination, &context.backup_path)?;
+                    report.overrides_backed_up += 1;
+                }
+
+                if copy_file_if_changed(&abs_path, &destination)? {
+                    report.installed += 1;
+                    report.installed_files.push(destination);
+                } else {
+                    report.skipped += 1;
+                }
+            }
+            ModFileType::Unknown => {
+                report.skipped += 1;
+            }
+        }
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+
+    Ok(report)
+}
+
+fn walk_files(dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                files.extend(walk_files(&path));
+            } else {
+                files.push(path);
+            }
+        }
+    }
+    files
+}
+
 fn copy_file_if_changed(source: &Path, destination: &Path) -> Result<bool> {
     let needs_copy = if destination.exists() {
         let source_crc = hasher::crc32_file(source)?;
