@@ -8,6 +8,7 @@
     getInstalledModGroups,
     getProfile,
     removeModFromCollection,
+    renameCollection,
     toggleCollection,
   } from "$lib/api/commands";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
@@ -23,6 +24,8 @@
   let modDisplayNames: Record<string, string> = {};
   let loading = false;
   let hasLoadedOnce = false;
+  let editingCollection: string | null = null;
+  let editingName = "";
   let confirmModal: {
     isVisible: boolean;
     title: string;
@@ -179,6 +182,31 @@
     }
   }
 
+  function focusOnMount(node: HTMLInputElement) {
+    node.focus();
+    node.select();
+  }
+
+  async function onRenameCollection(oldName: string) {
+    const newName = editingName.trim();
+    if (!newName) {
+      toastStore.error("Collection name cannot be empty.");
+      return;
+    }
+    if (newName === oldName) {
+      editingCollection = null;
+      return;
+    }
+    try {
+      await renameCollection(oldName, newName);
+      editingCollection = null;
+      await refresh();
+      toastStore.success(`Renamed collection to ${newName}.`);
+    } catch (error) {
+      toastStore.error(`Failed to rename collection: ${String(error)}`);
+    }
+  }
+
   onMount(() => {
     void refresh();
 
@@ -253,8 +281,21 @@
           class="rounded-lg border px-3 py-2 text-sm"
         >
           <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <p class="font-medium">{name}</p>
+            <div class="min-w-0 flex-1">
+              {#if editingCollection === name}
+                <input
+                  class="input text-sm font-medium w-full"
+                  type="text"
+                  bind:value={editingName}
+                  use:focusOnMount
+                  on:keydown={(e) => {
+                    if (e.key === "Enter") void onRenameCollection(name);
+                    if (e.key === "Escape") editingCollection = null;
+                  }}
+                />
+              {:else}
+                <p class="font-medium">{name}</p>
+              {/if}
               <p style="color: var(--clr-text-secondary);" class="text-xs">
                 {mods.length} mod{mods.length === 1 ? "" : "s"}
               </p>
@@ -284,33 +325,58 @@
               {/if}
             </div>
             <div class="flex items-center gap-2">
-              <label
-                class="gale-switch"
-                title={`${(collections[name] ?? false) ? "Disable" : "Enable"} collection ${name}`}
-                aria-label={`${(collections[name] ?? false) ? "Disable" : "Enable"} collection ${name}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={collections[name] ?? false}
+              {#if editingCollection === name}
+                <button
+                  class="btn btn-sm primary"
+                  on:click={() => void onRenameCollection(name)}
+                >
+                  Save
+                </button>
+                <button
+                  class="btn btn-sm"
+                  on:click={() => (editingCollection = null)}
+                >
+                  Cancel
+                </button>
+              {:else}
+                <label
+                  class="gale-switch"
+                  title={`${(collections[name] ?? false) ? "Disable" : "Enable"} collection ${name}`}
                   aria-label={`${(collections[name] ?? false) ? "Disable" : "Enable"} collection ${name}`}
-                  on:change={(event) =>
-                    onToggle(
-                      name,
-                      (event.currentTarget as HTMLInputElement).checked,
-                    )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={collections[name] ?? false}
+                    aria-label={`${(collections[name] ?? false) ? "Disable" : "Enable"} collection ${name}`}
+                    on:change={(event) =>
+                      onToggle(
+                        name,
+                        (event.currentTarget as HTMLInputElement).checked,
+                      )}
+                    disabled={!activeProfileName}
+                  />
+                  <span class="gale-switch-track"></span>
+                </label>
+                <button
+                  class="btn btn-sm"
+                  on:click={() => {
+                    editingCollection = name;
+                    editingName = name;
+                  }}
                   disabled={!activeProfileName}
-                />
-                <span class="gale-switch-track"></span>
-              </label>
-              <button
-                class="btn btn-sm danger"
-                on:click={() => {
-                  void onDeleteCollection(name);
-                }}
-                disabled={!activeProfileName}
-              >
-                Delete
-              </button>
+                >
+                  Rename
+                </button>
+                <button
+                  class="btn btn-sm danger"
+                  on:click={() => {
+                    void onDeleteCollection(name);
+                  }}
+                  disabled={!activeProfileName}
+                >
+                  Delete
+                </button>
+              {/if}
             </div>
           </div>
         </li>

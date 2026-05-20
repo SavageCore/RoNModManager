@@ -68,6 +68,7 @@ pub fn run() {
             collections::remove_mod_from_collection,
             collections::delete_collection,
             collections::toggle_collection,
+            collections::rename_collection,
             tags::get_tags,
             tags::set_mod_tags,
             tags::delete_tag,

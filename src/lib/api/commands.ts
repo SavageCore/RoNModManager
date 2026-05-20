@@ -70,6 +70,8 @@ export const deleteCollection = (name: string) =>
   invoke<void>("delete_collection", { name });
 export const toggleCollection = (name: string, enabled: boolean) =>
   invoke<void>("toggle_collection", { name, enabled });
+export const renameCollection = (oldName: string, newName: string) =>
+  invoke<void>("rename_collection", { oldName, newName });
 
 export const getTags = () => invoke<Record<string, string[]>>("get_tags");
 export const setModTags = (modName: string, newTags: string[]) =>

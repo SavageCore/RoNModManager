@@ -163,6 +163,48 @@ pub async fn delete_collection(state: State<'_, AppState>, name: String) -> Resu
 }
 
 #[tauri::command]
+pub async fn rename_collection(
+    state: State<'_, AppState>,
+    #[allow(non_snake_case)] oldName: String,
+    #[allow(non_snake_case)] newName: String,
+) -> Result<()> {
+    let config = state.get_config()?;
+    let active_profile_name = config
+        .active_profile
+        .ok_or_else(|| crate::models::AppError::Validation("No active profile".to_string()))?;
+
+    let mut profile = profiles::get_profile(&active_profile_name)?.ok_or_else(|| {
+        crate::models::AppError::Validation(format!("Profile '{}' not found", active_profile_name))
+    })?;
+
+    if profile.collections.contains_key(&newName) {
+        return Err(crate::models::AppError::Validation(format!(
+            "Collection '{}' already exists",
+            newName
+        )));
+    }
+
+    if let Some(mods) = profile.collections.remove(&oldName) {
+        profile.collections.insert(newName.clone(), mods);
+    } else {
+        return Err(crate::models::AppError::Validation(format!(
+            "Collection '{}' not found",
+            oldName
+        )));
+    }
+
+    for item in profile.enabled_collections.iter_mut() {
+        if *item == oldName {
+            *item = newName.clone();
+            break;
+        }
+    }
+
+    profiles::save_profile(&profile)?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn toggle_collection(
     state: State<'_, AppState>,
     name: String,
