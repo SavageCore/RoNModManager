@@ -14,19 +14,15 @@ Cross-platform (Linux + Windows) GUI mod manager for Ready or Not.
 ## Development
 
 ```bash
-npm install
-npm run dev
-npm run tauri dev
+make install
+make dev
 ```
 
 ### Linux Development
 
 ```bash
-# Native Wayland (window position won't persist)
-npm run dev:linux
-
-# XWayland mode (full window state persistence)
-npm run dev:xwayland
+make dev          # Wayland-compatible (software rendering)
+make dev-xwayland # XWayland mode (full window state persistence)
 ```
 
 See [docs/LINUX_WINDOW_PERSISTENCE.md](docs/LINUX_WINDOW_PERSISTENCE.md) for details on window state persistence on Linux/Wayland.
@@ -34,13 +30,12 @@ See [docs/LINUX_WINDOW_PERSISTENCE.md](docs/LINUX_WINDOW_PERSISTENCE.md) for det
 ## Quality Checks
 
 ```bash
-npm run lint
-npm run check
-npm run test:unit
+make lint-all        # all linters (frontend + backend)
 
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml
+# or individually:
+make lint-frontend   # Prettier check + svelte-check
+make lint-backend    # cargo fmt --check + clippy
+make test            # vitest + cargo test
 ```
 
 ## Auto-Update Setup (GitHub Releases)
@@ -79,21 +74,15 @@ CI and release workflows build a `.flatpak` bundle and publish it as an artifact
 Local Flatpak build:
 
 ```bash
-flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install -y flathub org.gnome.Platform//47 org.gnome.Sdk//47 org.freedesktop.Sdk.Extension.node22//24.08 org.freedesktop.Sdk.Extension.rust-stable//24.08
-
-cd src-tauri
-cargo vendor vendor
-cd ..
-flatpak-builder --force-clean --user --install-deps-from=flathub --repo=flatpak-repo build-dir packaging/flatpak/uk.savagecore.ronmodmanager.yml
-flatpak build-bundle flatpak-repo ronmodmanager.flatpak uk.savagecore.ronmodmanager
+make flatpak-deps    # install runtimes once
+make flatpak         # vendor → build → bundle
 ```
 
 Install and run local bundle:
 
 ```bash
-flatpak install --user --bundle ronmodmanager.flatpak
-flatpak run uk.savagecore.ronmodmanager
+make flatpak-install
+make flatpak-run
 ```
 
 ## License
