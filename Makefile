@@ -102,3 +102,6 @@ flatpak: flatpak-vendor flatpak-build flatpak-bundle ## Full local Flatpak pipel
 clean: ## Remove build artifacts
 	rm -rf build .svelte-kit build-dir flatpak-repo ronmodmanager.flatpak
 	cargo clean --manifest-path $(CARGO_MANIFEST)
+
+dev-to-prod: # Copy dev config and mods to production
+	python scripts/copy_dev_to_prod.py
