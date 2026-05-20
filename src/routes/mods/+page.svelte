@@ -133,6 +133,7 @@
   }
   import CollectionPickerModal from "$lib/components/CollectionPickerModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
+  import { Menu, MenuItem } from "@tauri-apps/api/menu";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { toastStore } from "$lib/stores/toast";
@@ -1031,8 +1032,20 @@
         <li
           style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
           class="rounded border"
-          on:contextmenu|preventDefault={() => {
-            openCollectionPicker(group.name, group.displayName || group.name);
+          on:contextmenu|preventDefault={async () => {
+            const menu = await Menu.new({
+              items: [
+                await MenuItem.new({
+                  text: "Add to collection",
+                  action: () =>
+                    openCollectionPicker(
+                      group.name,
+                      group.displayName || group.name,
+                    ),
+                }),
+              ],
+            });
+            await menu.popup();
           }}
         >
           <div class="flex items-center justify-between px-3 py-2 gap-3">
