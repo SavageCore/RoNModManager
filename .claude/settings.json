@@ -8,7 +8,10 @@
       "Bash(cargo vendor *)",
       "Bash(time npx prettier --check \".flatpak-builder\")",
       "Bash(npx prettier *)",
-      "Bash(npx svelte-check *)"
+      "Bash(npx svelte-check *)",
+      "Bash(git log *)",
+      "WebSearch",
+      "WebFetch(domain:api-docs.nexusmods.com)"
     ]
   }
 }

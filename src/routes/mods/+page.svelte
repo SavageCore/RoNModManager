@@ -134,8 +134,7 @@
       await syncModLinks(getFullSyncList(modsForActiveProfile));
     }
   }
-  import CollectionPickerModal from "$lib/components/CollectionPickerModal.svelte";
-  import TagPickerModal from "$lib/components/TagPickerModal.svelte";
+  import ItemPickerModal from "$lib/components/ItemPickerModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
@@ -152,6 +151,7 @@
     ExternalLink,
     Globe,
     Layers,
+    Library,
     Link as LinkIcon,
     Pencil,
     Plus,
@@ -568,45 +568,38 @@
     showCollectionPickerModal = true;
   }
 
-  async function handleCollectionToggle(collectionName: string) {
+  async function handleCollectionToggle(
+    event: CustomEvent<{ itemName: string }>,
+  ) {
+    const name = event.detail.itemName;
     const modName = collectionPickerModName;
-    const modLabel = collectionPickerModLabel;
-    const trimmedCollectionName = collectionName.trim();
-
-    if (!modName || !trimmedCollectionName) {
-      return;
-    }
-
+    const currentCols = modToCollectionsMap[modName] ?? [];
     try {
-      const existingCollectionName = activeCollectionNames.find(
-        (name) => name.toLowerCase() === trimmedCollectionName.toLowerCase(),
-      );
-      const currentCols = modToCollectionsMap[modName] ?? [];
-
-      if (
-        existingCollectionName &&
-        currentCols.includes(existingCollectionName)
-      ) {
-        await removeModFromCollection(existingCollectionName, modName);
-        toastStore.success(
-          `Removed ${modLabel || modName} from ${existingCollectionName}.`,
-        );
-      } else if (existingCollectionName) {
-        await addModToCollection(existingCollectionName, modName);
-        toastStore.success(
-          `Added ${modLabel || modName} to ${existingCollectionName}.`,
-        );
+      if (currentCols.includes(name)) {
+        await removeModFromCollection(name, modName);
       } else {
-        await createCollection(trimmedCollectionName, [modName]);
-        toastStore.success(
-          `Created "${trimmedCollectionName}" and added ${modLabel || modName}.`,
-        );
+        await addModToCollection(name, modName);
       }
-
       window.dispatchEvent(new CustomEvent("ron:collections-changed"));
       await refresh();
     } catch (error) {
       toastStore.error(`Failed to update collection: ${String(error)}`);
+    }
+  }
+
+  async function handleCollectionCreate(
+    event: CustomEvent<{ itemName: string }>,
+  ) {
+    const name = event.detail.itemName;
+    const modName = collectionPickerModName;
+    const modLabel = collectionPickerModLabel;
+    try {
+      await createCollection(name, [modName]);
+      toastStore.success(`Created "${name}" and added ${modLabel || modName}.`);
+      window.dispatchEvent(new CustomEvent("ron:collections-changed"));
+      await refresh();
+    } catch (error) {
+      toastStore.error(`Failed to create collection: ${String(error)}`);
     }
   }
 
@@ -620,20 +613,36 @@
     showTagPickerModal = true;
   }
 
-  async function handleTagSubmit(
-    event: CustomEvent<{ modName: string; selectedTags: string[] }>,
-  ) {
+  async function handleTagToggle(event: CustomEvent<{ itemName: string }>) {
+    const tag = event.detail.itemName;
+    const modName = tagPickerModName;
+    const currentTags = modToTagsMap[modName] ?? [];
+    const newTags = currentTags.includes(tag)
+      ? currentTags.filter((t) => t !== tag)
+      : [...currentTags, tag];
     try {
-      await setModTags(event.detail.modName, event.detail.selectedTags);
+      await setModTags(modName, newTags);
       await refresh();
     } catch (error) {
       toastStore.error(`Failed to update tags: ${String(error)}`);
     }
   }
 
-  async function handleTagDelete(event: CustomEvent<{ tagName: string }>) {
+  async function handleTagCreate(event: CustomEvent<{ itemName: string }>) {
+    const tag = event.detail.itemName;
+    const modName = tagPickerModName;
+    const currentTags = modToTagsMap[modName] ?? [];
     try {
-      await deleteTag(event.detail.tagName);
+      await setModTags(modName, [...new Set([...currentTags, tag])]);
+      await refresh();
+    } catch (error) {
+      toastStore.error(`Failed to update tags: ${String(error)}`);
+    }
+  }
+
+  async function handleTagDelete(event: CustomEvent<{ itemName: string }>) {
+    try {
+      await deleteTag(event.detail.itemName);
       await refresh();
     } catch (error) {
       toastStore.error(`Failed to delete tag: ${String(error)}`);
@@ -989,34 +998,46 @@
   onConfirm={confirmModal.onConfirm}
 />
 
-<CollectionPickerModal
+<ItemPickerModal
   isVisible={showCollectionPickerModal}
-  modName={collectionPickerModLabel || collectionPickerModName}
-  collections={activeCollectionNames}
-  currentCollections={modToCollectionsMap[collectionPickerModName] ?? []}
+  modLabel={collectionPickerModLabel || collectionPickerModName}
+  allItems={activeCollectionNames}
+  currentItems={modToCollectionsMap[collectionPickerModName] ?? []}
+  title="Collections"
+  ItemIcon={Library}
+  accentColorVar="--clr-primary-300"
+  searchPlaceholder="Search collections or type new name"
+  createButtonText={(n) => `Create "${n}" and add mod`}
+  allowDelete={false}
+  noteText="To delete a collection, visit the Collections page."
   on:close={() => {
     showCollectionPickerModal = false;
     collectionPickerModName = "";
     collectionPickerModLabel = "";
   }}
-  on:submit={(event) => {
-    void handleCollectionToggle(event.detail.collectionName);
-  }}
+  on:toggle={handleCollectionToggle}
+  on:create={handleCollectionCreate}
 />
 
-<TagPickerModal
+<ItemPickerModal
   isVisible={showTagPickerModal}
-  modName={tagPickerModName}
   modLabel={tagPickerModLabel || tagPickerModName}
-  allTags={allTagNames}
-  currentTags={modToTagsMap[tagPickerModName] ?? []}
+  allItems={allTagNames}
+  currentItems={modToTagsMap[tagPickerModName] ?? []}
+  title="Tags"
+  ItemIcon={Tag}
+  accentColorVar="--clr-success-300"
+  searchPlaceholder="Search tags or type new name"
+  createButtonText={(n) => `Create "${n}" and select`}
+  allowDelete={true}
   on:close={() => {
     showTagPickerModal = false;
     tagPickerModName = "";
     tagPickerModLabel = "";
   }}
-  on:submit={handleTagSubmit}
-  on:deleteTag={handleTagDelete}
+  on:toggle={handleTagToggle}
+  on:create={handleTagCreate}
+  on:deleteItem={handleTagDelete}
 />
 
 <!-- Filter Controls -->
