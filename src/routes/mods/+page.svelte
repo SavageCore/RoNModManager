@@ -1217,7 +1217,7 @@
             const menu = await Menu.new({
               items: [
                 await MenuItem.new({
-                  text: "Manage collection",
+                  text: "Manage collections",
                   action: () =>
                     openCollectionPicker(
                       group.name,
@@ -1228,6 +1228,17 @@
                   text: "Manage tags",
                   action: () =>
                     openTagPicker(group.name, group.displayName || group.name),
+                }),
+                await MenuItem.new({
+                  text: "Manage add-ons",
+                  action: () => openAddOnsModal(group.name),
+                }),
+                await MenuItem.new({
+                  text: group.sourceUrl ? "Edit link" : "Add link",
+                  action: () => {
+                    expandedGroups[group.name] = true;
+                    startEditingSourceUrl(group);
+                  },
                 }),
               ],
             });
@@ -1432,7 +1443,7 @@
                     on:click={() => startEditingSourceUrl(group)}
                     title="Edit source URL"
                   >
-                    Edit Link
+                    {group.sourceUrl ? "Edit Link" : "Add link"}
                   </button>
                   <button
                     class="btn btn-sm flex-shrink-0"
