@@ -45,7 +45,10 @@ pub fn classify_archive_entry(path: &Path) -> ModFileType {
     if path
         .components()
         .next()
-        .map(|component| component.as_os_str() == "_overrides")
+        .map(|component| {
+            let c = component.as_os_str();
+            c == "_overrides" || c == "ReadyOrNot"
+        })
         .unwrap_or(false)
     {
         return ModFileType::Override;
@@ -181,12 +184,16 @@ where
                 }
             }
             ModFileType::Override => {
-                let override_relative = entry_path.strip_prefix("_overrides").map_err(|_| {
-                    AppError::Validation(format!(
-                        "invalid override path in archive: {}",
-                        entry.name()
-                    ))
-                })?;
+                let override_relative = if entry_path.starts_with("_overrides") {
+                    entry_path.strip_prefix("_overrides").map_err(|_| {
+                        AppError::Validation(format!(
+                            "invalid override path in archive: {}",
+                            entry.name()
+                        ))
+                    })?
+                } else {
+                    &entry_path
+                };
 
                 if override_relative.as_os_str().is_empty() {
                     report.skipped += 1;
@@ -312,12 +319,16 @@ pub fn install_rar_archive(archive_path: &Path, context: &InstallContext) -> Res
                 }
             }
             ModFileType::Override => {
-                let override_relative = entry_path.strip_prefix("_overrides").map_err(|_| {
-                    AppError::Validation(format!(
-                        "invalid override path in archive: {}",
-                        entry_name
-                    ))
-                })?;
+                let override_relative = if entry_path.starts_with("_overrides") {
+                    entry_path.strip_prefix("_overrides").map_err(|_| {
+                        AppError::Validation(format!(
+                            "invalid override path in archive: {}",
+                            entry_name
+                        ))
+                    })?
+                } else {
+                    &entry_path
+                };
 
                 if override_relative.as_os_str().is_empty() {
                     report.skipped += 1;
@@ -423,12 +434,16 @@ pub fn install_7z_archive(archive_path: &Path, context: &InstallContext) -> Resu
                 }
             }
             ModFileType::Override => {
-                let override_relative = rel_path.strip_prefix("_overrides").map_err(|_| {
-                    AppError::Validation(format!(
-                        "invalid override path in archive: {}",
-                        rel_path.display()
-                    ))
-                })?;
+                let override_relative = if rel_path.starts_with("_overrides") {
+                    rel_path.strip_prefix("_overrides").map_err(|_| {
+                        AppError::Validation(format!(
+                            "invalid override path in archive: {}",
+                            rel_path.display()
+                        ))
+                    })?
+                } else {
+                    &rel_path
+                };
 
                 if override_relative.as_os_str().is_empty() {
                     report.skipped += 1;
@@ -592,6 +607,10 @@ mod tests {
             ModFileType::Override
         );
         assert_eq!(
+            classify_archive_entry(Path::new("ReadyOrNot/Content/Movies/foo.mp4")),
+            ModFileType::Override
+        );
+        assert_eq!(
             classify_archive_entry(Path::new("readme.txt")),
             ModFileType::Unknown
         );
@@ -636,6 +655,34 @@ mod tests {
         let archive = create_test_archive(
             temp.path(),
             vec![("_overrides/ReadyOrNot/Content/file.txt", b"replacement")],
+        );
+
+        let report = install_archive(&archive, &context).unwrap();
+        let replaced = fs::read(&existing_target).unwrap();
+
+        assert_eq!(report.installed, 1);
+        assert_eq!(report.overrides_backed_up, 1);
+        assert_eq!(replaced, b"replacement");
+        assert!(fs::read_dir(&context.backup_path).unwrap().next().is_some());
+    }
+
+    #[test]
+    fn install_readyornot_rooted_override_backs_up_and_replaces() {
+        let temp = TempDir::new().unwrap();
+        let context = create_context(temp.path());
+
+        let existing_target = context
+            .game_path
+            .join("ReadyOrNot")
+            .join("Content")
+            .join("Movies")
+            .join("RoNLogo.mp4");
+        fs::create_dir_all(existing_target.parent().unwrap()).unwrap();
+        fs::write(&existing_target, b"original").unwrap();
+
+        let archive = create_test_archive(
+            temp.path(),
+            vec![("ReadyOrNot/Content/Movies/RoNLogo.mp4", b"replacement")],
         );
 
         let report = install_archive(&archive, &context).unwrap();

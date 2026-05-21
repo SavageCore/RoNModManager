@@ -1233,6 +1233,44 @@ pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String)
         }
     }
 
+    // Restore original override files and remove their game-path symlinks.
+    {
+        let install_key = archive_install_key(&archive_name);
+        let staged_mods_key_root = staging_root.join("mods").join(&install_key);
+        let overrides_backup_dir = staging_root
+            .join("backups")
+            .join(&install_key)
+            .join("overrides");
+        for file_path in &manifest_data.installed_files {
+            if !file_path.starts_with(&staged_mods_key_root) {
+                continue;
+            }
+            let relative = match file_path.strip_prefix(&staged_mods_key_root) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            // Skip flat files (pak, bank) — only process nested override files
+            if relative
+                .parent()
+                .map(|p| p.as_os_str().is_empty())
+                .unwrap_or(true)
+            {
+                continue;
+            }
+            let game_dest = game_path.join(relative);
+            if game_dest.exists() || game_dest.is_symlink() {
+                let _ = fs::remove_file(&game_dest);
+            }
+            let backup = overrides_backup_dir.join(relative);
+            if backup.exists() {
+                if let Some(parent) = game_dest.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let _ = fs::copy(&backup, &game_dest);
+            }
+        }
+    }
+
     for file_path in &manifest_data.installed_files {
         if file_path.exists() && fs::remove_file(file_path).is_ok() {
             cleanup_empty_install_dirs(file_path, &staging_root, &mods_path);
@@ -1610,6 +1648,40 @@ fn backup_bank_files_from_report(
     Ok(())
 }
 
+fn backup_override_files_from_report(
+    report: &installer::InstallReport,
+    game_path: &Path,
+    staged_context: &installer::InstallContext,
+) -> Result<()> {
+    for staged_path in &report.installed_files {
+        if !staged_path.starts_with(&staged_context.mods_path) {
+            continue;
+        }
+        let relative = match staged_path.strip_prefix(&staged_context.mods_path) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        // Override files are nested (e.g. ReadyOrNot/Content/Movies/foo.mp4).
+        // Flat files like .pak and .bank sit directly in mods_path with no parent dir.
+        if relative
+            .parent()
+            .map(|p| p.as_os_str().is_empty())
+            .unwrap_or(true)
+        {
+            continue;
+        }
+        let real_game_file = game_path.join(relative);
+        if real_game_file.exists() {
+            let backup_dest = staged_context.backup_path.join("overrides").join(relative);
+            if let Some(parent) = backup_dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&real_game_file, &backup_dest)?;
+        }
+    }
+    Ok(())
+}
+
 fn save_install_manifest(
     archive_path: &Path,
     report: &installer::InstallReport,
@@ -1742,10 +1814,7 @@ fn install_downloaded_file(
             .unwrap_or("unknown"),
     );
     let staged_context = installer::InstallContext {
-        game_path: context
-            .backup_path
-            .join("staged_overrides")
-            .join(&install_key),
+        game_path: context.mods_path.join(&install_key),
         mods_path: context.mods_path.join(&install_key),
         savegames_path: context.savegames_path.join(&install_key),
         backup_path: context.backup_path.join(&install_key),
@@ -1797,6 +1866,7 @@ fn install_downloaded_file(
             );
         })?;
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
+        backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
     }
@@ -1819,6 +1889,7 @@ fn install_downloaded_file(
         );
         let report = installer::install_rar_archive(path, &staged_context)?;
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
+        backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
     }
@@ -1841,6 +1912,7 @@ fn install_downloaded_file(
         );
         let report = installer::install_7z_archive(path, &staged_context)?;
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
+        backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
     }

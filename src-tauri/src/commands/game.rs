@@ -60,6 +60,40 @@ fn target_path_for_staged_file(
     None
 }
 
+/// If `staged_path` is a staged override file, returns `(game_target, backup_path)`.
+/// Override files live under `staged/mods/<key>/` with subdirectory structure preserved
+/// (e.g. `staged/mods/<key>/ReadyOrNot/Content/Movies/foo.mp4`). Flat files like .pak
+/// and .bank sit directly under `<key>/` with no parent directory, so they are excluded.
+fn override_paths(
+    staged_path: &Path,
+    staging_root: &Path,
+    game_path: &Path,
+) -> Option<(PathBuf, PathBuf)> {
+    let staged_mods_root = staging_root.join("mods");
+    if !staged_path.starts_with(&staged_mods_root) {
+        return None;
+    }
+    let relative_with_key = staged_path.strip_prefix(&staged_mods_root).ok()?;
+    let mut components = relative_with_key.components();
+    let key = components.next()?;
+    let game_relative: PathBuf = components.collect();
+    // Flat files (pak, bank) have no parent dir — only nested paths are overrides
+    if game_relative
+        .parent()
+        .map(|p| p.as_os_str().is_empty())
+        .unwrap_or(true)
+    {
+        return None;
+    }
+    let game_target = game_path.join(&game_relative);
+    let backup = staging_root
+        .join("backups")
+        .join(key)
+        .join("overrides")
+        .join(&game_relative);
+    Some((game_target, backup))
+}
+
 fn launch_game_internal(_game_path: &Path) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -176,6 +210,7 @@ pub(crate) fn sync_mod_links_for_game_path(
 
     // First remove all managed live links/files for tracked staged files.
     // For .bank files, restore the original from the backup rather than just deleting.
+    // For override files, remove the symlink and restore the backed-up original.
     for manifest_data in manifests.values() {
         for staged_path in &manifest_data.installed_files {
             let is_bank = staged_path
@@ -198,6 +233,18 @@ pub(crate) fn sync_mod_links_for_game_path(
                     let _ = fs::copy(&backup, &game_dest);
                 } else if game_dest.exists() {
                     let _ = fs::remove_file(&game_dest);
+                }
+            } else if let Some((game_target, backup)) =
+                override_paths(staged_path, &staging_root, game_path)
+            {
+                if game_target.exists() || game_target.is_symlink() {
+                    let _ = fs::remove_file(&game_target);
+                }
+                if backup.exists() {
+                    if let Some(parent) = game_target.parent() {
+                        let _ = fs::create_dir_all(parent);
+                    }
+                    let _ = fs::copy(&backup, &game_target);
                 }
             } else if let Some(target) =
                 target_path_for_staged_file(staged_path, &live_mods_path, &live_savegames_path)
@@ -236,6 +283,16 @@ pub(crate) fn sync_mod_links_for_game_path(
                     let _ = fs::remove_file(&game_dest);
                 }
                 create_file_link(staged_path, &game_dest)?;
+            } else if let Some((game_target, _)) =
+                override_paths(staged_path, &staging_root, game_path)
+            {
+                if let Some(parent) = game_target.parent() {
+                    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                }
+                if game_target.exists() || game_target.is_symlink() {
+                    let _ = fs::remove_file(&game_target);
+                }
+                create_file_link(staged_path, &game_target)?;
             } else {
                 let Some(target) =
                     target_path_for_staged_file(staged_path, &live_mods_path, &live_savegames_path)
