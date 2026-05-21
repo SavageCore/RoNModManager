@@ -1,10 +1,21 @@
 import { writable } from "svelte/store";
 
-export type SortOrder = "alpha-asc" | "alpha-desc" | "date-asc" | "date-desc";
+export type SortOrder =
+  | "alpha-asc"
+  | "alpha-desc"
+  | "date-asc"
+  | "date-desc"
+  | "missing-sav-first";
 
 const STORAGE_KEY = "ronmodmanager.modSortOrder";
 const DEFAULT: SortOrder = "alpha-asc";
-const VALID: SortOrder[] = ["alpha-asc", "alpha-desc", "date-asc", "date-desc"];
+const VALID: SortOrder[] = [
+  "alpha-asc",
+  "alpha-desc",
+  "date-asc",
+  "date-desc",
+  "missing-sav-first",
+];
 
 function readSortOrder(): SortOrder {
   if (typeof window === "undefined") return DEFAULT;

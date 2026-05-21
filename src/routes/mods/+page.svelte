@@ -150,6 +150,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import {
+    AlertTriangle,
     Calendar,
     ExternalLink,
     Globe,
@@ -294,6 +295,12 @@
           return (a.installedAt ?? 0) - (b.installedAt ?? 0);
         case "date-desc":
           return (b.installedAt ?? 0) - (a.installedAt ?? 0);
+        case "missing-sav-first": {
+          const aNeeds = missingSavMapMods.has(a.name) ? 0 : 1;
+          const bNeeds = missingSavMapMods.has(b.name) ? 0 : 1;
+          if (aNeeds !== bNeeds) return aNeeds - bNeeds;
+          return labelA.localeCompare(labelB);
+        }
       }
     });
 
@@ -315,6 +322,17 @@
       return acc;
     },
     {} as Record<string, string[]>,
+  );
+
+  $: missingSavMapMods = new Set(
+    modGroups
+      .filter((group) => {
+        const tags = modToTagsMap[group.name] ?? [];
+        if (!tags.some((t) => t.toLowerCase() === "map")) return false;
+        const allFiles = [...group.files, ...(group.addonFiles ?? [])];
+        return !allFiles.some((f) => f.name.toLowerCase().endsWith(".sav"));
+      })
+      .map((g) => g.name),
   );
 
   $: bulkCurrentCollections = activeCollectionNames.filter(
@@ -1271,6 +1289,7 @@
     <option value="alpha-desc">Z → A</option>
     <option value="date-desc">Newest First</option>
     <option value="date-asc">Oldest First</option>
+    <option value="missing-sav-first">Missing World Gen</option>
   </select>
 </div>
 
@@ -1531,6 +1550,17 @@
                       >
                         <Globe size={15} />
                       </a>
+                    {/if}
+                    {#if missingSavMapMods.has(group.name)}
+                      <span
+                        title="No world generation data"
+                        class="flex items-center"
+                      >
+                        <AlertTriangle
+                          size={14}
+                          style="color: #f59e0b; flex-shrink: 0;"
+                        />
+                      </span>
                     {/if}
                     <span
                       role="button"
