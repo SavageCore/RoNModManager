@@ -23,6 +23,8 @@
   let nexusPreviewError = "";
   let nexusLookupTimer: ReturnType<typeof setTimeout> | null = null;
   let nexusLookupToken = 0;
+  let isProcessingLinks = false;
+  const pendingLinkQueue: Array<{ input: string; queueId: string }> = [];
 
   $: activeQueueCount = $modAddQueueStore.items.filter(
     (item) => item.status === "queued" || item.status === "running",
@@ -138,39 +140,38 @@
     alertStore.clear();
     modioInput = "";
 
-    // Reset batch counter for new queue
-    modAddQueueStore.resetBatch();
-
-    // Enqueue all mods
-    const queueEntries = modInputs.map((modInput) => ({
-      input: modInput,
-      queueId: modAddQueueStore.enqueue(modInput),
-    }));
+    // Enqueue all submitted mods — totalQueued accumulates correctly across submissions
+    for (const modInput of modInputs) {
+      pendingLinkQueue.push({
+        input: modInput,
+        queueId: modAddQueueStore.enqueue(modInput),
+      });
+    }
 
     // Close immediately — progress is visible in the bottom bar
     closeModal();
 
-    let successCount = 0;
-    let failureCount = 0;
+    // Single worker loop — if already running, the new items will be picked up naturally
+    if (isProcessingLinks) return;
 
-    // Process each mod sequentially
-    for (const entry of queueEntries) {
-      modAddQueueStore.markRunning(entry.queueId, "Starting...");
-
-      try {
-        const result = isNexusUrl(entry.input)
-          ? await addNexusMod(entry.input)
-          : await addModIoMod(entry.input);
-        modAddQueueStore.markDone(entry.queueId, `Installed ${result.name}`);
-        successCount += 1;
-      } catch (error) {
-        const message = `Failed: ${String(error)}`;
-        modAddQueueStore.markError(entry.queueId, message);
-        failureCount += 1;
+    isProcessingLinks = true;
+    try {
+      while (pendingLinkQueue.length > 0) {
+        const entry = pendingLinkQueue.shift()!;
+        modAddQueueStore.markRunning(entry.queueId, "Starting...");
+        try {
+          const result = isNexusUrl(entry.input)
+            ? await addNexusMod(entry.input)
+            : await addModIoMod(entry.input);
+          modAddQueueStore.markDone(entry.queueId, `Installed ${result.name}`);
+        } catch (error) {
+          modAddQueueStore.markError(entry.queueId, `Failed: ${String(error)}`);
+        }
       }
+    } finally {
+      isProcessingLinks = false;
+      dispatch("modAdded");
     }
-
-    dispatch("modAdded");
   }
 
   async function installFile(filePath: string) {
