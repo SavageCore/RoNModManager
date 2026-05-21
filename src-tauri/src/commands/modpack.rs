@@ -188,12 +188,6 @@ pub async fn export_modpack_to_file(
         }
     }
 
-    if dir_path.exists() {
-        fs::remove_dir_all(&dir_path).map_err(|e| {
-            AppError::Validation(format!("Failed to clear existing directory: {e}"))
-        })?;
-    }
-
     let mods_dir = dir_path.join("mods");
     fs::create_dir_all(&mods_dir)
         .map_err(|e| AppError::Validation(format!("Failed to create mods dir: {e}")))?;
@@ -250,136 +244,118 @@ pub async fn export_modpack_to_file(
         let dst = mods_dir.join(archive_name);
 
         let label = if is_addon { "addon" } else { "archive" };
+        let n = current + 1;
         let _ = app.emit(
             "export_progress",
             ProgressEvent {
                 operation: "export_copy".to_string(),
                 file: archive_name.clone(),
                 percent: slot_percent(current, 0.0),
-                message: format!("Copying {label} {archive_name}..."),
+                message: format!("{n}/{total} Copying {label} {archive_name}..."),
                 total_bytes: None,
                 processed_bytes: None,
             },
         );
 
         if src.exists() {
-            // ── COPY PHASE (slot 0.0 → 0.5) ─────────────────────────────────
-            let copy_start = Instant::now();
-            let mut last_copy_emit = Instant::now();
+            let src_size = src.metadata().map(|m| m.len()).unwrap_or(0);
+            let dst_size = dst.metadata().map(|m| m.len()).unwrap_or(0);
+            let unchanged = dst.exists() && src_size > 0 && dst_size == src_size;
 
-            hasher::copy_file_with_progress(&src, &dst, |processed, file_size| {
-                let now = Instant::now();
-                if now.duration_since(last_copy_emit).as_millis() < 50 {
-                    return;
-                }
-                last_copy_emit = now;
-                let elapsed = copy_start.elapsed().as_secs_f64();
-                let speed = if elapsed > 0.001 {
-                    (processed as f64 / elapsed) as u64
-                } else {
-                    0
-                };
-                let frac = if file_size > 0 {
-                    processed as f32 / file_size as f32 * 0.5
-                } else {
-                    0.0
-                };
+            if unchanged {
+                current += 1;
                 let _ = app.emit(
                     "export_progress",
                     ProgressEvent {
-                        operation: "export_copy".to_string(),
+                        operation: "export".to_string(),
                         file: archive_name.clone(),
-                        percent: slot_percent(current, frac),
-                        message: format!("Copying {archive_name}... @ {}", format_speed(speed)),
-                        total_bytes: Some(file_size),
-                        processed_bytes: Some(processed),
+                        percent: slot_percent(current, 0.0),
+                        message: format!("{n}/{total} Skipped {archive_name} (unchanged)"),
+                        total_bytes: None,
+                        processed_bytes: None,
                     },
                 );
-            })
-            .map_err(|e| AppError::Validation(format!("Failed to copy {archive_name}: {e}")))?;
+                continue;
+            }
 
-            // ── VERIFY PHASE (slot 0.5 → 1.0) ────────────────────────────────
             let cached_hash = manifest_manager
                 .load_manifest(archive_name)
                 .ok()
                 .flatten()
                 .and_then(|m| m.content_hash);
 
-            let _ = app.emit(
-                "export_progress",
-                ProgressEvent {
-                    operation: "export_verify".to_string(),
-                    file: archive_name.clone(),
-                    percent: slot_percent(current, 0.5),
-                    message: format!("Verifying {archive_name}..."),
-                    total_bytes: None,
-                    processed_bytes: None,
-                },
-            );
+            let copy_start = Instant::now();
+            let mut last_emit = Instant::now();
 
-            let verify_start = Instant::now();
-            let mut last_verify_emit = Instant::now();
+            let (_, copy_hash) =
+                hasher::copy_file_with_hash_and_progress(&src, &dst, |processed, file_size| {
+                    let now = Instant::now();
+                    if now.duration_since(last_emit).as_millis() < 50 {
+                        return;
+                    }
+                    last_emit = now;
+                    let elapsed = copy_start.elapsed().as_secs_f64();
+                    let speed = if elapsed > 0.001 {
+                        (processed as f64 / elapsed) as u64
+                    } else {
+                        0
+                    };
+                    let frac = if file_size > 0 {
+                        processed as f32 / file_size as f32
+                    } else {
+                        0.0
+                    };
+                    let _ = app.emit(
+                        "export_progress",
+                        ProgressEvent {
+                            operation: "export_copy".to_string(),
+                            file: archive_name.clone(),
+                            percent: slot_percent(current, frac),
+                            message: format!(
+                                "{n}/{total} Copying {archive_name}... @ {}",
+                                format_speed(speed)
+                            ),
+                            total_bytes: Some(file_size),
+                            processed_bytes: Some(processed),
+                        },
+                    );
+                })
+                .map_err(|e| AppError::Validation(format!("Failed to copy {archive_name}: {e}")))?;
 
-            let dst_hash = hasher::md5_file_with_progress(&dst, |processed, file_size| {
-                let now = Instant::now();
-                if now.duration_since(last_verify_emit).as_millis() < 50 {
-                    return;
+            if let Some(expected) = cached_hash {
+                if copy_hash != expected {
+                    return Err(AppError::Validation(format!(
+                        "Hash mismatch for {archive_name}: copy is corrupt"
+                    )));
                 }
-                last_verify_emit = now;
-                let elapsed = verify_start.elapsed().as_secs_f64();
-                let speed = if elapsed > 0.001 {
-                    (processed as f64 / elapsed) as u64
-                } else {
-                    0
-                };
-                let frac = if file_size > 0 {
-                    0.5 + processed as f32 / file_size as f32 * 0.5
-                } else {
-                    0.5
-                };
-                let _ = app.emit(
-                    "export_progress",
-                    ProgressEvent {
-                        operation: "export_verify".to_string(),
-                        file: archive_name.clone(),
-                        percent: slot_percent(current, frac),
-                        message: format!("Verifying {archive_name}... @ {}", format_speed(speed)),
-                        total_bytes: Some(file_size),
-                        processed_bytes: Some(processed),
-                    },
-                );
-            })
-            .map_err(|e| {
-                AppError::Validation(format!("Failed to hash copy of {archive_name}: {e}"))
-            })?;
-
-            let expected = match cached_hash {
-                Some(h) => h,
-                None => hasher::md5_file(&src).map_err(|e| {
-                    AppError::Validation(format!("Failed to hash source {archive_name}: {e}"))
-                })?,
-            };
-
-            if dst_hash != expected {
-                return Err(AppError::Validation(format!(
-                    "Hash mismatch for {archive_name}: copy is corrupt"
-                )));
             }
         }
 
         current += 1;
-        // Emit plain "Verified" at the completed slot boundary (no byte details)
         let _ = app.emit(
             "export_progress",
             ProgressEvent {
                 operation: "export".to_string(),
                 file: archive_name.clone(),
                 percent: slot_percent(current, 0.0),
-                message: format!("Verified {archive_name}"),
+                message: format!("{n}/{total} Copied {archive_name}"),
                 total_bytes: None,
                 processed_bytes: None,
             },
         );
+    }
+
+    // Remove files in the export mods dir that are no longer in the modpack.
+    let expected: std::collections::HashSet<&str> =
+        all_archives.iter().map(String::as_str).collect();
+    if let Ok(entries) = fs::read_dir(&mods_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if !expected.contains(name_str.as_ref()) {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
     }
 
     // Emit complete to trigger status bar auto-hide

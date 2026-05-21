@@ -76,12 +76,26 @@ pub async fn download_manifest_files(
         let local_path = destination_root.join(&entry.path);
 
         if local_path.exists() {
-            // Existing behavior: skip by filename presence for now.
-            downloaded_paths.push(local_path);
-            continue;
+            let actual_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
+            if entry.size == 0 || actual_size == entry.size {
+                downloaded_paths.push(local_path);
+                continue;
+            }
+            // Size mismatch: re-download the file
         }
 
         downloader::download_file(client, &remote, &local_path).await?;
+
+        if entry.size > 0 {
+            let actual_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
+            if actual_size != entry.size {
+                return Err(crate::models::AppError::Validation(format!(
+                    "Size mismatch for {}: expected {} bytes, got {}",
+                    entry.path, entry.size, actual_size
+                )));
+            }
+        }
+
         downloaded_paths.push(local_path);
     }
 

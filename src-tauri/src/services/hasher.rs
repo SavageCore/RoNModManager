@@ -38,7 +38,23 @@ pub fn md5_file(path: &Path) -> io::Result<String> {
 }
 
 /// Copy a file chunk-by-chunk, calling `on_progress(processed_bytes, total_bytes)` each chunk.
-pub fn copy_file_with_progress<F>(src: &Path, dst: &Path, mut on_progress: F) -> io::Result<u64>
+pub fn copy_file_with_progress<F>(src: &Path, dst: &Path, on_progress: F) -> io::Result<u64>
+where
+    F: FnMut(u64, u64),
+{
+    let (bytes, _) = copy_file_with_hash_and_progress(src, dst, on_progress)?;
+    Ok(bytes)
+}
+
+/// Copy a file chunk-by-chunk, computing MD5 in the same pass.
+///
+/// Returns `(bytes_written, md5_hex)`. The hash is computed over the bytes written to dst,
+/// so a mismatch against the source hash indicates a corrupt copy.
+pub fn copy_file_with_hash_and_progress<F>(
+    src: &Path,
+    dst: &Path,
+    mut on_progress: F,
+) -> io::Result<(u64, String)>
 where
     F: FnMut(u64, u64),
 {
@@ -47,6 +63,7 @@ where
     let mut src_file = std::fs::File::open(src)?;
     let total_bytes = src_file.metadata()?.len();
     let mut dst_file = std::fs::File::create(dst)?;
+    let mut hasher = Md5::new();
     let mut processed = 0u64;
     let mut buffer = [0u8; 256 * 1024];
 
@@ -58,12 +75,13 @@ where
             break;
         }
         dst_file.write_all(&buffer[..n])?;
+        hasher.update(&buffer[..n]);
         processed += n as u64;
         on_progress(processed, total_bytes);
     }
 
     dst_file.flush()?;
-    Ok(processed)
+    Ok((processed, hex::encode(hasher.finalize())))
 }
 
 /// Compute CRC32 hash of a file
