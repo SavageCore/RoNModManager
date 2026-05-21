@@ -1401,6 +1401,21 @@ fn install_downloaded_file(
         .and_then(|ext| ext.to_str())
         .unwrap_or_default();
     if extension.eq_ignore_ascii_case("zip") {
+        let archive_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
+        let _ = app.emit(
+            "install_progress",
+            &ProgressEvent {
+                operation: "install".to_string(),
+                file: path.to_string_lossy().to_string(),
+                percent: 50.0,
+                message: format!("Installing archive: {}...", archive_name),
+                total_bytes: None,
+                processed_bytes: None,
+            },
+        );
         let start = Instant::now();
         let mut last_emit = Instant::now() - Duration::from_millis(500);
         let report = installer::install_archive_with_progress(path, &staged_context, |progress| {
@@ -1432,13 +1447,17 @@ fn install_downloaded_file(
     }
 
     if extension.eq_ignore_ascii_case("rar") {
+        let archive_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
         let _ = app.emit(
             "install_progress",
             &ProgressEvent {
                 operation: "install".to_string(),
                 file: path.to_string_lossy().to_string(),
                 percent: 50.0,
-                message: "Installing RAR archive...".to_string(),
+                message: format!("Installing archive: {}...", archive_name),
                 total_bytes: None,
                 processed_bytes: None,
             },
@@ -1450,13 +1469,17 @@ fn install_downloaded_file(
     }
 
     if extension.eq_ignore_ascii_case("7z") {
+        let archive_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
         let _ = app.emit(
             "install_progress",
             &ProgressEvent {
                 operation: "install".to_string(),
                 file: path.to_string_lossy().to_string(),
                 percent: 50.0,
-                message: "Installing 7Z archive...".to_string(),
+                message: format!("Installing archive: {}...", archive_name),
                 total_bytes: None,
                 processed_bytes: None,
             },
