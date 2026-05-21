@@ -78,17 +78,13 @@ fn launch_game_internal(_game_path: &Path) -> Result<(), String> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        // On Linux, launch through Steam using the app ID for Ready or Not (1144200)
-        // This ensures Proton compatibility and proper game initialization
-        Command::new("steam")
-            .args(["steam://rungameid/1144200"])
+        // Use xdg-open so the steam:// URI is handled via D-Bus portals, which
+        // works both natively and inside a Flatpak sandbox (where `steam` is not
+        // on the sandboxed PATH).
+        Command::new("xdg-open")
+            .arg("steam://rungameid/1144200")
             .spawn()
-            .map_err(|e| {
-                format!(
-                    "Failed to launch game via Steam: {}. Make sure Steam is running.",
-                    e
-                )
-            })?;
+            .map_err(|e| format!("Failed to launch game via Steam: {}", e))?;
     }
 
     Ok(())
