@@ -50,7 +50,6 @@ pub fn run() {
             config::apply_intro_skip,
             config::undo_intro_skip,
             config::is_intro_skip_applied,
-            config::get_intro_skip_ini_path,
             game::detect_game_path,
             game::set_game_path,
             game::launch_game,

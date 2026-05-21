@@ -39,8 +39,6 @@ export const applyIntroSkip = () => invoke<void>("apply_intro_skip");
 export const undoIntroSkip = () => invoke<void>("undo_intro_skip");
 export const isIntroSkipApplied = () =>
   invoke<boolean>("is_intro_skip_applied");
-export const getIntroSkipIniPath = () =>
-  invoke<string>("get_intro_skip_ini_path");
 
 export const detectGamePath = () => invoke<string | null>("detect_game_path");
 export const setGamePath = (path: string) =>

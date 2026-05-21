@@ -94,10 +94,15 @@ fn override_paths(
     Some((game_target, backup))
 }
 
-fn launch_game_internal(_game_path: &Path) -> Result<(), String> {
+fn launch_game_internal(game_path: &Path) -> Result<(), String> {
+    // Re-apply intro skip if previously enabled, in case a game update restored the files
+    if crate::services::config_tweaks::is_intro_skip_applied(game_path).unwrap_or(false) {
+        let _ = crate::services::config_tweaks::apply_intro_skip(game_path);
+    }
+
     #[cfg(target_os = "windows")]
     {
-        let exe_path = _game_path.join("ReadyOrNot.exe");
+        let exe_path = game_path.join("ReadyOrNot.exe");
         if !exe_path.exists() {
             return Err(format!(
                 "Game executable not found at {}",

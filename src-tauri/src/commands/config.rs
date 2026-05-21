@@ -105,25 +105,28 @@ pub async fn set_theme(state: State<'_, AppState>, theme: ThemeMode) -> Result<(
 }
 
 #[tauri::command]
-pub async fn apply_intro_skip(_state: State<'_, AppState>) -> Result<()> {
-    crate::services::config_tweaks::apply_intro_skip()?;
-    Ok(())
+pub async fn apply_intro_skip(state: State<'_, AppState>) -> Result<()> {
+    let config = state.get_config()?;
+    let game_path = config.game_path.ok_or_else(|| {
+        crate::models::AppError::Validation("game path not configured".to_string())
+    })?;
+    crate::services::config_tweaks::apply_intro_skip(&game_path)
 }
 
 #[tauri::command]
-pub async fn undo_intro_skip(_state: State<'_, AppState>) -> Result<()> {
-    crate::services::config_tweaks::undo_intro_skip()?;
-    Ok(())
+pub async fn undo_intro_skip(state: State<'_, AppState>) -> Result<()> {
+    let config = state.get_config()?;
+    let game_path = config.game_path.ok_or_else(|| {
+        crate::models::AppError::Validation("game path not configured".to_string())
+    })?;
+    crate::services::config_tweaks::undo_intro_skip(&game_path)
 }
 
 #[tauri::command]
-pub async fn is_intro_skip_applied(_state: State<'_, AppState>) -> Result<bool> {
-    crate::services::config_tweaks::is_intro_skip_applied()
-}
-
-#[tauri::command]
-pub async fn get_intro_skip_ini_path(_state: State<'_, AppState>) -> Result<String> {
-    Ok(crate::services::config_tweaks::get_game_ini_path()?
-        .to_string_lossy()
-        .to_string())
+pub async fn is_intro_skip_applied(state: State<'_, AppState>) -> Result<bool> {
+    let config = state.get_config()?;
+    let game_path = config.game_path.ok_or_else(|| {
+        crate::models::AppError::Validation("game path not configured".to_string())
+    })?;
+    crate::services::config_tweaks::is_intro_skip_applied(&game_path)
 }

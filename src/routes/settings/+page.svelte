@@ -881,7 +881,7 @@
         <p style="color: var(--clr-text-secondary);" class="text-sm">
           {introSkipApplied
             ? "✓ Applied"
-            : "Configure Game.ini to skip intro video"}
+            : "Removes startup movie files to skip intro video"}
         </p>
       </div>
       <div class="flex gap-2">
