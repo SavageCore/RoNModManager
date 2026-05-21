@@ -139,7 +139,9 @@
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
+  import { modSortOrder } from "$lib/stores/modSortOrder";
   import { toastStore } from "$lib/stores/toast";
+  import { formatDistanceToNow } from "date-fns";
   import type {
     InstalledModGroup,
     InstalledModFile,
@@ -148,6 +150,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import {
+    Calendar,
     ExternalLink,
     Globe,
     Layers,
@@ -264,20 +267,35 @@
   // Filtering logic for modGroups
   // Filter out add-on files that are tracked as standalone mods
 
-  $: filteredModGroups = modGroups.filter((group) => {
-    const search = modSearch.trim().toLowerCase();
-    const name = group.name.toLowerCase();
-    const displayName = (group.displayName || "").toLowerCase();
-    const matchesSearch =
-      !search || name.includes(search) || displayName.includes(search);
-    const source = getModSource(group.sourceUrl);
-    const matchesSource =
-      modSourceFilter === "all" || source === modSourceFilter;
-    const matchesTags =
-      activeTagFilters.size === 0 ||
-      (modToTagsMap[group.name] ?? []).some((t) => activeTagFilters.has(t));
-    return matchesSearch && matchesSource && matchesTags;
-  });
+  $: filteredModGroups = modGroups
+    .filter((group) => {
+      const search = modSearch.trim().toLowerCase();
+      const name = group.name.toLowerCase();
+      const displayName = (group.displayName || "").toLowerCase();
+      const matchesSearch =
+        !search || name.includes(search) || displayName.includes(search);
+      const source = getModSource(group.sourceUrl);
+      const matchesSource =
+        modSourceFilter === "all" || source === modSourceFilter;
+      const matchesTags =
+        activeTagFilters.size === 0 ||
+        (modToTagsMap[group.name] ?? []).some((t) => activeTagFilters.has(t));
+      return matchesSearch && matchesSource && matchesTags;
+    })
+    .sort((a, b) => {
+      const labelA = (a.displayName || a.name).toLowerCase();
+      const labelB = (b.displayName || b.name).toLowerCase();
+      switch ($modSortOrder) {
+        case "alpha-asc":
+          return labelA.localeCompare(labelB);
+        case "alpha-desc":
+          return labelB.localeCompare(labelA);
+        case "date-asc":
+          return (a.installedAt ?? 0) - (b.installedAt ?? 0);
+        case "date-desc":
+          return (b.installedAt ?? 0) - (a.installedAt ?? 0);
+      }
+    });
 
   $: modToCollectionsMap = Object.entries(activeProfileCollections).reduce(
     (acc, [colName, mods]) => {
@@ -1243,6 +1261,17 @@
     <option value="modio">Mod.io</option>
     <option value="nexus">Nexus</option>
   </select>
+  <select
+    class="input"
+    bind:value={$modSortOrder}
+    style="width: 150px; padding-top: 0; padding-bottom: 0; height: 2.5rem;"
+    aria-label="Sort order"
+  >
+    <option value="alpha-asc">A → Z</option>
+    <option value="alpha-desc">Z → A</option>
+    <option value="date-desc">Newest First</option>
+    <option value="date-asc">Oldest First</option>
+  </select>
 </div>
 
 {#if allTagNames.length > 0}
@@ -1535,6 +1564,17 @@
                       (+{group.addonFiles.length} add-on)</span
                     >
                   {/if}
+                  {#if group.installedAt}
+                    <span class="mx-1">·</span><span
+                      title={new Date(
+                        group.installedAt * 1000,
+                      ).toLocaleString()}
+                      >added {formatDistanceToNow(
+                        new Date(group.installedAt * 1000),
+                        { addSuffix: true },
+                      )}</span
+                    >
+                  {/if}
                 </p>
               </div>
             </button>
@@ -1662,6 +1702,21 @@
                   </button>
                 {/if}
               </div>
+
+              {#if group.installedAt}
+                <div class="flex items-center gap-2 text-xs mb-2">
+                  <span
+                    style="color: var(--clr-text-secondary);"
+                    class="inline-flex items-center gap-1 flex-shrink-0"
+                  >
+                    <Calendar size={13} />
+                    Added
+                  </span>
+                  <span style="color: var(--clr-text-secondary);">
+                    {new Date(group.installedAt * 1000).toLocaleString()}
+                  </span>
+                </div>
+              {/if}
 
               {#each group.files as file (file.path)}
                 <div class="flex items-center justify-between gap-3 text-xs">
