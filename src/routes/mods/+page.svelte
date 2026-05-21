@@ -232,6 +232,9 @@
   let activeProfileTags: Record<string, string[]> = {};
   let allTagNames: string[] = [];
   let activeTagFilters = new Set<string>();
+  let selectedMods = new Set<string>();
+  let showBulkCollectionModal = false;
+  let showBulkTagModal = false;
 
   function extractModIoInputFromDroppedText(raw: string): string | null {
     const candidates = raw
@@ -295,6 +298,45 @@
     },
     {} as Record<string, string[]>,
   );
+
+  $: bulkCurrentCollections = activeCollectionNames.filter(
+    (col) =>
+      selectedMods.size > 0 &&
+      [...selectedMods].every((m) =>
+        (activeProfileCollections[col] ?? []).includes(m),
+      ),
+  );
+
+  $: bulkPartialCollections = activeCollectionNames.filter((col) => {
+    const mods = activeProfileCollections[col] ?? [];
+    return (
+      [...selectedMods].some((m) => mods.includes(m)) &&
+      !bulkCurrentCollections.includes(col)
+    );
+  });
+
+  $: bulkCurrentTags = allTagNames.filter(
+    (tag) =>
+      selectedMods.size > 0 &&
+      [...selectedMods].every((m) =>
+        (activeProfileTags[tag] ?? []).includes(m),
+      ),
+  );
+
+  $: bulkPartialTags = allTagNames.filter((tag) => {
+    const mods = activeProfileTags[tag] ?? [];
+    return (
+      [...selectedMods].some((m) => mods.includes(m)) &&
+      !bulkCurrentTags.includes(tag)
+    );
+  });
+
+  // Remove mods from selection when they're filtered out of view
+  $: {
+    const visible = new Set(filteredModGroups.map((g) => g.name));
+    for (const m of selectedMods) if (!visible.has(m)) selectedMods.delete(m);
+    selectedMods = selectedMods;
+  }
 
   async function handleModIoLinkDrop(input: string) {
     try {
@@ -490,6 +532,7 @@
     if (!selectedProfile) return;
     try {
       isApplyingProfile = true;
+      clearSelection();
       const profile = await applyProfile(selectedProfile);
 
       await refresh();
@@ -528,6 +571,16 @@
 
   function toggleGroup(name: string) {
     expandedGroups[name] = !expandedGroups[name];
+  }
+
+  function toggleModSelection(name: string) {
+    if (selectedMods.has(name)) selectedMods.delete(name);
+    else selectedMods.add(name);
+    selectedMods = selectedMods;
+  }
+
+  function clearSelection() {
+    selectedMods = new Set();
   }
 
   async function toggleGroupState(name: string) {
@@ -657,6 +710,74 @@
       await refresh();
     } catch (error) {
       toastStore.error(`Failed to delete tag: ${String(error)}`);
+    }
+  }
+
+  async function handleBulkCollectionToggle(
+    event: CustomEvent<{ itemName: string }>,
+  ) {
+    const col = event.detail.itemName;
+    const inCol = activeProfileCollections[col] ?? [];
+    const allHave = [...selectedMods].every((m) => inCol.includes(m));
+    try {
+      for (const mod of selectedMods) {
+        if (allHave) await removeModFromCollection(col, mod);
+        else if (!inCol.includes(mod)) await addModToCollection(col, mod);
+      }
+      window.dispatchEvent(new CustomEvent("ron:collections-changed"));
+      await refresh();
+    } catch (error) {
+      toastStore.error(`Failed to update collection: ${String(error)}`);
+    }
+  }
+
+  async function handleBulkCollectionCreate(
+    event: CustomEvent<{ itemName: string }>,
+  ) {
+    const name = event.detail.itemName;
+    try {
+      await createCollection(name, [...selectedMods]);
+      toastStore.success(
+        `Created "${name}" and added ${selectedMods.size} mod${selectedMods.size === 1 ? "" : "s"}.`,
+      );
+      window.dispatchEvent(new CustomEvent("ron:collections-changed"));
+      await refresh();
+    } catch (error) {
+      toastStore.error(`Failed to create collection: ${String(error)}`);
+    }
+  }
+
+  async function handleBulkTagToggle(event: CustomEvent<{ itemName: string }>) {
+    const tag = event.detail.itemName;
+    const withTag = activeProfileTags[tag] ?? [];
+    const allHave = [...selectedMods].every((m) => withTag.includes(m));
+    try {
+      for (const mod of selectedMods) {
+        const cur = modToTagsMap[mod] ?? [];
+        await setModTags(
+          mod,
+          allHave ? cur.filter((t) => t !== tag) : [...new Set([...cur, tag])],
+        );
+      }
+      await refresh();
+    } catch (error) {
+      toastStore.error(`Failed to update tags: ${String(error)}`);
+    }
+  }
+
+  async function handleBulkTagCreate(event: CustomEvent<{ itemName: string }>) {
+    const tag = event.detail.itemName;
+    try {
+      for (const mod of selectedMods) {
+        const cur = modToTagsMap[mod] ?? [];
+        await setModTags(mod, [...new Set([...cur, tag])]);
+      }
+      toastStore.success(
+        `Created tag "${tag}" and applied to ${selectedMods.size} mod${selectedMods.size === 1 ? "" : "s"}.`,
+      );
+      await refresh();
+    } catch (error) {
+      toastStore.error(`Failed to create tag: ${String(error)}`);
     }
   }
 
@@ -1057,6 +1178,52 @@
   on:deleteItem={handleTagDelete}
 />
 
+<ItemPickerModal
+  isVisible={showBulkCollectionModal}
+  subtitle="{selectedMods.size} mod{selectedMods.size === 1
+    ? ''
+    : 's'} selected"
+  modLabel=""
+  allItems={activeCollectionNames}
+  currentItems={bulkCurrentCollections}
+  partialItems={bulkPartialCollections}
+  title="Collections"
+  ItemIcon={Library}
+  accentColorVar="--clr-primary-300"
+  searchPlaceholder="Search collections or type new name"
+  createButtonText={(n) => `Create "${n}" and add to all selected mods`}
+  allowDelete={false}
+  noteText="To delete a collection, visit the Collections page."
+  on:close={() => {
+    showBulkCollectionModal = false;
+  }}
+  on:toggle={handleBulkCollectionToggle}
+  on:create={handleBulkCollectionCreate}
+/>
+
+<ItemPickerModal
+  isVisible={showBulkTagModal}
+  subtitle="{selectedMods.size} mod{selectedMods.size === 1
+    ? ''
+    : 's'} selected"
+  modLabel=""
+  allItems={allTagNames}
+  currentItems={bulkCurrentTags}
+  partialItems={bulkPartialTags}
+  title="Tags"
+  ItemIcon={Tag}
+  accentColorVar="--clr-success-300"
+  searchPlaceholder="Search tags or type new name"
+  createButtonText={(n) => `Create "${n}" and apply to all selected mods`}
+  allowDelete={true}
+  on:close={() => {
+    showBulkTagModal = false;
+  }}
+  on:toggle={handleBulkTagToggle}
+  on:create={handleBulkTagCreate}
+  on:deleteItem={handleTagDelete}
+/>
+
 <!-- Filter Controls -->
 <div class="flex flex-col sm:flex-row gap-2 mb-4 items-center">
   <input
@@ -1195,6 +1362,38 @@
     </div>
   {/if}
 
+  {#if selectedMods.size > 0}
+    <div
+      style="background: color-mix(in srgb, var(--clr-primary-300) 10%, var(--clr-surface-variant)); border-color: var(--clr-primary-300);"
+      class="flex items-center gap-3 px-3 py-2 rounded border mb-2 text-sm"
+    >
+      <span style="color: var(--clr-text);" class="font-medium flex-1">
+        {selectedMods.size} mod{selectedMods.size === 1 ? "" : "s"} selected
+      </span>
+      <button
+        class="btn btn-sm btn-primary"
+        on:click={() => {
+          showBulkCollectionModal = true;
+        }}
+        disabled={!activeProfileName}
+      >
+        <Library size={14} class="inline mr-1" />
+        Manage Collections
+      </button>
+      <button
+        class="btn btn-sm btn-success"
+        on:click={() => {
+          showBulkTagModal = true;
+        }}
+        disabled={!activeProfileName}
+      >
+        <Tag size={14} class="inline mr-1" />
+        Manage Tags
+      </button>
+      <button class="btn btn-sm" on:click={clearSelection}>Clear</button>
+    </div>
+  {/if}
+
   {#if filteredModGroups.length === 0}
     <p
       style="color: var(--clr-text-secondary);"
@@ -1212,7 +1411,7 @@
       {#each filteredModGroups as group (group.name)}
         <li
           style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
-          class="rounded border"
+          class="rounded border group/row"
           on:contextmenu|preventDefault={async () => {
             const menu = await Menu.new({
               items: [
@@ -1246,6 +1445,15 @@
           }}
         >
           <div class="flex items-center justify-between px-3 py-2 gap-3">
+            <input
+              type="checkbox"
+              class="mod-select-checkbox flex-shrink-0 cursor-pointer"
+              class:is-selection-active={selectedMods.size > 0}
+              style="accent-color: var(--clr-primary-300); width: 15px; height: 15px;"
+              checked={selectedMods.has(group.name)}
+              on:change|stopPropagation={() => toggleModSelection(group.name)}
+              aria-label="Select {group.displayName ?? group.name}"
+            />
             <button
               class="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer"
               on:click={() => toggleGroup(group.name)}

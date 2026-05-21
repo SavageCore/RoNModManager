@@ -13,6 +13,8 @@
   export let createButtonText: (name: string) => string;
   export let allowDelete = false;
   export let noteText = "";
+  export let partialItems: string[] = [];
+  export let subtitle = "";
 
   const dispatch = createEventDispatcher<{
     close: void;
@@ -80,6 +82,15 @@
     dispatch("deleteItem", { itemName: name });
   }
 
+  function setIndeterminate(node: HTMLInputElement, value: boolean) {
+    node.indeterminate = value;
+    return {
+      update(v: boolean) {
+        node.indeterminate = v;
+      },
+    };
+  }
+
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -117,7 +128,7 @@
       </div>
 
       <p style="color: var(--clr-text-secondary);" class="mb-3 text-sm">
-        Mod: {modLabel}
+        {subtitle || `Mod: ${modLabel}`}
       </p>
 
       <input
@@ -137,10 +148,14 @@
           <ul>
             {#each filteredItems as name (name)}
               {@const isChecked =
-                currentItems.includes(name) || pendingNewItems.includes(name)}
+                (currentItems.includes(name) ||
+                  pendingNewItems.includes(name)) &&
+                !partialItems.includes(name)}
+              {@const isPartial =
+                partialItems.includes(name) && !currentItems.includes(name)}
               <li>
                 <div
-                  style={isChecked
+                  style={isChecked || isPartial
                     ? `background: color-mix(in srgb, var(${accentColorVar}) 15%, transparent);`
                     : ""}
                   class="item-row flex w-full items-center gap-3 pl-4 pr-5 py-2 text-sm"
@@ -152,6 +167,7 @@
                     <input
                       type="checkbox"
                       checked={isChecked}
+                      use:setIndeterminate={isPartial}
                       on:change={() => toggleItem(name)}
                       style={`accent-color: var(${accentColorVar});`}
                     />

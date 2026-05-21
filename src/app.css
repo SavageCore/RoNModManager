@@ -396,3 +396,15 @@ body {
     transform: rotate(360deg);
   }
 }
+
+/* Multi-select checkbox on mod rows */
+.mod-select-checkbox {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.mod-select-checkbox.is-selection-active {
+  opacity: 1;
+}
+.group\/row:hover .mod-select-checkbox {
+  opacity: 1;
+}
