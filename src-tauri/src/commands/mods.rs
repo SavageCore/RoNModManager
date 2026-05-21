@@ -50,7 +50,7 @@ pub fn read_manifest_for_archive(archive_name: String) -> Result<Option<serde_js
         Ok(None)
     }
 }
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -365,6 +365,37 @@ pub async fn get_mod_list(state: State<'_, AppState>) -> Result<Vec<ModInfo>> {
     Ok(mods)
 }
 
+/// Download a modpack archive from Nexus by matching its filename against the mod's file list.
+/// Requires a Premium account (caller must have already confirmed `is_premium`).
+/// Falls back gracefully — callers should catch the error and use the self-hosted URL instead.
+async fn nexus_download_by_filename(
+    client: &reqwest::Client,
+    nexus_service: &nexus_api::NexusApiService,
+    api_key: &str,
+    mod_id: u64,
+    archive_name: &str,
+    dest: &Path,
+) -> Result<()> {
+    let files = nexus_service.list_mod_files(api_key, mod_id).await?;
+    let matched = files
+        .iter()
+        .find(|f| f.file_name.eq_ignore_ascii_case(archive_name))
+        .ok_or_else(|| {
+            AppError::Validation(format!(
+                "File '{}' not found in Nexus mod {}",
+                archive_name, mod_id
+            ))
+        })?;
+    let links = nexus_service
+        .get_download_links(api_key, mod_id, matched.file_id)
+        .await?;
+    let url = links
+        .first()
+        .map(|l| l.uri.clone())
+        .ok_or_else(|| AppError::Validation("No download links returned".to_string()))?;
+    downloader::download_file(client, &url, dest).await
+}
+
 #[tauri::command]
 pub async fn install_mods(
     app: AppHandle,
@@ -400,12 +431,33 @@ pub async fn install_mods(
     let manifest =
         manifest.ok_or_else(|| AppError::Validation("No modpack manifest found.".to_string()))?;
 
+    // Fetch the pack once — used for collection filtering, Nexus source map, and addon merge.
+    let pack = modpack_service::fetch_modpack(&state.client, &modpack_url)
+        .await
+        .ok();
+
+    // Build archive_name -> Nexus URL map from mods that have a nexusmods.com source.
+    let nexus_source_map: HashMap<String, String> = pack
+        .as_ref()
+        .map(|p| {
+            p.mods
+                .iter()
+                .filter_map(|(archive, entry)| {
+                    entry.source_url.as_ref().and_then(|url| {
+                        if url.to_lowercase().contains("nexusmods.com") {
+                            Some((archive.clone(), url.clone()))
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     let mut filtered_manifest = manifest.clone();
     if let Some(ref enabled_cols) = enabled_collections {
-        let modpack = modpack_service::fetch_modpack(&state.client, &modpack_url)
-            .await
-            .ok();
-        if let Some(modpack) = modpack {
+        if let Some(ref modpack) = pack {
             filtered_manifest.files.retain(|file| {
                 for (collection_name, collection) in &modpack.collections {
                     if enabled_cols.contains(collection_name)
@@ -425,25 +477,109 @@ pub async fn install_mods(
     let download_root = app_temp_root().join("modpack_downloads");
     fs::create_dir_all(&download_root)?;
 
+    // Check Nexus premium status once if there are Nexus-sourced mods and an API key.
+    let nexus_premium_ctx: Option<(nexus_api::NexusApiService, String)> =
+        if !nexus_source_map.is_empty() {
+            if let Some(api_key) = config.nexus_api_key.clone() {
+                let svc = nexus_api::NexusApiService::new(state.client.clone());
+                match svc.get_user_info(&api_key).await {
+                    Ok(user) if user.is_premium => Some((svc, api_key)),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+    let total = filtered_manifest.files.len();
     let _ = app.emit(
         "install_progress",
         &ProgressEvent {
             operation: "download_start".to_string(),
-            file: format!("{} files", filtered_manifest.files.len()),
+            file: format!("{} files", total),
             percent: 10.0,
-            message: format!("Downloading {} files...", filtered_manifest.files.len()),
+            message: format!("Downloading {} files...", total),
             total_bytes: None,
             processed_bytes: None,
         },
     );
 
-    let downloaded_files = modpack_service::download_manifest_files(
-        &state.client,
-        &modpack_url,
-        &download_root,
-        &filtered_manifest,
-    )
-    .await?;
+    let mut downloaded_files: Vec<PathBuf> = Vec::with_capacity(total);
+
+    for (idx, entry) in filtered_manifest.files.iter().enumerate() {
+        let local_path = download_root.join(&entry.path);
+        let archive_name = Path::new(&entry.path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&entry.path)
+            .to_string();
+
+        // Re-use a cached download if the size matches.
+        if local_path.exists() {
+            let actual_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
+            if entry.size == 0 || actual_size == entry.size {
+                downloaded_files.push(local_path);
+                continue;
+            }
+        }
+
+        let pct = 10.0 + (idx as f32 / total as f32) * 38.0;
+        let _ = app.emit(
+            "install_progress",
+            &ProgressEvent {
+                operation: "download".to_string(),
+                file: archive_name.clone(),
+                percent: pct,
+                message: format!("{}/{} Downloading {}...", idx + 1, total, archive_name),
+                total_bytes: None,
+                processed_bytes: None,
+            },
+        );
+
+        // Prefer Nexus CDN for premium users when a source URL is recorded.
+        let mut downloaded_from_nexus = false;
+        if let Some((ref svc, ref api_key)) = nexus_premium_ctx {
+            if let Some(nexus_url) = nexus_source_map.get(&archive_name) {
+                if let Ok(mod_id) = nexus_api::parse_nexus_url_to_mod_id(nexus_url) {
+                    match nexus_download_by_filename(
+                        &state.client,
+                        svc,
+                        api_key,
+                        mod_id,
+                        &archive_name,
+                        &local_path,
+                    )
+                    .await
+                    {
+                        Ok(()) => downloaded_from_nexus = true,
+                        Err(e) => log::warn!(
+                            "Nexus download failed for {archive_name}, \
+                             falling back to self-hosted: {e}"
+                        ),
+                    }
+                }
+            }
+        }
+
+        if !downloaded_from_nexus {
+            let remote = format!("{}/mods/{}", modpack_url.trim_end_matches('/'), entry.path);
+            downloader::download_file(&state.client, &remote, &local_path).await?;
+        }
+
+        if entry.size > 0 {
+            let actual_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
+            if actual_size != entry.size {
+                return Err(AppError::Validation(format!(
+                    "Size mismatch for {}: expected {} bytes, got {}",
+                    entry.path, entry.size, actual_size
+                )));
+            }
+        }
+
+        downloaded_files.push(local_path);
+    }
 
     let _ = app.emit(
         "install_progress",
@@ -480,15 +616,15 @@ pub async fn install_mods(
 
     let _ = app.emit("install_progress", &ProgressEvent::new_complete());
 
-    // Merge addon relationships from the modpack into the local addon_map
-    if let Ok(pack) = modpack_service::fetch_modpack(&state.client, &modpack_url).await {
-        if !pack.addons.is_empty() {
+    // Merge addon relationships from the modpack into the local addon_map.
+    if let Some(ref pack_data) = pack {
+        if !pack_data.addons.is_empty() {
             let mut local_map = addon_map::read_addon_map().unwrap_or_default();
-            for (parent, addon_archives) in pack.addons {
-                let entry = local_map.entry(parent).or_default();
+            for (parent, addon_archives) in &pack_data.addons {
+                let entry = local_map.entry(parent.clone()).or_default();
                 for a in addon_archives {
-                    if !entry.contains(&a) {
-                        entry.push(a);
+                    if !entry.contains(a) {
+                        entry.push(a.clone());
                     }
                 }
             }
