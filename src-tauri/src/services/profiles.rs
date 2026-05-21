@@ -71,8 +71,11 @@ pub fn save_profile(profile: &Profile) -> Result<()> {
     let path = get_profile_path(&profile.name)?;
     let json = serde_json::to_string_pretty(profile)
         .map_err(|e| AppError::Validation(format!("failed to serialize profile: {e}")))?;
-    fs::write(&path, json)
-        .map_err(|e| AppError::Validation(format!("failed to save profile: {e}")))?;
+    let tmp_path = path.with_extension("json.tmp");
+    fs::write(&tmp_path, &json)
+        .map_err(|e| AppError::Validation(format!("failed to write profile to temp file: {e}")))?;
+    fs::rename(&tmp_path, &path)
+        .map_err(|e| AppError::Validation(format!("failed to replace profile file: {e}")))?;
     Ok(())
 }
 

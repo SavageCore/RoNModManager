@@ -69,6 +69,8 @@ pub fn run() {
             collections::delete_collection,
             collections::toggle_collection,
             collections::rename_collection,
+            collections::get_collection_colors,
+            collections::set_collection_color,
             tags::get_tags,
             tags::set_mod_tags,
             tags::delete_tag,

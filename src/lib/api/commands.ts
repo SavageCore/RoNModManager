@@ -72,6 +72,10 @@ export const toggleCollection = (name: string, enabled: boolean) =>
   invoke<void>("toggle_collection", { name, enabled });
 export const renameCollection = (oldName: string, newName: string) =>
   invoke<void>("rename_collection", { oldName, newName });
+export const getCollectionColors = () =>
+  invoke<Record<string, string>>("get_collection_colors");
+export const setCollectionColor = (name: string, color: string | null) =>
+  invoke<void>("set_collection_color", { name, color });
 
 export const getTags = () => invoke<Record<string, string[]>>("get_tags");
 export const setModTags = (modName: string, newTags: string[]) =>

@@ -100,6 +100,7 @@ export interface Profile {
   enabled_collections: string[];
   collections: Record<string, string[]>;
   tags: Record<string, string[]>;
+  collection_colors: Record<string, string>;
   created_at: string;
 }
 

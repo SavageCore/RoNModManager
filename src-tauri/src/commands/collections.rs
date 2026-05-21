@@ -156,6 +156,7 @@ pub async fn delete_collection(state: State<'_, AppState>, name: String) -> Resu
     })?;
 
     profile.collections.remove(&name);
+    profile.collection_colors.remove(&name);
     profile.enabled_collections.retain(|c| c != &name);
     profiles::save_profile(&profile)?;
 
@@ -193,10 +194,57 @@ pub async fn rename_collection(
         )));
     }
 
+    if let Some(color) = profile.collection_colors.remove(&oldName) {
+        profile.collection_colors.insert(newName.clone(), color);
+    }
+
     for item in profile.enabled_collections.iter_mut() {
         if *item == oldName {
             *item = newName.clone();
             break;
+        }
+    }
+
+    profiles::save_profile(&profile)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_collection_colors(state: State<'_, AppState>) -> Result<HashMap<String, String>> {
+    let config = state.get_config()?;
+    let active_profile_name = match config.active_profile {
+        Some(name) => name,
+        None => return Ok(HashMap::new()),
+    };
+
+    let profile = profiles::get_profile(&active_profile_name)?.ok_or_else(|| {
+        crate::models::AppError::Validation(format!("Profile '{}' not found", active_profile_name))
+    })?;
+
+    Ok(profile.collection_colors)
+}
+
+#[tauri::command]
+pub async fn set_collection_color(
+    state: State<'_, AppState>,
+    name: String,
+    color: Option<String>,
+) -> Result<()> {
+    let config = state.get_config()?;
+    let active_profile_name = config
+        .active_profile
+        .ok_or_else(|| crate::models::AppError::Validation("No active profile".to_string()))?;
+
+    let mut profile = profiles::get_profile(&active_profile_name)?.ok_or_else(|| {
+        crate::models::AppError::Validation(format!("Profile '{}' not found", active_profile_name))
+    })?;
+
+    match color {
+        Some(c) => {
+            profile.collection_colors.insert(name, c);
+        }
+        None => {
+            profile.collection_colors.remove(&name);
         }
     }
 

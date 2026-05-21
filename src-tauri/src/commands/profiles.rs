@@ -61,6 +61,8 @@ pub async fn save_profile(
         profile.enabled_collections = existing.enabled_collections;
         profile.collections = existing.collections;
         profile.tags = existing.tags;
+        profile.collection_colors = existing.collection_colors;
+        profile.created_at = existing.created_at;
     }
     if let Some(desc) = description {
         profile = profile.with_description(desc);

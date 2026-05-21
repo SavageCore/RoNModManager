@@ -2,6 +2,7 @@
   import {
     createCollection,
     deleteCollection,
+    getCollectionColors,
     getCollectionMods,
     getCollections,
     getConfig,
@@ -9,23 +10,29 @@
     getProfile,
     removeModFromCollection,
     renameCollection,
+    setCollectionColor,
     toggleCollection,
   } from "$lib/api/commands";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
+  import EditCollectionModal from "$lib/components/EditCollectionModal.svelte";
   import { toastStore } from "$lib/stores/toast";
   import { X } from "lucide-svelte";
   import { onMount } from "svelte";
 
   let collectionMods: Record<string, string[]> = {};
   let collections: Record<string, boolean> = {};
+  let collectionColors: Record<string, string> = {};
   let activeProfileName: string | null = null;
   let activeProfileEnabledCount = 0;
   let newCollectionName = "";
   let modDisplayNames: Record<string, string> = {};
   let loading = false;
   let hasLoadedOnce = false;
-  let editingCollection: string | null = null;
-  let editingName = "";
+  let editModal: {
+    isVisible: boolean;
+    name: string;
+    color: string | null;
+  } = { isVisible: false, name: "", color: null };
   let confirmModal: {
     isVisible: boolean;
     title: string;
@@ -72,15 +79,22 @@
   async function refresh() {
     loading = true;
     try {
-      const [collectionState, profileCollectionMods, config, installedGroups] =
-        await Promise.all([
-          getCollections(),
-          getCollectionMods(),
-          getConfig(),
-          getInstalledModGroups().catch(() => []),
-        ]);
+      const [
+        collectionState,
+        profileCollectionMods,
+        config,
+        installedGroups,
+        colors,
+      ] = await Promise.all([
+        getCollections(),
+        getCollectionMods(),
+        getConfig(),
+        getInstalledModGroups().catch(() => []),
+        getCollectionColors(),
+      ]);
 
       collectionMods = profileCollectionMods;
+      collectionColors = colors;
       activeProfileName = config.active_profile;
       modDisplayNames = Object.fromEntries(
         installedGroups.map((group) => [
@@ -182,28 +196,30 @@
     }
   }
 
-  function focusOnMount(node: HTMLInputElement) {
-    node.focus();
-    node.select();
+  function openEditModal(name: string) {
+    editModal = {
+      isVisible: true,
+      name,
+      color: collectionColors[name] ?? null,
+    };
   }
 
-  async function onRenameCollection(oldName: string) {
-    const newName = editingName.trim();
-    if (!newName) {
-      toastStore.error("Collection name cannot be empty.");
-      return;
-    }
-    if (newName === oldName) {
-      editingCollection = null;
-      return;
-    }
+  async function onSaveEdit(newName: string, newColor: string | null) {
+    const oldName = editModal.name;
+    const oldColor = collectionColors[oldName] ?? null;
+
     try {
-      await renameCollection(oldName, newName);
-      editingCollection = null;
+      if (newName !== oldName) {
+        await renameCollection(oldName, newName);
+      }
+      const effectiveName = newName !== oldName ? newName : oldName;
+      if (newColor !== oldColor) {
+        await setCollectionColor(effectiveName, newColor);
+      }
       await refresh();
-      toastStore.success(`Renamed collection to ${newName}.`);
+      toastStore.success(`Updated collection.`);
     } catch (error) {
-      toastStore.error(`Failed to rename collection: ${String(error)}`);
+      toastStore.error(`Failed to update collection: ${String(error)}`);
     }
   }
 
@@ -232,6 +248,13 @@
   detail={confirmModal.detail}
   confirmLabel={confirmModal.confirmLabel}
   onConfirm={confirmModal.onConfirm}
+/>
+
+<EditCollectionModal
+  bind:isVisible={editModal.isVisible}
+  initialName={editModal.name}
+  initialColor={editModal.color}
+  onSave={onSaveEdit}
 />
 
 <section class="card">
@@ -276,27 +299,31 @@
   {:else}
     <ul class="mt-4 space-y-2">
       {#each sortedCollectionEntries as [name, mods] (name)}
+        {@const color = collectionColors[name] ?? null}
         <li
           style="background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text);"
           class="rounded-lg border px-3 py-2 text-sm"
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0 flex-1">
-              {#if editingCollection === name}
-                <input
-                  class="input text-sm font-medium w-full"
-                  type="text"
-                  bind:value={editingName}
-                  use:focusOnMount
-                  on:keydown={(e) => {
-                    if (e.key === "Enter") void onRenameCollection(name);
-                    if (e.key === "Escape") editingCollection = null;
-                  }}
-                />
+              {#if color}
+                <span
+                  class="collection-pill font-medium"
+                  style="
+                    background: color-mix(in srgb, {color} 15%, transparent);
+                    border-color: {color};
+                    color: {color};
+                  "
+                >
+                  {name}
+                </span>
               {:else}
                 <p class="font-medium">{name}</p>
               {/if}
-              <p style="color: var(--clr-text-secondary);" class="text-xs">
+              <p
+                style="color: var(--clr-text-secondary);"
+                class="text-xs mt-0.5"
+              >
                 {mods.length} mod{mods.length === 1 ? "" : "s"}
               </p>
               {#if mods.length > 0}
@@ -325,58 +352,40 @@
               {/if}
             </div>
             <div class="flex items-center gap-2">
-              {#if editingCollection === name}
-                <button
-                  class="btn btn-sm primary"
-                  on:click={() => void onRenameCollection(name)}
-                >
-                  Save
-                </button>
-                <button
-                  class="btn btn-sm"
-                  on:click={() => (editingCollection = null)}
-                >
-                  Cancel
-                </button>
-              {:else}
-                <label
-                  class="gale-switch"
-                  title={`${(collections[name] ?? false) ? "Disable" : "Enable"} collection ${name}`}
+              <label
+                class="gale-switch"
+                title={`${(collections[name] ?? false) ? "Disable" : "Enable"} collection ${name}`}
+                aria-label={`${(collections[name] ?? false) ? "Disable" : "Enable"} collection ${name}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={collections[name] ?? false}
                   aria-label={`${(collections[name] ?? false) ? "Disable" : "Enable"} collection ${name}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={collections[name] ?? false}
-                    aria-label={`${(collections[name] ?? false) ? "Disable" : "Enable"} collection ${name}`}
-                    on:change={(event) =>
-                      onToggle(
-                        name,
-                        (event.currentTarget as HTMLInputElement).checked,
-                      )}
-                    disabled={!activeProfileName}
-                  />
-                  <span class="gale-switch-track"></span>
-                </label>
-                <button
-                  class="btn btn-sm"
-                  on:click={() => {
-                    editingCollection = name;
-                    editingName = name;
-                  }}
+                  on:change={(event) =>
+                    onToggle(
+                      name,
+                      (event.currentTarget as HTMLInputElement).checked,
+                    )}
                   disabled={!activeProfileName}
-                >
-                  Rename
-                </button>
-                <button
-                  class="btn btn-sm danger"
-                  on:click={() => {
-                    void onDeleteCollection(name);
-                  }}
-                  disabled={!activeProfileName}
-                >
-                  Delete
-                </button>
-              {/if}
+                />
+                <span class="gale-switch-track"></span>
+              </label>
+              <button
+                class="btn btn-sm"
+                on:click={() => openEditModal(name)}
+                disabled={!activeProfileName}
+              >
+                Edit
+              </button>
+              <button
+                class="btn btn-sm danger"
+                on:click={() => {
+                  void onDeleteCollection(name);
+                }}
+                disabled={!activeProfileName}
+              >
+                Delete
+              </button>
             </div>
           </div>
         </li>
@@ -386,6 +395,15 @@
 </section>
 
 <style>
+  .collection-pill {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    border: 1px solid;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
   .chip-remove-btn {
     display: inline-flex;
     align-items: center;

@@ -218,6 +218,7 @@
   let collectionPickerModLabel = "";
   let activeCollectionNames: string[] = [];
   let activeProfileCollections: Record<string, string[]> = {};
+  let activeProfileCollectionColors: Record<string, string> = {};
 
   let showTagPickerModal = false;
   let tagPickerModName = "";
@@ -390,6 +391,7 @@
         if (activeProfile) {
           modsForActiveProfile = [...activeProfile.installed_mod_names];
           activeProfileCollections = activeProfile.collections ?? {};
+          activeProfileCollectionColors = activeProfile.collection_colors ?? {};
           activeCollectionNames = Object.keys(activeProfileCollections);
           activeProfileTags = activeProfile.tags ?? {};
           allTagNames = Object.keys(activeProfileTags).sort((a, b) =>
@@ -1307,8 +1309,12 @@
               {#if (modToCollectionsMap[group.name] ?? []).length > 0 || (modToTagsMap[group.name] ?? []).length > 0}
                 <div class="flex items-center gap-1 flex-wrap">
                   {#each modToCollectionsMap[group.name] ?? [] as col (col)}
+                    {@const colColor =
+                      activeProfileCollectionColors[col] ?? null}
                     <span
-                      style="background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text-secondary);"
+                      style={colColor
+                        ? `background: color-mix(in srgb, ${colColor} 12%, transparent); border-color: ${colColor}; color: ${colColor};`
+                        : "background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
                       class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none"
                     >
                       <Layers size={10} />
