@@ -815,6 +815,9 @@ pub async fn add_nexus_mod(
     state: State<'_, AppState>,
     input: String,
 ) -> Result<AddNexusResult> {
+    state
+        .nexus_cancel
+        .store(false, std::sync::atomic::Ordering::SeqCst);
     let config = state.get_config()?;
     let api_key = config.nexus_api_key.ok_or_else(|| {
         AppError::Validation(
@@ -942,6 +945,23 @@ pub async fn add_nexus_mod(
         let started = std::time::Instant::now();
 
         loop {
+            if state.nexus_cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                let _ = app.emit(
+                    "install_progress",
+                    &ProgressEvent {
+                        operation: "error".to_string(),
+                        file: expected_filename.clone(),
+                        percent: 0.0,
+                        message: "Download cancelled.".to_string(),
+                        total_bytes: None,
+                        processed_bytes: None,
+                    },
+                );
+                return Err(AppError::Validation(
+                    "CANCELLED: Download cancelled by user".to_string(),
+                ));
+            }
+
             if started.elapsed() >= timeout {
                 return Err(AppError::Validation(format!(
                     "Timed out waiting for {} in Downloads. Download the file manually and use 'Local File' to install it.",
@@ -1799,4 +1819,12 @@ pub fn set_addon_map(
 ) -> crate::models::Result<()> {
     let _ = state.get_config()?;
     addon_map::write_addon_map(&map)
+}
+
+#[tauri::command]
+pub async fn cancel_nexus_download(state: State<'_, AppState>) -> Result<()> {
+    state
+        .nexus_cancel
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
 }

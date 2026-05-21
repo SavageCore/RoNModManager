@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, RwLock};
 
 use reqwest::Client;
 
@@ -35,6 +36,7 @@ pub struct AppState {
     pub config: RwLock<AppConfig>,
     pub client: Client,
     pub config_path: PathBuf,
+    pub nexus_cancel: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -83,6 +85,7 @@ impl AppState {
             config: RwLock::new(config),
             client,
             config_path,
+            nexus_cancel: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -129,6 +132,7 @@ impl Default for AppState {
                     config: RwLock::new(AppConfig::default()),
                     client: Client::new(),
                     config_path,
+                    nexus_cancel: Arc::new(AtomicBool::new(false)),
                 }
             }
         }

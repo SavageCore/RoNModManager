@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { cancelNexusDownload } from "$lib/api/commands";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { operationStatusStore } from "$lib/stores/operationStatus";
 
@@ -269,6 +270,15 @@
           <span style="color: var(--clr-text-secondary);" class="shrink-0">
             {progressDetails}
           </span>
+        {/if}
+        {#if $operationStatusStore.operation === "download" && $operationStatusStore.message.includes("Waiting for")}
+          <button
+            on:click={cancelNexusDownload}
+            class="shrink-0 text-xs px-2 py-0.5 rounded"
+            style="color: var(--clr-text-secondary); border: 1px solid var(--adw-border-color); background: var(--clr-surface-variant);"
+          >
+            Cancel
+          </button>
         {/if}
         <div
           class="progress-track ml-auto h-1.5 w-28 rounded-full overflow-hidden"

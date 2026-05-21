@@ -110,6 +110,7 @@ export const addNexusMod = (input: string) =>
     archiveName: string;
     sourceUrl: string;
   }>("add_nexus_mod", { input });
+export const cancelNexusDownload = () => invoke<void>("cancel_nexus_download");
 export const fetchNexusModInfo = (input: string) =>
   invoke<{
     modId: number;

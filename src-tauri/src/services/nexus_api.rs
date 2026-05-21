@@ -40,11 +40,15 @@ struct NexusFilesResponse {
 
 /// Pick the best file to download from a mod's file list.
 /// Prefers: explicitly primary > newest MAIN (category_id=1) > newest of any active file.
-/// Excludes DELETED files (category_id=6).
+/// Excludes OLD_VERSION (4), DELETED (6), and ARCHIVED (7) files.
 pub fn pick_primary_file(files: &[NexusModFile]) -> Option<&NexusModFile> {
     let active: Vec<&NexusModFile> = files
         .iter()
-        .filter(|f| f.category_id.map(|c| c != 6).unwrap_or(true))
+        .filter(|f| {
+            f.category_id
+                .map(|c| c != 6 && c != 4 && c != 7)
+                .unwrap_or(true)
+        })
         .collect();
 
     if let Some(primary) = active.iter().find(|f| f.is_primary == Some(true)) {

@@ -165,7 +165,11 @@
             : await addModIoMod(entry.input);
           modAddQueueStore.markDone(entry.queueId, `Installed ${result.name}`);
         } catch (error) {
-          modAddQueueStore.markError(entry.queueId, `Failed: ${String(error)}`);
+          const msg = String(error);
+          modAddQueueStore.markError(
+            entry.queueId,
+            msg.includes("CANCELLED:") ? "Cancelled" : `Failed: ${msg}`,
+          );
         }
       }
     } finally {
