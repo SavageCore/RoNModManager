@@ -362,6 +362,9 @@
 
   function sortModGroups(list: InstalledModGroup[]): InstalledModGroup[] {
     return [...list].sort((a, b) => {
+      const aHasUrl = a.sourceUrl ? 1 : 0;
+      const bHasUrl = b.sourceUrl ? 1 : 0;
+      if (aHasUrl !== bHasUrl) return aHasUrl - bHasUrl;
       const aName = (a.displayName || a.name).toLowerCase();
       const bName = (b.displayName || b.name).toLowerCase();
       return aName.localeCompare(bName);
