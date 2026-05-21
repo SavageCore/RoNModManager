@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     addModIoMod,
+    addNexusMod,
     fetchNexusModInfo,
     installLocalMod,
   } from "$lib/api/commands";
@@ -123,7 +124,7 @@
   async function handleAddViaLink() {
     const input = modioInput.trim();
     if (!input) {
-      alertStore.error("Enter mod.io links");
+      alertStore.error("Enter mod links");
       return;
     }
 
@@ -157,7 +158,9 @@
       modAddQueueStore.markRunning(entry.queueId, "Starting...");
 
       try {
-        const result = await addModIoMod(entry.input);
+        const result = isNexusUrl(entry.input)
+          ? await addNexusMod(entry.input)
+          : await addModIoMod(entry.input);
         modAddQueueStore.markDone(entry.queueId, `Installed ${result.name}`);
         successCount += 1;
       } catch (error) {
@@ -277,7 +280,7 @@
             : `color: var(--clr-text-secondary);`}
           class="pb-2 px-3 text-sm font-medium transition border-b-2 border-transparent cursor-pointer"
         >
-          mod.io Link
+          Mod Link
         </button>
         <button
           on:click={() => {
@@ -303,23 +306,23 @@
                 style="color: var(--clr-text);"
                 class="block text-sm font-medium mb-1"
               >
-                mod.io Links (one per line)
+                Mod Links (one per line)
               </label>
               <textarea
                 id="modio-input"
                 rows="5"
                 class="textarea"
-                placeholder="https://mod.io/g/readyornot/m/lustful-remorse&#10;https://mod.io/g/readyornot/m/simple-mod-menu&#10;https://mod.io/g/readyornot/m/uon-official"
+                placeholder="https://mod.io/g/readyornot/m/lustful-remorse&#10;https://mod.io/g/readyornot/m/simple-mod-menu&#10;https://www.nexusmods.com/readyornot/mods/1234"
                 bind:value={modioInput}
                 on:paste={handlePaste}
               ></textarea>
               <p style="color: var(--clr-text-secondary);" class="text-xs mt-1">
-                Paste mod.io links, one per line
+                Paste mod.io or Nexus Mods links, one per line
               </p>
 
               {#if nexusPreviewName}
                 <p style="color: var(--clr-success-300);" class="text-xs mt-2">
-                  Nexus detected: {nexusPreviewName}
+                  Nexus: {nexusPreviewName} — browser will open to download page
                 </p>
               {:else if nexusPreviewError}
                 <p style="color: var(--clr-danger-300);" class="text-xs mt-2">

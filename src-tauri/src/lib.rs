@@ -84,6 +84,7 @@ pub fn run() {
             mods::install_mods,
             mods::install_local_mod,
             mods::add_modio_mod,
+            mods::add_nexus_mod,
             mods::fetch_nexus_mod_info,
             mods::refresh_mod_metadata,
             mods::uninstall_mods,

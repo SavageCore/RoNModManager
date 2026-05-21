@@ -1,3 +1,5 @@
+use std::cmp::Reverse;
+
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -19,6 +21,61 @@ pub struct NexusModInfo {
     pub description: Option<String>,
     pub picture_url: Option<String>,
     pub domain_name: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct NexusModFile {
+    pub file_id: u64,
+    pub file_name: String,
+    pub category_id: Option<u32>,
+    pub category_name: Option<String>,
+    pub is_primary: Option<bool>,
+    pub uploaded_timestamp: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NexusFilesResponse {
+    files: Vec<NexusModFile>,
+}
+
+/// Pick the best file to download from a mod's file list.
+/// Prefers: explicitly primary > newest MAIN (category_id=1) > newest of any active file.
+/// Excludes DELETED files (category_id=6).
+pub fn pick_primary_file(files: &[NexusModFile]) -> Option<&NexusModFile> {
+    let active: Vec<&NexusModFile> = files
+        .iter()
+        .filter(|f| f.category_id.map(|c| c != 6).unwrap_or(true))
+        .collect();
+
+    if let Some(primary) = active.iter().find(|f| f.is_primary == Some(true)) {
+        return Some(primary);
+    }
+
+    let mut mains: Vec<&&NexusModFile> =
+        active.iter().filter(|f| f.category_id == Some(1)).collect();
+    mains.sort_by_key(|f| Reverse(f.uploaded_timestamp.unwrap_or(0)));
+    if let Some(main_file) = mains.first() {
+        return Some(main_file);
+    }
+
+    let mut sorted = active.clone();
+    sorted.sort_by_key(|f| Reverse(f.uploaded_timestamp.unwrap_or(0)));
+    sorted.into_iter().next()
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct NexusUserInfo {
+    pub user_id: u64,
+    pub name: String,
+    pub is_premium: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct NexusDownloadLink {
+    pub name: String,
+    pub short_name: String,
+    #[serde(rename = "URI")]
+    pub uri: String,
 }
 
 impl NexusApiService {
@@ -58,8 +115,39 @@ impl NexusApiService {
         Ok(mod_info)
     }
 
-    /// Validate an API key by checking with the Nexus Mods API
-    pub async fn validate_api_key(&self, api_key: &str) -> Result<bool> {
+    /// List files for a mod from Nexus Mods API
+    pub async fn list_mod_files(&self, api_key: &str, mod_id: u64) -> Result<Vec<NexusModFile>> {
+        let url = format!(
+            "{}/games/{}/mods/{}/files.json",
+            NEXUS_API_BASE, GAME_DOMAIN, mod_id
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header("apikey", api_key)
+            .header("accept", "application/json")
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AppError::Validation(format!(
+                "Nexus API error ({}): {}",
+                status, error_text
+            )));
+        }
+
+        let files_response: NexusFilesResponse = response.json().await?;
+        Ok(files_response.files)
+    }
+
+    /// Validate an API key and return user info (including premium status)
+    pub async fn get_user_info(&self, api_key: &str) -> Result<NexusUserInfo> {
         let url = format!("{}/users/validate.json", NEXUS_API_BASE);
 
         let response = self
@@ -70,7 +158,61 @@ impl NexusApiService {
             .send()
             .await?;
 
-        Ok(response.status().is_success())
+        if !response.status().is_success() {
+            return Err(AppError::Validation(
+                "Nexus API key is invalid or expired.".to_string(),
+            ));
+        }
+
+        let user: NexusUserInfo = response.json().await?;
+        Ok(user)
+    }
+
+    /// Validate an API key by checking with the Nexus Mods API
+    pub async fn validate_api_key(&self, api_key: &str) -> Result<bool> {
+        Ok(self.get_user_info(api_key).await.is_ok())
+    }
+
+    /// Get CDN download links for a specific file (Premium accounts only)
+    pub async fn get_download_links(
+        &self,
+        api_key: &str,
+        mod_id: u64,
+        file_id: u64,
+    ) -> Result<Vec<NexusDownloadLink>> {
+        let url = format!(
+            "{}/games/{}/mods/{}/files/{}/download_link.json",
+            NEXUS_API_BASE, GAME_DOMAIN, mod_id, file_id
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header("apikey", api_key)
+            .header("accept", "application/json")
+            .send()
+            .await?;
+
+        if response.status() == 403 {
+            return Err(AppError::Validation(
+                "Direct download requires a Nexus Mods Premium account.".to_string(),
+            ));
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AppError::Validation(format!(
+                "Nexus API error ({}): {}",
+                status, error_text
+            )));
+        }
+
+        let links: Vec<NexusDownloadLink> = response.json().await?;
+        Ok(links)
     }
 }
 
