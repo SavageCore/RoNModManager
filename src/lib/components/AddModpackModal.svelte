@@ -548,7 +548,3 @@
     </div>
   </div>
 {/if}
-
-<style>
-  /* All Tailwind classes should be used directly in class attributes. Remove @apply usage. */
-</style>

@@ -383,3 +383,16 @@ body {
   background: var(--clr-danger-100);
   border-color: var(--clr-danger-100);
 }
+
+.is-spinning {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
