@@ -800,6 +800,205 @@ pub async fn fetch_nexus_mod_info(
     })
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddNexusResult {
+    pub mod_id: u64,
+    pub name: String,
+    pub archive_name: String,
+    pub source_url: String,
+}
+
+#[tauri::command]
+pub async fn add_nexus_mod(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: String,
+) -> Result<AddNexusResult> {
+    let config = state.get_config()?;
+    let api_key = config.nexus_api_key.ok_or_else(|| {
+        AppError::Validation(
+            "Nexus Mods API key is not configured. Add it in Settings first.".to_string(),
+        )
+    })?;
+
+    let mod_id = nexus_api::parse_nexus_url_to_mod_id(&input)?;
+    let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
+
+    let user_info = nexus_service.get_user_info(&api_key).await?;
+    let is_premium = user_info.is_premium;
+
+    let mod_info = nexus_service.get_mod_info(&api_key, mod_id).await?;
+    let mod_name = mod_info.name.clone();
+
+    let files = nexus_service.list_mod_files(&api_key, mod_id).await?;
+    let primary_file = nexus_api::pick_primary_file(&files).ok_or_else(|| {
+        AppError::Validation(format!("No downloadable files found for mod {}", mod_id))
+    })?;
+    let expected_filename = primary_file.file_name.clone();
+    let file_id = primary_file.file_id;
+
+    let source_url = format!("https://www.nexusmods.com/readyornot/mods/{}", mod_id);
+    let archive_name = sanitize_filename_for_download(&expected_filename);
+
+    let install_path = if is_premium {
+        // Premium: download directly via API without opening a browser
+        let links = nexus_service
+            .get_download_links(&api_key, mod_id, file_id)
+            .await?;
+        let download_url = links.first().map(|l| l.uri.clone()).ok_or_else(|| {
+            AppError::Validation("No download links returned by Nexus API".to_string())
+        })?;
+
+        let download_root = app_temp_root().join("nexus_downloads");
+        fs::create_dir_all(&download_root)?;
+        let archive_path = download_root.join(&archive_name);
+
+        let _ = app.emit(
+            "install_progress",
+            &ProgressEvent {
+                operation: "download".to_string(),
+                file: archive_name.clone(),
+                percent: 10.0,
+                message: format!("Downloading {}...", mod_name),
+                total_bytes: None,
+                processed_bytes: None,
+            },
+        );
+
+        let app_for_progress = app.clone();
+        let archive_for_progress = archive_name.clone();
+        let mod_name_for_progress = mod_name.clone();
+        let download_started = Instant::now();
+
+        downloader::download_file_with_progress(
+            &state.client,
+            &download_url,
+            &archive_path,
+            Some(Box::new(move |downloaded, total| {
+                let elapsed = download_started.elapsed().as_secs_f64().max(0.001);
+                let mib_per_sec = (downloaded as f64 / elapsed) / (1024.0 * 1024.0);
+                let percent = if total > 0 {
+                    5.0 + ((downloaded as f32 / total as f32) * 45.0)
+                } else {
+                    25.0
+                };
+                let _ = app_for_progress.emit(
+                    "install_progress",
+                    &ProgressEvent {
+                        operation: "download".to_string(),
+                        file: archive_for_progress.clone(),
+                        percent: percent.min(50.0),
+                        message: format!(
+                            "Downloading {}... {:.1} MiB/s",
+                            mod_name_for_progress, mib_per_sec
+                        ),
+                        total_bytes: if total > 0 { Some(total) } else { None },
+                        processed_bytes: Some(downloaded),
+                    },
+                );
+            })),
+        )
+        .await?;
+
+        archive_path
+    } else {
+        // Non-premium: open browser to the files tab and watch ~/Downloads
+        let files_url = format!("{}?tab=files", source_url);
+
+        let _ = app.emit(
+            "install_progress",
+            &ProgressEvent {
+                operation: "download".to_string(),
+                file: expected_filename.clone(),
+                percent: 5.0,
+                message: format!("Opening Nexus download page for {}...", mod_name),
+                total_bytes: None,
+                processed_bytes: None,
+            },
+        );
+
+        let _ = tauri_plugin_opener::OpenerExt::opener(&app).open_url(&files_url, None::<String>);
+
+        let downloads_dir = dirs::download_dir()
+            .ok_or_else(|| AppError::Validation("Cannot locate Downloads directory".to_string()))?;
+
+        let _ = app.emit(
+            "install_progress",
+            &ProgressEvent {
+                operation: "download".to_string(),
+                file: expected_filename.clone(),
+                percent: 10.0,
+                message: format!("Waiting for {} in ~/Downloads...", expected_filename),
+                total_bytes: None,
+                processed_bytes: None,
+            },
+        );
+
+        let target_path = downloads_dir.join(&expected_filename);
+        let partial_extensions = [".part", ".crdownload", ".tmp"];
+        let timeout = std::time::Duration::from_secs(1800);
+        let poll_interval = std::time::Duration::from_secs(2);
+        let started = std::time::Instant::now();
+
+        loop {
+            if started.elapsed() >= timeout {
+                return Err(AppError::Validation(format!(
+                    "Timed out waiting for {} in Downloads. Download the file manually and use 'Local File' to install it.",
+                    expected_filename
+                )));
+            }
+
+            let any_partial = partial_extensions.iter().any(|ext| {
+                downloads_dir
+                    .join(format!("{}{}", expected_filename, ext))
+                    .exists()
+            });
+
+            if target_path.exists() && !any_partial {
+                let size_first = fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0);
+                tokio::time::sleep(poll_interval).await;
+                let size_second = fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0);
+                if size_first > 0 && size_first == size_second {
+                    break;
+                }
+            } else {
+                tokio::time::sleep(poll_interval).await;
+            }
+        }
+
+        target_path
+    };
+
+    let _ = app.emit(
+        "install_progress",
+        &ProgressEvent {
+            operation: "download".to_string(),
+            file: archive_name.clone(),
+            percent: 50.0,
+            message: format!("Installing {}...", mod_name),
+            total_bytes: None,
+            processed_bytes: None,
+        },
+    );
+
+    install_local_mod(
+        app,
+        state.clone(),
+        install_path.to_string_lossy().to_string(),
+    )
+    .await?;
+
+    let _ = update_manifest_metadata(&archive_name, &mod_name, &source_url, None);
+
+    Ok(AddNexusResult {
+        mod_id,
+        name: mod_name,
+        archive_name,
+        source_url,
+    })
+}
+
 #[tauri::command]
 pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String) -> Result<()> {
     let config = state.get_config()?;

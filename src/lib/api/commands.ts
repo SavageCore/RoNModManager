@@ -103,6 +103,13 @@ export const addModIoMod = (input: string) =>
     archiveName: string;
     sourceUrl: string;
   }>("add_modio_mod", { input });
+export const addNexusMod = (input: string) =>
+  invoke<{
+    modId: number;
+    name: string;
+    archiveName: string;
+    sourceUrl: string;
+  }>("add_nexus_mod", { input });
 export const fetchNexusModInfo = (input: string) =>
   invoke<{
     modId: number;
