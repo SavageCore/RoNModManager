@@ -209,6 +209,12 @@
   let isApplyingProfile = false;
   let expandedGroups: Record<string, boolean> = {};
   let isDraggingOver = false;
+  let isProcessingFiles = false;
+  const pendingFileQueue: Array<{
+    path: string;
+    fileName: string;
+    queueId: string;
+  }> = [];
   let editingGroup: string | null = null;
   let editInputValue = "";
   let editingUrlGroup: string | null = null;
@@ -865,41 +871,47 @@
       pendingIncludeNewModsForActiveProfile = true;
     }
 
-    // Reset batch counter for new queue
-    modAddQueueStore.resetBatch();
-
-    // Enqueue all files first
-    const queueEntries = paths.map((filePath) => {
+    // Enqueue all dropped files — totalQueued accumulates correctly across drops
+    for (const filePath of paths) {
       const fileName = filePath.split(/[\\/]/).pop() || filePath;
-      return {
+      pendingFileQueue.push({
         path: filePath,
         fileName,
         queueId: modAddQueueStore.enqueue(fileName),
-      };
-    });
-
-    // Process each file
-    for (const entry of queueEntries) {
-      console.log("Installing file:", entry.path);
-      modAddQueueStore.markRunning(
-        entry.queueId,
-        `Installing ${entry.fileName}...`,
-      );
-
-      try {
-        await installLocalMod(entry.path);
-        modAddQueueStore.markDone(entry.queueId, `Installed ${entry.fileName}`);
-        toastStore.success(`Successfully installed: ${entry.fileName}`);
-        console.log("Installation successful:", entry.fileName);
-      } catch (error) {
-        const message = `Failed to install ${entry.fileName}: ${String(error)}`;
-        modAddQueueStore.markError(entry.queueId, message);
-        toastStore.error(message);
-        console.error("Installation failed:", error);
-      }
+      });
     }
 
-    await refresh();
+    // Single worker loop — if already running, the new items will be picked up naturally
+    if (isProcessingFiles) return;
+
+    isProcessingFiles = true;
+    try {
+      while (pendingFileQueue.length > 0) {
+        const entry = pendingFileQueue.shift()!;
+        console.log("Installing file:", entry.path);
+        modAddQueueStore.markRunning(
+          entry.queueId,
+          `Installing ${entry.fileName}...`,
+        );
+        try {
+          await installLocalMod(entry.path);
+          modAddQueueStore.markDone(
+            entry.queueId,
+            `Installed ${entry.fileName}`,
+          );
+          toastStore.success(`Successfully installed: ${entry.fileName}`);
+          console.log("Installation successful:", entry.fileName);
+        } catch (error) {
+          const message = `Failed to install ${entry.fileName}: ${String(error)}`;
+          modAddQueueStore.markError(entry.queueId, message);
+          toastStore.error(message);
+          console.error("Installation failed:", error);
+        }
+      }
+    } finally {
+      isProcessingFiles = false;
+      await refresh();
+    }
   }
 
   async function handleModAdded() {
