@@ -1516,6 +1516,3 @@
     on:removeAddOn={handleRemoveAddOn}
   />
 </div>
-
-<style>
-</style>
