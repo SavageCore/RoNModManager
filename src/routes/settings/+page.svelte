@@ -879,32 +879,33 @@
           Intro Skip
         </h3>
         <p style="color: var(--clr-text-secondary);" class="text-sm">
-          {introSkipApplied
-            ? "✓ Applied"
-            : "Removes startup movie files to skip intro video"}
+          Removes startup movie files to skip intro video
         </p>
       </div>
-      <div class="flex gap-2">
-        <button
-          class="btn btn-sm primary"
-          class:disabled={applyingIntroSkip || introSkipApplied}
-          disabled={applyingIntroSkip || introSkipApplied}
-          on:click={applyIntroSkipConfig}
+      <div class="flex items-center gap-2">
+        {#if applyingIntroSkip || undoingIntroSkip}
+          <span style="color: var(--clr-text-secondary);" class="text-xs"
+            >{applyingIntroSkip ? "Applying..." : "Undoing..."}</span
+          >
+        {/if}
+        <label
+          class="gale-switch"
+          class:opacity-50={applyingIntroSkip || undoingIntroSkip}
         >
-          {applyingIntroSkip
-            ? "Applying..."
-            : introSkipApplied
-              ? "Applied"
-              : "Apply"}
-        </button>
-        <button
-          class="btn btn-sm"
-          class:disabled={undoingIntroSkip || !introSkipApplied}
-          disabled={undoingIntroSkip || !introSkipApplied}
-          on:click={undoIntroSkipConfig}
-        >
-          {undoingIntroSkip ? "Undoing..." : "Undo"}
-        </button>
+          <input
+            type="checkbox"
+            checked={introSkipApplied}
+            disabled={applyingIntroSkip || undoingIntroSkip}
+            on:change={() => {
+              if (introSkipApplied) {
+                void undoIntroSkipConfig();
+              } else {
+                void applyIntroSkipConfig();
+              }
+            }}
+          />
+          <span class="gale-switch-track"></span>
+        </label>
       </div>
     </div>
   </div>

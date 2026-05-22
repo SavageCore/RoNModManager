@@ -42,6 +42,8 @@ pub struct AppConfig {
     pub window_y: Option<f64>,
     #[serde(default)]
     pub last_update_check: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub intro_skip_enabled: bool,
 }
 
 impl Default for AppConfig {
@@ -61,6 +63,7 @@ impl Default for AppConfig {
             window_x: None,
             window_y: None,
             last_update_check: None,
+            intro_skip_enabled: false,
         }
     }
 }

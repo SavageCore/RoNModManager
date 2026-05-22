@@ -110,7 +110,9 @@ pub async fn apply_intro_skip(state: State<'_, AppState>) -> Result<()> {
     let game_path = config.game_path.ok_or_else(|| {
         crate::models::AppError::Validation("game path not configured".to_string())
     })?;
-    crate::services::config_tweaks::apply_intro_skip(&game_path)
+    crate::services::config_tweaks::apply_intro_skip(&game_path)?;
+    state.update_config(|c| c.intro_skip_enabled = true)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -119,14 +121,13 @@ pub async fn undo_intro_skip(state: State<'_, AppState>) -> Result<()> {
     let game_path = config.game_path.ok_or_else(|| {
         crate::models::AppError::Validation("game path not configured".to_string())
     })?;
-    crate::services::config_tweaks::undo_intro_skip(&game_path)
+    crate::services::config_tweaks::undo_intro_skip(&game_path)?;
+    state.update_config(|c| c.intro_skip_enabled = false)?;
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn is_intro_skip_applied(state: State<'_, AppState>) -> Result<bool> {
     let config = state.get_config()?;
-    let game_path = config.game_path.ok_or_else(|| {
-        crate::models::AppError::Validation("game path not configured".to_string())
-    })?;
-    crate::services::config_tweaks::is_intro_skip_applied(&game_path)
+    Ok(config.intro_skip_enabled)
 }

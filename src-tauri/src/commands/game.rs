@@ -94,9 +94,9 @@ fn override_paths(
     Some((game_target, backup))
 }
 
-fn launch_game_internal(game_path: &Path) -> Result<(), String> {
-    // Re-apply intro skip if previously enabled, in case a game update restored the files
-    if crate::services::config_tweaks::is_intro_skip_applied(game_path).unwrap_or(false) {
+fn launch_game_internal(game_path: &Path, intro_skip_enabled: bool) -> Result<(), String> {
+    // Re-apply intro skip if enabled in config, in case a game update restored the files
+    if intro_skip_enabled {
         let _ = crate::services::config_tweaks::apply_intro_skip(game_path);
     }
 
@@ -161,7 +161,7 @@ pub async fn launch_game(state: State<'_, AppState>) -> Result<(), String> {
         .game_path
         .ok_or_else(|| "Game path not configured".to_string())?;
 
-    launch_game_internal(&game_path)
+    launch_game_internal(&game_path, config.intro_skip_enabled)
 }
 
 fn remove_orphan_symlinks(live_mods_path: &Path, live_savegames_path: &Path) -> Result<(), String> {
@@ -342,5 +342,5 @@ pub async fn launch_game_with_groups(
         .ok_or_else(|| "Game path not configured".to_string())?;
 
     sync_mod_links_for_game_path(&game_path, enabled_groups)?;
-    launch_game_internal(&game_path)
+    launch_game_internal(&game_path, config.intro_skip_enabled)
 }
