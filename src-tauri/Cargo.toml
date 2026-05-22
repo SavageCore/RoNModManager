@@ -40,6 +40,9 @@ tauri-plugin-dialog = "2.7.1"
 hex = "0.4"
 log = "0.4"
 env_logger = "0.11"
+russh = "0.61"
+russh-sftp = "2"
+async-trait = "0.1"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"

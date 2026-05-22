@@ -13,12 +13,19 @@
     saveToken,
     setGamePath,
     setTheme,
+    syncModpackToRemote,
     undoIntroSkip,
     updateConfig,
     validateToken,
     verifyNexusApiKey,
   } from "$lib/api/commands";
   import ExportModpackModal from "$lib/components/ExportModpackModal.svelte";
+  import SyncAuthModal from "$lib/components/SyncAuthModal.svelte";
+  import SyncProgressModal from "$lib/components/SyncProgressModal.svelte";
+  import type { SyncAuth } from "$lib/types";
+  import { listen } from "@tauri-apps/api/event";
+  import type { UnlistenFn } from "@tauri-apps/api/event";
+  import type { ModProgressEvent } from "$lib/types";
   import { operationStatusStore } from "$lib/stores/operationStatus";
   import { toastStore } from "$lib/stores/toast";
   import { tokenStore } from "$lib/stores/token";
@@ -88,6 +95,14 @@
   let updateInstallInProgress = false;
   let updateVersion: string | null = null;
   let updateLastChecked: Date | null = null;
+  let syncRemoteHost = "";
+  let syncRemotePath = "";
+  let isSyncing = false;
+  let showSyncAuthModal = false;
+  let showSyncProgressModal = false;
+  let syncLog: string[] = [];
+  let syncVerbose = false;
+  let syncAuthPurpose: "manual" | "fallback" = "manual";
 
   $: updateLastChecked = $updateCheckStore ? new Date($updateCheckStore) : null;
 
@@ -186,6 +201,8 @@
     gamePath = config.game_path ?? "";
     theme = config.theme;
     applyThemeClass(theme);
+    syncRemoteHost = config.sync_remote_host ?? "";
+    syncRemotePath = config.sync_remote_path ?? "";
   }
   function openModioApiKeyModal() {
     modioApiKeyInput = modioApiKey;
@@ -312,6 +329,15 @@
       await setGamePath(gamePath.trim());
     } catch (error) {
       errors.push(`Game path: ${String(error)}`);
+    }
+
+    try {
+      await updateConfig({
+        sync_remote_host: syncRemoteHost.trim(),
+        sync_remote_path: syncRemotePath.trim(),
+      });
+    } catch (error) {
+      errors.push(`Sync settings: ${String(error)}`);
     }
 
     if (errors.length === 0) {
@@ -487,6 +513,51 @@
 
   function exportInstalledMods() {
     showExportModal = true;
+  }
+
+  async function runSync(auth?: SyncAuth) {
+    await updateConfig({
+      sync_remote_host: syncRemoteHost.trim(),
+      sync_remote_path: syncRemotePath.trim(),
+    });
+    syncLog = [];
+    showSyncProgressModal = true;
+    isSyncing = true;
+
+    let unlisten: UnlistenFn | null = null;
+    try {
+      unlisten = await listen<ModProgressEvent>("sync_progress", (event) => {
+        syncLog = [...syncLog, event.payload.message];
+      });
+
+      await syncModpackToRemote(auth, syncVerbose);
+    } catch (error) {
+      const msg = String(error);
+      if (msg.includes("AUTH_REQUIRED")) {
+        showSyncProgressModal = false;
+        syncAuthPurpose = "fallback";
+        showSyncAuthModal = true;
+      } else {
+        syncLog = [...syncLog, `Error: ${msg}`];
+      }
+    } finally {
+      isSyncing = false;
+      unlisten?.();
+    }
+  }
+
+  function handleSync() {
+    void runSync();
+  }
+
+  function openSyncAuthManual() {
+    syncAuthPurpose = "manual";
+    showSyncAuthModal = true;
+  }
+
+  function handleSyncAuthSubmit(auth: SyncAuth) {
+    showSyncAuthModal = false;
+    void runSync(auth);
   }
 
   onDestroy(() => {});
@@ -936,6 +1007,73 @@
     initialAuthor={exportMeta.author || ""}
     on:close={() => (showExportModal = false)}
     on:submit={(e) => handleExportModpack(e.detail)}
+  />
+
+  <div class="card mt-6">
+    <h3 style="color: var(--clr-text);" class="font-semibold">Remote Sync</h3>
+    <p style="color: var(--clr-text-secondary);" class="text-sm">
+      Sync last export to a remote server via SFTP
+    </p>
+    <div class="mt-3 space-y-2">
+      <input
+        class="input w-full"
+        placeholder="user@host (e.g. root@seedbox.example.com)"
+        bind:value={syncRemoteHost}
+      />
+      <input
+        class="input w-full"
+        placeholder="/remote/path"
+        bind:value={syncRemotePath}
+      />
+    </div>
+    <div class="flex items-center justify-between mt-3">
+      <label
+        class="flex items-center gap-2 text-sm cursor-pointer"
+        style="color: var(--clr-text-secondary);"
+      >
+        <span class="gale-switch">
+          <input type="checkbox" bind:checked={syncVerbose} />
+          <span class="gale-switch-track"></span>
+        </span>
+        Verbose log
+      </label>
+      <div class="flex gap-2">
+        <button
+          class="btn btn-sm"
+          disabled={isSyncing ||
+            !syncRemoteHost.trim() ||
+            !syncRemotePath.trim()}
+          on:click={openSyncAuthManual}
+        >
+          Credentials...
+        </button>
+        <button
+          class="btn btn-sm primary"
+          disabled={isSyncing ||
+            !syncRemoteHost.trim() ||
+            !syncRemotePath.trim()}
+          on:click={handleSync}
+        >
+          {isSyncing ? "Syncing..." : "Sync Now"}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <SyncAuthModal
+    isVisible={showSyncAuthModal}
+    description={syncAuthPurpose === "fallback"
+      ? "Auto-discovery found no usable key. Provide credentials to continue."
+      : "Choose how to authenticate with the remote server. Sync Now will try your SSH keys automatically if you skip this."}
+    on:close={() => (showSyncAuthModal = false)}
+    on:submit={(e) => handleSyncAuthSubmit(e.detail)}
+  />
+
+  <SyncProgressModal
+    isVisible={showSyncProgressModal}
+    log={syncLog}
+    isBusy={isSyncing}
+    on:close={() => (showSyncProgressModal = false)}
   />
 
   <div class="card mt-6">

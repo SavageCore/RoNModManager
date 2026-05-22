@@ -184,7 +184,7 @@ pub async fn export_modpack_to_file(
     app: AppHandle,
     modpack: ModPack,
     dir_path: String,
-    _state: State<'_, AppState>,
+    state: State<'_, AppState>,
 ) -> Result<()> {
     use crate::models::ProgressEvent;
     use crate::services::hasher;
@@ -395,6 +395,10 @@ pub async fn export_modpack_to_file(
             processed_bytes: None,
         },
     );
+
+    let _ = state.update_config(|cfg| {
+        cfg.last_export_dir = Some(dir_path.to_string_lossy().to_string());
+    });
 
     let _ = app.emit("export_complete", dir_path.to_string_lossy().to_string());
     Ok(())

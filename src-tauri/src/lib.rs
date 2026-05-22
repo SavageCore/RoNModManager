@@ -6,7 +6,7 @@ pub mod services;
 pub mod state;
 
 use crate::commands::{
-    auth, collections, config, game, modpack, mods, profiles, sharing, tags, updater, window,
+    auth, collections, config, game, modpack, mods, profiles, sharing, sync, tags, updater, window,
 };
 use state::AppState;
 
@@ -60,6 +60,7 @@ pub fn run() {
             modpack::get_modpack_collections,
             modpack::build_modpack_from_installed,
             modpack::export_modpack_to_file,
+            sync::sync_modpack_to_remote,
             collections::get_collections,
             collections::get_collection_mods,
             collections::create_collection,
