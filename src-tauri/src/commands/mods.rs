@@ -197,11 +197,44 @@ fn remove_mod_from_active_profile(state: &State<'_, AppState>, mod_name: &str) -
         return Ok(());
     };
 
-    let before_len = profile.installed_mod_names.len();
+    let before_installed_len = profile.installed_mod_names.len();
     profile.installed_mod_names.retain(|name| name != mod_name);
+    let installed_changed = profile.installed_mod_names.len() != before_installed_len;
 
-    if profile.installed_mod_names.len() != before_len {
+    // Remove mod from tag member lists; keep empty tag keys so they're ready to re-assign
+    let mut meta_changed = false;
+    for members in profile.tags.values_mut() {
+        let before = members.len();
+        members.retain(|name| name != mod_name);
+        if members.len() != before {
+            meta_changed = true;
+        }
+    }
+
+    // Remove mod from collection member lists; drop collections that become empty
+    for members in profile.collections.values_mut() {
+        let before = members.len();
+        members.retain(|name| name != mod_name);
+        if members.len() != before {
+            meta_changed = true;
+        }
+    }
+    let empty_collections: Vec<String> = profile
+        .collections
+        .iter()
+        .filter(|(_, members)| members.is_empty())
+        .map(|(name, _)| name.clone())
+        .collect();
+    for col in &empty_collections {
+        profile.collections.remove(col);
+        profile.collection_colors.remove(col);
+        profile.enabled_collections.retain(|name| name != col);
+    }
+
+    if installed_changed || meta_changed {
         profiles::save_profile(&profile)?;
+    }
+    if installed_changed {
         sync_active_profile_links(state)?;
     }
 
