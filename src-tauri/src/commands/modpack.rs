@@ -101,11 +101,14 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
                 .to_string()
         });
 
+        let content_hash = manifest.content_hash.clone();
+
         mods.insert(
             archive_name,
             ModEntry {
                 enabled: is_enabled,
                 source_url,
+                content_hash,
             },
         );
     }

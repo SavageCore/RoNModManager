@@ -225,26 +225,9 @@
               await tick();
             }
             if (fileExistsResult) {
-              log.push("Found hash of archive in local manifest");
-              log.push("Hash matches modpack");
-              log.push("Skipping download");
-              log.push("Installing...");
+              log.push(`Already installed and up-to-date, skipping.`);
               log = log;
               await tick();
-              try {
-                await installLocalMod(archivePath);
-                log.push("Installed");
-                log = log;
-                await tick();
-              } catch (installErr: any) {
-                log.push(
-                  `Error installing archive: ${installErr.message || String(installErr)}`,
-                );
-                log = log;
-                await tick();
-                error = installErr.message || String(installErr);
-                hadError = true;
-              }
               manifestHashMatched = true;
             } else {
               log.push(
