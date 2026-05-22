@@ -688,6 +688,19 @@ pub async fn uninstall_mods(_app: AppHandle, state: State<'_, AppState>) -> Resu
         let _ = manager.delete_manifest(&mod_name);
     }
 
+    // 2b. Remove any orphaned per-mod subdirectories in staging (not caught by manifests)
+    for subdir in &["mods", "savegames", "backups"] {
+        let parent = staging_root.join(subdir);
+        if let Ok(entries) = fs::read_dir(&parent) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let _ = fs::remove_dir_all(&path);
+                }
+            }
+        }
+    }
+
     // 3. Clear archives
     let archives_root = get_archives_root()?;
     if archives_root.exists() {

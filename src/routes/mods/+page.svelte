@@ -901,6 +901,43 @@
     };
   }
 
+  async function handleUninstallSelected() {
+    const count = selectedMods.size;
+    confirmModal = {
+      isVisible: true,
+      title: `Uninstall ${count} mod${count === 1 ? "" : "s"}?`,
+      message: `Are you sure you want to uninstall ${count} selected mod${count === 1 ? "" : "s"}? This cannot be undone.`,
+      confirmLabel: "Uninstall",
+      detail: "",
+      onConfirm: async () => {
+        try {
+          for (const modName of selectedMods) {
+            const group = modGroups.find((g) => g.name === modName);
+            if (!group) continue;
+            if (group.managedByManifest) {
+              await uninstallArchive(group.name);
+            } else {
+              const primaryFile = group.files[0]?.name;
+              if (primaryFile) {
+                await uninstallMod(primaryFile);
+              }
+            }
+          }
+          toastStore.success(
+            `Uninstalled ${count} mod${count === 1 ? "" : "s"}`,
+          );
+          clearSelection();
+          await refresh();
+          if (hasGamePath) {
+            await syncModLinks(getFullSyncList(modsForActiveProfile));
+          }
+        } catch (error) {
+          toastStore.error(`Failed to uninstall: ${String(error)}`);
+        }
+      },
+    };
+  }
+
   async function handleToggleAll() {
     if (!activeProfileName) {
       return;
@@ -1464,6 +1501,15 @@
       >
         <Tag size={14} class="inline mr-1" />
         Manage Tags
+      </button>
+      <button
+        class="btn btn-sm btn-danger"
+        on:click={() => {
+          void handleUninstallSelected();
+        }}
+      >
+        <Trash2 size={14} class="inline mr-1" />
+        Uninstall
       </button>
       <button class="btn btn-sm" on:click={clearSelection}>Clear</button>
     </div>
