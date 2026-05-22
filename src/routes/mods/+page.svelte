@@ -22,6 +22,9 @@
     updateModSourceUrl,
     getAddonMap,
     setAddonMap,
+    getBrokenMods,
+    setModBroken,
+    clearModBroken,
   } from "$lib/api/commands";
   import AddModModal from "$lib/components/AddModModal.svelte";
   import AddModpackModal from "$lib/components/AddModpackModal.svelte";
@@ -135,11 +138,13 @@
     }
   }
   import ItemPickerModal from "$lib/components/ItemPickerModal.svelte";
+  import BrokenModModal from "$lib/components/BrokenModModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { modSortOrder } from "$lib/stores/modSortOrder";
+  import { showBroken } from "$lib/stores/showBroken";
   import { toastStore } from "$lib/stores/toast";
   import { formatDistanceToNow } from "date-fns";
   import type {
@@ -184,6 +189,10 @@
       );
     return [...new Set([...enabledGroups, ...addonArchives])];
   }
+  let brokenModsMap: Record<string, string> = {};
+  let showBrokenModal = false;
+  let brokenModalModName = "";
+  let brokenModalModLabel = "";
   let modSearch = "";
   let modSourceFilter: "all" | "nexus" | "modio" = "all";
   let modsForActiveProfile: string[] = [];
@@ -281,7 +290,9 @@
       const matchesTags =
         activeTagFilters.size === 0 ||
         (modToTagsMap[group.name] ?? []).some((t) => activeTagFilters.has(t));
-      return matchesSearch && matchesSource && matchesTags;
+      const isBroken = brokenModsMap[group.name] !== undefined;
+      const matchesBroken = $showBroken || !isBroken;
+      return matchesSearch && matchesSource && matchesTags && matchesBroken;
     })
     .sort((a, b) => {
       const labelA = (a.displayName || a.name).toLowerCase();
@@ -457,12 +468,14 @@
 
   async function refresh() {
     try {
-      const [groups, config, profileList, map] = await Promise.all([
+      const [groups, config, profileList, map, broken] = await Promise.all([
         getInstalledModGroups(),
         getConfig(),
         listProfiles().catch(() => []),
         getAddonMap(),
+        getBrokenMods().catch(() => ({}) as Record<string, string>),
       ]);
+      brokenModsMap = broken;
 
       const previousGroupNames = new Set(allInstalledGroupNames);
       allInstalledGroupNames = new Set(groups.map((group) => group.name));
@@ -1291,6 +1304,20 @@
     <option value="date-asc">Oldest First</option>
     <option value="missing-sav-first">Missing World Gen</option>
   </select>
+  <button
+    on:click={() => ($showBroken = !$showBroken)}
+    style={$showBroken
+      ? "background: color-mix(in srgb, var(--clr-danger-300) 15%, transparent); border-color: var(--clr-danger-300); color: var(--clr-danger-300);"
+      : "border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
+    class="inline-flex items-center gap-1.5 rounded border px-2 text-xs cursor-pointer"
+    style:height="2.5rem"
+    title={$showBroken
+      ? "Broken mods visible — click to hide"
+      : "Broken mods hidden — click to show"}
+  >
+    <AlertTriangle size={13} />
+    {$showBroken ? "Showing broken" : "Show broken"}
+  </button>
 </div>
 
 {#if allTagNames.length > 0}
@@ -1477,6 +1504,17 @@
                     openTagPicker(group.name, group.displayName || group.name),
                 }),
                 await MenuItem.new({
+                  text:
+                    brokenModsMap[group.name] !== undefined
+                      ? "Edit broken note"
+                      : "Mark as broken",
+                  action: () => {
+                    brokenModalModName = group.name;
+                    brokenModalModLabel = group.displayName || group.name;
+                    showBrokenModal = true;
+                  },
+                }),
+                await MenuItem.new({
                   text: "Manage add-ons",
                   action: () => openAddOnsModal(group.name),
                 }),
@@ -1562,6 +1600,15 @@
                         />
                       </span>
                     {/if}
+                    {#if brokenModsMap[group.name] !== undefined}
+                      <span
+                        title={brokenModsMap[group.name] || "Marked as broken"}
+                        class="flex items-center"
+                        style="color: var(--clr-danger-300);"
+                      >
+                        <AlertTriangle size={14} style="flex-shrink: 0;" />
+                      </span>
+                    {/if}
                     <span
                       role="button"
                       tabindex="0"
@@ -1638,13 +1685,16 @@
               {/if}
               <label
                 class="gale-switch"
-                title={`${modsForActiveProfile.includes(group.name) ? "Disable" : "Enable"} ${group.displayName ?? group.name}`}
+                class:opacity-50={!!brokenModsMap[group.name]}
+                title={brokenModsMap[group.name] !== undefined
+                  ? `Broken: ${brokenModsMap[group.name] || "no note"}`
+                  : `${modsForActiveProfile.includes(group.name) ? "Disable" : "Enable"} ${group.displayName ?? group.name}`}
               >
                 <input
                   type="checkbox"
                   checked={modsForActiveProfile.includes(group.name)}
                   on:change={() => toggleGroupState(group.name)}
-                  disabled={!activeProfileName}
+                  disabled={!activeProfileName || !!brokenModsMap[group.name]}
                 />
                 <span class="gale-switch-track"></span>
               </label>
@@ -1818,5 +1868,30 @@
     on:close={closeAddOnsModal}
     on:addAddOns={handleAddAddOns}
     on:removeAddOn={handleRemoveAddOn}
+  />
+
+  <BrokenModModal
+    isVisible={showBrokenModal}
+    modLabel={brokenModalModLabel}
+    existingNote={brokenModsMap[brokenModalModName] ?? ""}
+    on:close={() => (showBrokenModal = false)}
+    on:save={async (e) => {
+      try {
+        await setModBroken(brokenModalModName, e.detail.note);
+        showBrokenModal = false;
+        await refresh();
+      } catch (err) {
+        toastStore.error(`Failed to mark mod as broken: ${String(err)}`);
+      }
+    }}
+    on:clear={async () => {
+      try {
+        await clearModBroken(brokenModalModName);
+        showBrokenModal = false;
+        await refresh();
+      } catch (err) {
+        toastStore.error(`Failed to clear broken flag: ${String(err)}`);
+      }
+    }}
   />
 </div>

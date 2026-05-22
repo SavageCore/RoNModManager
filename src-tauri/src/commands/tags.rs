@@ -71,3 +71,51 @@ pub async fn delete_tag(state: State<'_, AppState>, name: String) -> Result<()> 
     profiles::save_profile(&profile)?;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn get_broken_mods(state: State<'_, AppState>) -> Result<HashMap<String, String>> {
+    let config = state.get_config()?;
+    let active_profile_name = match config.active_profile {
+        Some(name) => name,
+        None => return Ok(HashMap::new()),
+    };
+    let profile = profiles::get_profile(&active_profile_name)?.ok_or_else(|| {
+        crate::models::AppError::Validation(format!("Profile '{}' not found", active_profile_name))
+    })?;
+    Ok(profile.broken_mods)
+}
+
+#[tauri::command]
+pub async fn set_mod_broken(
+    state: State<'_, AppState>,
+    #[allow(non_snake_case)] modName: String,
+    note: String,
+) -> Result<()> {
+    let config = state.get_config()?;
+    let active_profile_name = config
+        .active_profile
+        .ok_or_else(|| crate::models::AppError::Validation("No active profile".to_string()))?;
+    let mut profile = profiles::get_profile(&active_profile_name)?.ok_or_else(|| {
+        crate::models::AppError::Validation(format!("Profile '{}' not found", active_profile_name))
+    })?;
+    profile.broken_mods.insert(modName, note);
+    profiles::save_profile(&profile)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn clear_mod_broken(
+    state: State<'_, AppState>,
+    #[allow(non_snake_case)] modName: String,
+) -> Result<()> {
+    let config = state.get_config()?;
+    let active_profile_name = config
+        .active_profile
+        .ok_or_else(|| crate::models::AppError::Validation("No active profile".to_string()))?;
+    let mut profile = profiles::get_profile(&active_profile_name)?.ok_or_else(|| {
+        crate::models::AppError::Validation(format!("Profile '{}' not found", active_profile_name))
+    })?;
+    profile.broken_mods.remove(&modName);
+    profiles::save_profile(&profile)?;
+    Ok(())
+}

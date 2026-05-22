@@ -19,6 +19,9 @@ pub struct Profile {
     pub collection_colors: HashMap<String, String>,
     #[serde(default)]
     pub created_at: String,
+    /// Archive name → reason note (empty string = no note)
+    #[serde(default)]
+    pub broken_mods: HashMap<String, String>,
 }
 
 impl Profile {
@@ -32,6 +35,7 @@ impl Profile {
             tags: HashMap::new(),
             collection_colors: HashMap::new(),
             created_at: chrono::Utc::now().to_rfc3339(),
+            broken_mods: HashMap::new(),
         }
     }
 

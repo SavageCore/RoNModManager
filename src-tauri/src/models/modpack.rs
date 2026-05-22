@@ -29,4 +29,7 @@ pub struct ModPack {
     pub addons: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     pub tags: BTreeMap<String, Vec<String>>,
+    /// Archive name → reason note; travels with the pack so recipients know not to re-enable
+    #[serde(default)]
+    pub broken: BTreeMap<String, String>,
 }

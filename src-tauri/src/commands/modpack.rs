@@ -152,6 +152,12 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
         tags.insert(tag_name.clone(), sorted);
     }
 
+    let broken: BTreeMap<String, String> = profile
+        .broken_mods
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
     Ok(ModPack {
         schema_version: 1,
         name: format!("{} ModPack", active_profile_name),
@@ -163,6 +169,7 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
         collections,
         addons,
         tags,
+        broken,
     })
 }
 

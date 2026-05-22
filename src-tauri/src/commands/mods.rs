@@ -632,6 +632,24 @@ pub async fn install_mods(
         }
     }
 
+    // Merge broken-mod flags from the modpack into the active profile.
+    // Existing local notes are preserved (don't overwrite).
+    if let Some(ref pack_data) = pack {
+        if !pack_data.broken.is_empty() {
+            if let Ok(Some(profile_name)) = state.get_config().map(|c| c.active_profile) {
+                if let Ok(Some(mut profile)) = profiles::get_profile(&profile_name) {
+                    for (archive, note) in &pack_data.broken {
+                        profile
+                            .broken_mods
+                            .entry(archive.clone())
+                            .or_insert_with(|| note.clone());
+                    }
+                    let _ = profiles::save_profile(&profile);
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
