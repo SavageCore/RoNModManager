@@ -20,7 +20,7 @@ pub struct ManifestFileEntry {
 }
 
 pub fn normalize_modpack_url(base_url: &str) -> String {
-    format!("{}/ronmod.pack", base_url.trim_end_matches('/'))
+    format!("{}/modpack.json", base_url.trim_end_matches('/'))
 }
 
 pub fn normalize_manifest_url(base_url: &str) -> String {
@@ -141,10 +141,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_modpack_uses_ronmod_pack_url() {
+    async fn fetch_modpack_uses_modpack_json_url() {
         let mut server = Server::new_async().await;
         let mock = server
-            .mock("GET", "/packs/ronmod.pack")
+            .mock("GET", "/packs/modpack.json")
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(example_pack_json())
