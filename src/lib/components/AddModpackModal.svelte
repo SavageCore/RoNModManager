@@ -72,7 +72,6 @@
     updateConfig,
     updateModSourceUrl,
   } from "$lib/api/commands";
-  import { operationStatusStore } from "$lib/stores/operationStatus";
   import { tick } from "svelte";
 
   $: if (isVisible) {
@@ -249,9 +248,6 @@
           log.push(`Downloading...`);
           log = log;
           await tick();
-          operationStatusStore.setTemporaryMessage(
-            `Downloading ${modFile} ...`,
-          );
           try {
             await downloadModArchive(downloadUrl, modFile);
             log.push(`Downloaded '${modFile}'.`);
