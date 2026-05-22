@@ -44,6 +44,12 @@ pub struct AppConfig {
     pub last_update_check: Option<DateTime<Utc>>,
     #[serde(default)]
     pub intro_skip_enabled: bool,
+    #[serde(default)]
+    pub last_export_dir: Option<String>,
+    #[serde(default)]
+    pub sync_remote_host: Option<String>,
+    #[serde(default)]
+    pub sync_remote_path: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -64,6 +70,9 @@ impl Default for AppConfig {
             window_y: None,
             last_update_check: None,
             intro_skip_enabled: false,
+            last_export_dir: None,
+            sync_remote_host: None,
+            sync_remote_path: None,
         }
     }
 }

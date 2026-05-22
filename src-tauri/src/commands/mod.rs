@@ -9,6 +9,7 @@ pub mod modpack;
 pub mod mods;
 pub mod profiles;
 pub mod sharing;
+pub mod sync;
 pub mod tags;
 pub mod updater;
 pub mod window;

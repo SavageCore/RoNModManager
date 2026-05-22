@@ -15,6 +15,8 @@ export interface AppConfig {
   window_x: number | null;
   window_y: number | null;
   last_update_check: string | null;
+  sync_remote_host: string | null;
+  sync_remote_path: string | null;
 }
 
 export interface Collection {
@@ -115,3 +117,8 @@ export interface WindowState {
   x: number | null;
   y: number | null;
 }
+
+export type SyncAuth =
+  | { type: "Auto" }
+  | { type: "Password"; password: string }
+  | { type: "KeyFile"; path: string; passphrase: string | null };

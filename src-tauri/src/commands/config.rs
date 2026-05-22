@@ -14,6 +14,8 @@ pub struct ConfigUpdate {
     pub active_profile: Option<String>,
     pub modpack_url: Option<String>,
     pub modpack_version: Option<String>,
+    pub sync_remote_host: Option<String>,
+    pub sync_remote_path: Option<String>,
 }
 
 #[tauri::command]
@@ -55,6 +57,12 @@ pub async fn update_config(state: State<'_, AppState>, updates: ConfigUpdate) ->
         }
         if let Some(version) = updates.modpack_version {
             config.modpack_version = Some(version);
+        }
+        if let Some(v) = updates.sync_remote_host {
+            config.sync_remote_host = if v.is_empty() { None } else { Some(v) };
+        }
+        if let Some(v) = updates.sync_remote_path {
+            config.sync_remote_path = if v.is_empty() { None } else { Some(v) };
         }
     })?;
 

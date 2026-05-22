@@ -329,6 +329,12 @@
       unlistenFunctions.push(fn);
     });
 
+    void listen<ModProgressEvent>("sync_progress", (event) => {
+      operationStatusStore.updateFromProgress(event.payload);
+    }).then((fn) => {
+      unlistenFunctions.push(fn);
+    });
+
     return () => {
       cleanup();
       if (resizeDebounce) {

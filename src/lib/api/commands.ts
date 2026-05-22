@@ -45,6 +45,14 @@ export const buildModpackFromInstalled = () =>
   invoke<ModPack>("build_modpack_from_installed");
 export const exportModpackToFile = (modpack: ModPack, dirPath: string) =>
   invoke<void>("export_modpack_to_file", { modpack, dirPath });
+export const syncModpackToRemote = (
+  auth?: import("../types").SyncAuth,
+  verbose?: boolean,
+) =>
+  invoke<void>("sync_modpack_to_remote", {
+    auth: auth ?? { type: "Auto" },
+    verbose: verbose ?? false,
+  });
 
 export const getCollections = () =>
   invoke<Record<string, boolean>>("get_collections");
@@ -147,6 +155,8 @@ export const updateConfig = (updates: {
   active_profile?: string | null;
   modpack_url?: string | null;
   modpack_version?: string | null;
+  sync_remote_host?: string;
+  sync_remote_path?: string;
 }) => invoke<void>("update_config", { updates });
 
 export const verifyNexusApiKey = (apiKey: string) =>
