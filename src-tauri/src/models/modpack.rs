@@ -22,7 +22,6 @@ pub struct ModPack {
     pub version: String,
     pub description: String,
     pub author: Option<String>,
-    pub subscriptions: BTreeMap<String, bool>,
     pub mods: BTreeMap<String, ModEntry>,
     pub collections: BTreeMap<String, Collection>,
     #[serde(default)]

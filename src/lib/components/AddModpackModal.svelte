@@ -61,15 +61,13 @@
   import {
     addModIoMod,
     downloadModArchive,
-    fetchModioRemoteInfo,
     fetchModpackJson,
+    fetchModioRemoteInfo,
     fileExists,
     getArchiveRootPath,
     getConfig,
     getInstalledModGroups,
-    getModioSubscriptionStatus,
     installLocalMod,
-    modioSubscribe,
     readManifestForArchive,
     updateConfig,
     updateModSourceUrl,
@@ -138,12 +136,9 @@
       const modEntries = Object.entries(data.mods);
       log.push("Checking mods folder...");
       await tick();
-      if (
-        modEntries.length === 0 &&
-        (!data.subscriptions || Object.keys(data.subscriptions).length === 0)
-      ) {
-        log.push("No mods or subscriptions found in modpack.");
-        error = "No mods or subscriptions found in modpack.";
+      if (modEntries.length === 0) {
+        log.push("No mods found in modpack.");
+        error = "No mods found in modpack.";
         isLoading = false;
         return;
       }
@@ -151,27 +146,51 @@
       await tick();
       // Get base URL for self-hosted downloads
       const baseUrl = url.replace(/\/[^/]*$/, "");
-      // Get OAuth token once for all mod.io mods
-      let oauthToken: string | null = null;
-      let modioApiKey: string | null = null;
-      let modioGameId: string | null = null;
-      try {
-        const config = await getConfig();
-        oauthToken = config.oauth_token;
-        modioApiKey = config.modio_api_key;
-        modioGameId = config.modio_game_id
-          ? String(config.modio_game_id)
-          : null;
-      } catch (e) {
-        log.push("Warning: Could not retrieve mod.io credentials from config.");
-        await tick();
-      }
 
-      // 1. Process all mods in the mods object
+      // Process all mods in the mods object
       // Define the type for modInfo based on expected modpack.json structure
       for (const [modFile, modInfo] of modEntries as [string, ModInfo][]) {
         const src = modInfo.source_url || "";
-        log.push(`Processing self-hosted mod: ${modFile} ...`);
+
+        // mod.io mods are always direct-downloaded, never self-hosted
+        if (src.toLowerCase().includes("mod.io")) {
+          log.push(`Installing mod.io mod: ${modFile}...`);
+          log = log;
+          await tick();
+          try {
+            const remoteInfo = await fetchModioRemoteInfo(src);
+            let manifest = null;
+            try {
+              manifest = await readManifestForArchive(remoteInfo.archive_name);
+            } catch {}
+            const archivePath = `${archiveRootPath}/${remoteInfo.archive_name}`;
+            if (
+              remoteInfo.remote_md5 &&
+              manifest?.content_hash === remoteInfo.remote_md5 &&
+              (await fileExists(archivePath))
+            ) {
+              log.push(`Already up-to-date, skipping download.`);
+              log = log;
+              await tick();
+            } else {
+              const result = await addModIoMod(src);
+              log.push(`Installed '${result.name}' from mod.io.`);
+              log = log;
+              await tick();
+            }
+          } catch (modErr: any) {
+            log.push(
+              `Error installing mod.io mod: ${modErr.message || String(modErr)}`,
+            );
+            log = log;
+            await tick();
+            error = modErr.message || String(modErr);
+            hadError = true;
+          }
+          continue;
+        }
+
+        log.push(`Processing mod: ${modFile} ...`);
         log = log;
         // Download from self-hosted server or Nexus
         // Manifest hash check logic
@@ -296,151 +315,6 @@
           }
         }
       }
-      // 2. Process all mod.io subscriptions
-      if (data.subscriptions && typeof data.subscriptions === "object") {
-        const processedModIoUrls = new Set();
-        for (const [subUrl, enabled] of Object.entries(data.subscriptions)) {
-          if (!enabled) continue;
-          if (!subUrl.includes("mod.io")) continue;
-          if (processedModIoUrls.has(subUrl)) continue;
-          log.push(`Subscribing to mod '${subUrl}' on mod.io...`);
-          log = log;
-          await tick();
-          operationStatusStore.setTemporaryMessage(
-            `Subscribing to mod '${subUrl}'...`,
-          );
-          try {
-            const match = subUrl.match(/\/m\/([^/]+)/);
-            if (!match) {
-              throw new Error(
-                "Could not extract mod slug from mod.io URL: " + subUrl,
-              );
-            }
-            const modSlug = match[1];
-            // Resolve mod slug to numeric mod ID
-            let modId = null;
-            if (!modioApiKey || !modioGameId) {
-              throw new Error("mod.io API key or game ID not set in config.");
-            }
-            try {
-              const resp = await fetch(
-                `https://api.mod.io/v1/games/${modioGameId}/mods?name_id=${modSlug}&api_key=${modioApiKey}`,
-              );
-              const data = await resp.json();
-              if (data && data.data && data.data[0] && data.data[0].id) {
-                modId = data.data[0].id;
-              } else {
-                throw new Error(
-                  "Could not resolve mod slug to numeric ID: " + modSlug,
-                );
-              }
-            } catch (e: any) {
-              throw new Error(
-                "Failed to resolve mod slug to numeric ID: " +
-                  modSlug +
-                  ", " +
-                  (e.message || String(e)),
-              );
-            }
-            if (!oauthToken) {
-              throw new Error(
-                "No OAuth token available for mod.io subscription.",
-              );
-            }
-            const subscriptionStatus = await getModioSubscriptionStatus({
-              mod_id: String(modId),
-              oauth_token: oauthToken,
-            });
-
-            if (subscriptionStatus === "subscribed") {
-              log.push(
-                `Already subscribed to mod '${modSlug}' (ID ${modId}). Skipping subscription.`,
-              );
-              log = log;
-              await tick();
-            } else {
-              await modioSubscribe({
-                mod_id: String(modId),
-                oauth_token: oauthToken,
-              });
-              log.push(`Subscribed to mod.io mod '${modSlug}' (ID ${modId}).`);
-              log = log;
-              await tick();
-            }
-
-            // Fetch remote md5 and archive name from backend
-            const remoteInfo = await fetchModioRemoteInfo(subUrl);
-            let manifest = null;
-            try {
-              manifest = await readManifestForArchive(remoteInfo.archive_name);
-            } catch (err: any) {
-              log.push(
-                `Could not read manifest for ${remoteInfo.archive_name} (backend error: ${err && err.message ? err.message : String(err)})`,
-              );
-              log = log;
-              await tick();
-            }
-            if (
-              remoteInfo.remote_md5 &&
-              manifest &&
-              manifest.content_hash &&
-              remoteInfo.remote_md5 === manifest.content_hash
-            ) {
-              log.push(
-                "Remote mod.io file hash matches manifest and modpack. Skipping download.",
-              );
-              log = log;
-              await tick();
-
-              const fileExistsResult = await fileExists(
-                `/home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${remoteInfo.archive_name}`,
-              );
-              if (fileExistsResult) {
-                continue;
-              } else {
-                log.push(
-                  `Hash matches modpack but archive not found at expected path: /home/savagecore/.local/share/ronmodmanager-dev/staged/archives/${remoteInfo.archive_name}`,
-                );
-                log = log;
-                await tick();
-              }
-            }
-            const result = await addModIoMod(subUrl);
-            log.push(`Downloading '${result.name}' from mod.io...`);
-            log = log;
-            await tick();
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            log.push(`Downloaded '${result.archiveName}'. Extracting...`);
-            log = log;
-            await tick();
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            try {
-              await updateModSourceUrl(result.archiveName, subUrl);
-              // log.push(`Set source_url for '${result.archiveName}'.`);
-              // log = log;
-              // await tick();
-            } catch (setUrlErr: any) {
-              log.push(
-                `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
-              );
-              log = log;
-              await tick();
-            }
-            log.push(`Finished installing '${result.name}'.`);
-            log = log;
-            await tick();
-          } catch (modErr: any) {
-            log.push(
-              `Error installing mod: ${modErr.message || String(modErr)}`,
-            );
-            log = log;
-            await tick();
-            error = modErr.message || String(modErr);
-            hadError = true;
-          }
-        }
-      } // <-- close subscriptions for-loop
-
       // Always refresh mod list after processing
       try {
         await getInstalledModGroups();

@@ -115,8 +115,6 @@ pub fn run() {
             window::get_window_state,
             commands::fetch::fetch_modpack_json,
             commands::fetch_archive::download_mod_archive,
-            commands::modio::modio_subscribe,
-            commands::modio::get_modio_subscription_status,
             commands::fs::file_exists,
             commands::fs::get_archive_root_path,
         ])

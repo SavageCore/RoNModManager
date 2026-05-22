@@ -126,53 +126,15 @@ impl ModioApiService {
             .ok_or_else(|| AppError::NotFound(format!("game slug not found: {}", slug)))
     }
 
-    pub async fn fetch_subscribed_mods(&self, oauth_token: &str) -> Result<Vec<ModioModSummary>> {
-        let game_id = self
-            .game_id
-            .ok_or_else(|| AppError::Validation("mod.io game_id not set".to_string()))?;
-        let url = format!("{}/me/subscribed?game_id={}", self.base_url, game_id);
-
-        let response = self
+    pub async fn validate_oauth_token(&self, oauth_token: &str) -> Result<bool> {
+        let url = format!("{}/me", self.base_url);
+        match self
             .execute_with_retry(|| self.client.get(&url).bearer_auth(oauth_token))
-            .await?;
-
-        let payload: ModioListResponse<ModioModSummary> = response.json().await?;
-        Ok(payload.data)
-    }
-
-    pub async fn subscribe_mod(&self, oauth_token: &str, mod_id: u64) -> Result<()> {
-        let game_id = self
-            .game_id
-            .ok_or_else(|| AppError::Validation("mod.io game_id not set".to_string()))?;
-        let url = format!(
-            "{}/games/{}/mods/{}/subscribe",
-            self.base_url, game_id, mod_id
-        );
-
-        self.execute_with_retry(|| self.client.post(&url).bearer_auth(oauth_token))
-            .await?;
-
-        Ok(())
-    }
-
-    pub async fn unsubscribe_mod(&self, oauth_token: &str, mod_id: u64) -> Result<()> {
-        let game_id = self
-            .game_id
-            .ok_or_else(|| AppError::Validation("mod.io game_id not set".to_string()))?;
-        let url = format!(
-            "{}/games/{}/mods/{}/subscribe",
-            self.base_url, game_id, mod_id
-        );
-
-        self.execute_with_retry(|| self.client.delete(&url).bearer_auth(oauth_token))
-            .await?;
-
-        Ok(())
-    }
-
-    pub async fn is_subscribed(&self, oauth_token: &str, mod_id: u64) -> Result<bool> {
-        let subs = self.fetch_subscribed_mods(oauth_token).await?;
-        Ok(subs.iter().any(|m| m.id == mod_id))
+            .await
+        {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
     }
 
     pub async fn resolve_slug_to_mod_id(&self, oauth_token: &str, slug: &str) -> Result<u64> {
@@ -337,80 +299,5 @@ mod tests {
 
         assert_eq!(mod_id, 1234);
         mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn fetch_subscribed_mods_parses_response() {
-        let mut server = Server::new_async().await;
-
-        let mock = server
-			.mock("GET", "/me/subscribed")
-			.match_query(Matcher::UrlEncoded("game_id".to_string(), "3791".to_string()))
-			.match_header("authorization", "Bearer test-token")
-			.with_status(200)
-			.with_header("content-type", "application/json")
-			.with_body(
-				r#"{"data":[{"id":10,"name":"Map Pack","name_id":"map-pack"},{"id":11,"name":"Gear","name_id":"gear"}]}"#,
-			)
-			.create_async()
-			.await;
-
-        let service = ModioApiService::with_base_url(Client::new(), server.url());
-        let mods = service.fetch_subscribed_mods("test-token").await.unwrap();
-
-        assert_eq!(mods.len(), 2);
-        assert_eq!(mods[0].id, 10);
-        assert_eq!(mods[1].name_id, "gear");
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn unauthorized_token_returns_validation_error() {
-        let mut server = Server::new_async().await;
-
-        let mock = server
-            .mock("GET", "/me/subscribed")
-            .match_query(Matcher::UrlEncoded(
-                "game_id".to_string(),
-                "3791".to_string(),
-            ))
-            .with_status(401)
-            .create_async()
-            .await;
-
-        let service = ModioApiService::with_base_url(Client::new(), server.url());
-        let result = service.fetch_subscribed_mods("bad-token").await;
-
-        assert!(matches!(result, Err(AppError::Validation(_))));
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn rate_limit_retries_then_succeeds() {
-        let mut server = Server::new_async().await;
-
-        let first = server
-            .mock("POST", "/games/3791/mods/999/subscribe")
-            .match_header("authorization", "Bearer test-token")
-            .with_status(429)
-            .with_header("retry-after", "0")
-            .expect(1)
-            .create_async()
-            .await;
-
-        let second = server
-            .mock("POST", "/games/3791/mods/999/subscribe")
-            .match_header("authorization", "Bearer test-token")
-            .with_status(204)
-            .expect(1)
-            .create_async()
-            .await;
-
-        let service = ModioApiService::with_base_url(Client::new(), server.url());
-        let result = service.subscribe_mod("test-token", 999).await;
-
-        assert!(result.is_ok());
-        first.assert_async().await;
-        second.assert_async().await;
     }
 }

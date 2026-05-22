@@ -43,7 +43,6 @@ pub async fn sync_modpack(_app: AppHandle, state: State<'_, AppState>) -> Result
     let pack = modpack_service::fetch_modpack(&state.client, &url).await?;
 
     let version = pack.version.clone();
-    let _subscriptions = pack.subscriptions.clone();
     state.update_config(|cfg| {
         cfg.modpack_version = Some(version);
     })?;
@@ -85,7 +84,6 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
     let staging_root = crate::state::app_data_root()?.join("staged");
     let manifest_manager = ManifestManager::new(&staging_root);
 
-    let mut subscriptions = BTreeMap::new();
     let mut mods = BTreeMap::new();
     let mut collections = BTreeMap::new();
 
@@ -103,24 +101,13 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
                 .to_string()
         });
 
-        let is_modio = source_url
-            .as_ref()
-            .map(|url| url.to_lowercase().contains("mod.io"))
-            .unwrap_or(false);
-
-        if is_modio {
-            if let Some(url) = source_url {
-                subscriptions.insert(url, is_enabled);
-            }
-            continue;
-        }
-
-        let entry = ModEntry {
-            enabled: is_enabled,
-            source_url,
-        };
-
-        mods.insert(archive_name, entry);
+        mods.insert(
+            archive_name,
+            ModEntry {
+                enabled: is_enabled,
+                source_url,
+            },
+        );
     }
 
     for (name, mod_archives) in &profile.collections {
@@ -164,7 +151,6 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
         version: "0.1.0".to_string(),
         description: format!("Exported from profile: {}", active_profile_name),
         author: None,
-        subscriptions,
         mods,
         collections,
         addons,
@@ -217,7 +203,19 @@ pub async fn export_modpack_to_file(
     let archives_root = staging_root.join("archives");
     let manifest_manager = ManifestManager::new(&staging_root);
 
-    let mod_list: Vec<_> = modpack.mods.keys().cloned().collect();
+    // mod.io mods are downloaded directly on import — don't bundle their archives
+    let mod_list: Vec<_> = modpack
+        .mods
+        .iter()
+        .filter(|(_, entry)| {
+            entry
+                .source_url
+                .as_ref()
+                .map(|u| !u.to_lowercase().contains("mod.io"))
+                .unwrap_or(true)
+        })
+        .map(|(k, _)| k.clone())
+        .collect();
 
     // Compute addon archives upfront so total count is accurate from the start
     let mut extra_archives: Vec<String> = modpack

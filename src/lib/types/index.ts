@@ -29,7 +29,6 @@ export interface ModPack {
   version: string;
   description: string;
   author: string | null;
-  subscriptions: string[];
   collections: Record<string, Collection>;
 }
 

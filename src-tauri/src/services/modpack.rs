@@ -115,7 +115,6 @@ mod tests {
 			"version": "1.2.0",
 			"description": "Example",
 			"author": "SavageCore",
-			"subscriptions": {"fairfax-residence-remake": true},
 			"mods": {},
 			"collections": {
 				"Beat Cop": {
@@ -131,7 +130,7 @@ mod tests {
         let pack = parse_modpack_json(example_pack_json().as_bytes()).unwrap();
         assert_eq!(pack.name, "SavagePack");
         assert_eq!(pack.version, "1.2.0");
-        assert_eq!(pack.subscriptions.len(), 1);
+        assert_eq!(pack.mods.len(), 0);
     }
 
     #[test]
