@@ -28,8 +28,8 @@ pub fn app_data_root() -> Result<PathBuf> {
         .ok_or_else(|| AppError::Validation("Could not find data directory".to_string()))
 }
 
-pub fn app_temp_root() -> PathBuf {
-    std::env::temp_dir().join(app_directory_name())
+pub fn app_temp_root() -> Result<PathBuf> {
+    app_data_root().map(|p| p.join("tmp"))
 }
 
 pub struct AppState {

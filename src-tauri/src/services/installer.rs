@@ -230,11 +230,15 @@ where
     Ok(report)
 }
 
-pub fn install_rar_archive(archive_path: &Path, context: &InstallContext) -> Result<InstallReport> {
+pub fn install_rar_archive(
+    archive_path: &Path,
+    context: &InstallContext,
+    temp_root: &Path,
+) -> Result<InstallReport> {
     let mut report = InstallReport::default();
 
     // Create temporary directory for extraction
-    let temp_dir = std::env::temp_dir().join(format!(
+    let temp_dir = temp_root.join(format!(
         "ronmod_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
@@ -360,10 +364,14 @@ pub fn install_rar_archive(archive_path: &Path, context: &InstallContext) -> Res
     Ok(report)
 }
 
-pub fn install_7z_archive(archive_path: &Path, context: &InstallContext) -> Result<InstallReport> {
+pub fn install_7z_archive(
+    archive_path: &Path,
+    context: &InstallContext,
+    temp_root: &Path,
+) -> Result<InstallReport> {
     let mut report = InstallReport::default();
 
-    let temp_dir = std::env::temp_dir().join(format!(
+    let temp_dir = temp_root.join(format!(
         "ronmod_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()

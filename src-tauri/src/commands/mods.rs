@@ -474,7 +474,7 @@ pub async fn install_mods(
         }
     }
 
-    let download_root = app_temp_root().join("modpack_downloads");
+    let download_root = app_temp_root()?.join("modpack_downloads");
     fs::create_dir_all(&download_root)?;
 
     // Check Nexus premium status once if there are Nexus-sourced mods and an API key.
@@ -611,7 +611,7 @@ pub async fn install_mods(
             "install_progress",
             &ProgressEvent::new_install(&file_name, progress_pct),
         );
-        install_downloaded_file(file, &install_context, &app)?;
+        install_downloaded_file(file, &install_context, &app, &download_root)?;
     }
 
     let _ = app.emit("install_progress", &ProgressEvent::new_complete());
@@ -731,7 +731,7 @@ pub async fn add_modio_mod(
 
     let mod_details = modio_service.get_mod_download_info(&token, mod_id).await?;
 
-    let download_root = app_temp_root().join("modio_downloads");
+    let download_root = app_temp_root()?.join("modio_downloads");
     fs::create_dir_all(&download_root)?;
 
     let archive_name = sanitize_filename_for_download(&mod_details.filename);
@@ -1007,7 +1007,7 @@ pub async fn add_nexus_mod(
             AppError::Validation("No download links returned by Nexus API".to_string())
         })?;
 
-        let download_root = app_temp_root().join("nexus_downloads");
+        let download_root = app_temp_root()?.join("nexus_downloads");
         fs::create_dir_all(&download_root)?;
         let archive_path = download_root.join(&archive_name);
 
@@ -1337,9 +1337,20 @@ pub async fn update_mod_source_url(
     let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
     let modio_service = ModioApiService::new(state.client.clone(), config.modio_game_id);
 
-    let mut manifest_data = manager.load_manifest(&archive_name)?.ok_or_else(|| {
-        AppError::Validation(format!("Archive manifest not found: {}", archive_name))
-    })?;
+    let mut manifest_data = match manager.load_manifest(&archive_name)? {
+        Some(m) => m,
+        None => manifest::InstallManifest {
+            source_archive: archive_name.clone(),
+            display_name: None,
+            source_url: None,
+            installed_files: vec![],
+            installed_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            content_hash: None,
+        },
+    };
     manifest_data.source_url = if source_url.trim().is_empty() {
         None
     } else {
@@ -1611,7 +1622,8 @@ pub async fn install_local_mod(
         },
     );
 
-    match install_downloaded_file(&path, &context, &app) {
+    let temp_root = crate::state::app_temp_root()?;
+    match install_downloaded_file(&path, &context, &app, &temp_root) {
         Ok(is_duplicate) => {
             if let Some(installed_mod_name) = path.file_name().and_then(|n| n.to_str()) {
                 let _ = add_mod_to_active_profile(&state, installed_mod_name);
@@ -1743,6 +1755,7 @@ fn install_downloaded_file(
     path: &PathBuf,
     context: &installer::InstallContext,
     app: &AppHandle,
+    temp_root: &Path,
 ) -> Result<bool> {
     let hash_start = Instant::now();
     let mut hash_last_emit = Instant::now() - Duration::from_millis(500);
@@ -1905,7 +1918,7 @@ fn install_downloaded_file(
                 processed_bytes: None,
             },
         );
-        let report = installer::install_rar_archive(path, &staged_context)?;
+        let report = installer::install_rar_archive(path, &staged_context, temp_root)?;
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
@@ -1928,7 +1941,7 @@ fn install_downloaded_file(
                 processed_bytes: None,
             },
         );
-        let report = installer::install_7z_archive(path, &staged_context)?;
+        let report = installer::install_7z_archive(path, &staged_context, temp_root)?;
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
