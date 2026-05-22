@@ -173,6 +173,10 @@
               await tick();
             } else {
               const result = await addModIoMod(src);
+              await installLocalMod(
+                result.archivePath,
+                modInfo.selected_pak_files ?? undefined,
+              );
               log.push(`Installed '${result.name}' from mod.io.`);
               log = log;
               await tick();
@@ -258,7 +262,10 @@
             // log = log;
             // await tick();
             try {
-              await installLocalMod(archivePath);
+              await installLocalMod(
+                archivePath,
+                modInfo.selected_pak_files ?? undefined,
+              );
               log.push(`Installed '${modFile}'.`);
               log = log;
               await tick();

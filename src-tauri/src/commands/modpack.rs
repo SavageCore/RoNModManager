@@ -103,12 +103,29 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
 
         let content_hash = manifest.content_hash.clone();
 
+        let pak_filenames: Vec<String> = manifest
+            .installed_files
+            .iter()
+            .filter_map(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string())
+            })
+            .filter(|name| name.to_lowercase().ends_with(".pak"))
+            .collect();
+        let selected_pak_files = if pak_filenames.is_empty() {
+            None
+        } else {
+            Some(pak_filenames)
+        };
+
         mods.insert(
             archive_name,
             ModEntry {
                 enabled: is_enabled,
                 source_url,
                 content_hash,
+                selected_pak_files,
             },
         );
     }
