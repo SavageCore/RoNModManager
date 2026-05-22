@@ -85,6 +85,7 @@ pub fn run() {
             mods::get_installed_mod_groups,
             mods::install_mods,
             mods::install_local_mod,
+            mods::get_archive_pak_files,
             mods::add_modio_mod,
             mods::add_nexus_mod,
             mods::cancel_nexus_download,

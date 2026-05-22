@@ -3,10 +3,14 @@
     addModIoMod,
     addNexusMod,
     fetchNexusModInfo,
+    getArchivePakFiles,
     installLocalMod,
+    updateModDisplayName,
+    updateModSourceUrl,
   } from "$lib/api/commands";
   import { alertStore } from "$lib/stores/alert";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
+  import { requestPakSelection } from "$lib/stores/pakSelection";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { open } from "@tauri-apps/plugin-dialog";
   import { createEventDispatcher, onDestroy, onMount } from "svelte";
@@ -163,6 +167,25 @@
           const result = isNexusUrl(entry.input)
             ? await addNexusMod(entry.input)
             : await addModIoMod(entry.input);
+
+          const selectedPaks = await choosePaks(
+            result.archivePath,
+            result.archiveName,
+            entry.queueId,
+          );
+          if (selectedPaks === null) {
+            modAddQueueStore.markError(entry.queueId, "Cancelled");
+            continue;
+          }
+
+          modAddQueueStore.markRunning(entry.queueId, "Installing...");
+          await installLocalMod(result.archivePath, selectedPaks ?? undefined);
+          await updateModDisplayName(result.archiveName, result.name).catch(
+            () => {},
+          );
+          await updateModSourceUrl(result.archiveName, result.sourceUrl).catch(
+            () => {},
+          );
           modAddQueueStore.markDone(entry.queueId, `Installed ${result.name}`);
         } catch (error) {
           const msg = String(error);
@@ -178,13 +201,13 @@
     }
   }
 
-  async function installFile(filePath: string) {
+  async function doInstallFile(filePath: string, selectedPakFiles?: string[]) {
     const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
     alertStore.clear();
     const queueId = modAddQueueStore.enqueue(fileName);
     modAddQueueStore.markRunning(queueId, "Installing...");
     try {
-      const result = await installLocalMod(filePath);
+      const result = await installLocalMod(filePath, selectedPakFiles);
       if (result.wasDuplicate) {
         modAddQueueStore.markDone(queueId, `${fileName} is already installed`);
         alertStore.info(
@@ -198,6 +221,34 @@
       modAddQueueStore.markError(queueId, `Failed: ${String(error)}`);
       alertStore.error(String(error));
     }
+  }
+
+  // Returns the user's pak selection, undefined (install all) if no choice needed,
+  // or null if the user cancelled. Pass queueId to update queue status while waiting.
+  async function choosePaks(
+    filePath: string,
+    archiveName: string,
+    queueId?: string,
+  ): Promise<string[] | null | undefined> {
+    const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+    if (ext !== "zip" && ext !== "rar" && ext !== "7z") return undefined;
+    try {
+      const paks = await getArchivePakFiles(filePath);
+      if (paks.length <= 1) return undefined;
+      if (queueId) {
+        modAddQueueStore.markRunning(queueId, "Select PAK files to install...");
+      }
+      return await requestPakSelection(archiveName, paks);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async function installFile(filePath: string) {
+    const archiveName = filePath.split(/[\\/]/).pop() ?? filePath;
+    const selectedPaks = await choosePaks(filePath, archiveName);
+    if (selectedPaks === null) return;
+    await doInstallFile(filePath, selectedPaks ?? undefined);
   }
 
   async function handleAddViaFile() {

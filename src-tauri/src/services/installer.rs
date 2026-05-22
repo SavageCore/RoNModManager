@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -63,13 +64,14 @@ pub fn classify_archive_entry(path: &Path) -> ModFileType {
 }
 
 pub fn install_archive(archive_path: &Path, context: &InstallContext) -> Result<InstallReport> {
-    install_archive_with_progress(archive_path, context, |_| {})
+    install_archive_with_progress(archive_path, context, |_| {}, None)
 }
 
 pub fn install_archive_with_progress<F>(
     archive_path: &Path,
     context: &InstallContext,
     mut on_progress: F,
+    pak_filter: Option<&HashSet<String>>,
 ) -> Result<InstallReport>
 where
     F: FnMut(ArchiveProgress),
@@ -125,10 +127,16 @@ where
         let entry_name = entry.name().to_string();
         match classify_archive_entry(&entry_path) {
             ModFileType::PakMod => {
-                // Always install .pak files to mods_path
                 let file_name = entry_path.file_name().ok_or_else(|| {
                     AppError::Validation(format!("invalid pak path in archive: {}", entry.name()))
                 })?;
+                if pak_filter
+                    .map(|f| !f.contains(file_name.to_string_lossy().as_ref()))
+                    .unwrap_or(false)
+                {
+                    report.skipped += 1;
+                    continue;
+                }
                 fs::create_dir_all(&context.mods_path)?;
                 let destination = context.mods_path.join(file_name);
                 let entry_size = entry.size();
@@ -234,6 +242,7 @@ pub fn install_rar_archive(
     archive_path: &Path,
     context: &InstallContext,
     temp_root: &Path,
+    pak_filter: Option<&HashSet<String>>,
 ) -> Result<InstallReport> {
     let mut report = InstallReport::default();
 
@@ -287,6 +296,13 @@ pub fn install_rar_archive(
                 let file_name = entry_path.file_name().ok_or_else(|| {
                     AppError::Validation(format!("invalid pak path in archive: {}", entry_name))
                 })?;
+                if pak_filter
+                    .map(|f| !f.contains(file_name.to_string_lossy().as_ref()))
+                    .unwrap_or(false)
+                {
+                    report.skipped += 1;
+                    continue;
+                }
                 fs::create_dir_all(&context.mods_path)?;
                 let destination = context.mods_path.join(file_name);
                 if copy_file_if_changed(&temp_file, &destination)? {
@@ -368,6 +384,7 @@ pub fn install_7z_archive(
     archive_path: &Path,
     context: &InstallContext,
     temp_root: &Path,
+    pak_filter: Option<&HashSet<String>>,
 ) -> Result<InstallReport> {
     let mut report = InstallReport::default();
 
@@ -400,6 +417,13 @@ pub fn install_7z_archive(
                         rel_path.display()
                     ))
                 })?;
+                if pak_filter
+                    .map(|f| !f.contains(file_name.to_string_lossy().as_ref()))
+                    .unwrap_or(false)
+                {
+                    report.skipped += 1;
+                    continue;
+                }
                 fs::create_dir_all(&context.mods_path)?;
                 let destination = context.mods_path.join(file_name);
                 if copy_file_if_changed(&abs_path, &destination)? {

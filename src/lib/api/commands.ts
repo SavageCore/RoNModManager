@@ -90,22 +90,35 @@ export const getInstalledModGroups = () =>
   invoke<InstalledModGroup[]>("get_installed_mod_groups");
 export const installMods = (enabledCollections?: string[]) =>
   invoke<void>("install_mods", { enabled_collections: enabledCollections });
-export const installLocalMod = (filePath: string) =>
-  invoke<{ wasDuplicate: boolean }>("install_local_mod", { filePath });
+export const installLocalMod = (
+  filePath: string,
+  selectedPakFiles?: string[],
+) =>
+  invoke<{ wasDuplicate: boolean }>("install_local_mod", {
+    filePath,
+    selectedPakFiles: selectedPakFiles ?? null,
+  });
+
+export interface PakFileInfo {
+  name: string;
+  path: string;
+  size: number;
+}
+
+export const getArchivePakFiles = (filePath: string) =>
+  invoke<PakFileInfo[]>("get_archive_pak_files", { filePath });
+export interface ModAddResult {
+  modId: number;
+  name: string;
+  archiveName: string;
+  sourceUrl: string;
+  archivePath: string;
+}
+
 export const addModIoMod = (input: string) =>
-  invoke<{
-    modId: number;
-    name: string;
-    archiveName: string;
-    sourceUrl: string;
-  }>("add_modio_mod", { input });
+  invoke<ModAddResult>("add_modio_mod", { input });
 export const addNexusMod = (input: string) =>
-  invoke<{
-    modId: number;
-    name: string;
-    archiveName: string;
-    sourceUrl: string;
-  }>("add_nexus_mod", { input });
+  invoke<ModAddResult>("add_nexus_mod", { input });
 export const cancelNexusDownload = () => invoke<void>("cancel_nexus_download");
 export const fetchNexusModInfo = (input: string) =>
   invoke<{

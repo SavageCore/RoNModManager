@@ -6,6 +6,7 @@
     applyProfile,
     createCollection,
     getConfig,
+    getArchivePakFiles,
     getInstalledModGroups,
     getProfile,
     installLocalMod,
@@ -28,6 +29,11 @@
   } from "$lib/api/commands";
   import AddModModal from "$lib/components/AddModModal.svelte";
   import AddModpackModal from "$lib/components/AddModpackModal.svelte";
+  import PakFileSelectionModal from "$lib/components/PakFileSelectionModal.svelte";
+  import {
+    pakSelectionStore,
+    requestPakSelection,
+  } from "$lib/stores/pakSelection";
   import ManageAddOnsModal from "$lib/components/ManageAddOnsModal.svelte";
   let showAddOnsModal = false;
   let selectedModName = "";
@@ -1096,12 +1102,36 @@
       while (pendingFileQueue.length > 0) {
         const entry = pendingFileQueue.shift()!;
         console.log("Installing file:", entry.path);
-        modAddQueueStore.markRunning(
-          entry.queueId,
-          `Installing ${entry.fileName}...`,
-        );
         try {
-          await installLocalMod(entry.path);
+          let selectedPaks: string[] | undefined;
+          const ext = entry.path.split(".").pop()?.toLowerCase() ?? "";
+          if (ext === "zip" || ext === "rar" || ext === "7z") {
+            try {
+              const paks = await getArchivePakFiles(entry.path);
+              if (paks.length > 1) {
+                modAddQueueStore.markRunning(
+                  entry.queueId,
+                  "Select PAK files to install...",
+                );
+                const selected = await requestPakSelection(
+                  entry.fileName,
+                  paks,
+                );
+                if (selected === null) {
+                  modAddQueueStore.markError(entry.queueId, "Cancelled");
+                  continue;
+                }
+                selectedPaks = selected;
+              }
+            } catch {
+              // fall through — install all
+            }
+          }
+          modAddQueueStore.markRunning(
+            entry.queueId,
+            `Installing ${entry.fileName}...`,
+          );
+          await installLocalMod(entry.path, selectedPaks);
           modAddQueueStore.markDone(
             entry.queueId,
             `Installed ${entry.fileName}`,
@@ -1309,6 +1339,21 @@
   on:create={handleBulkTagCreate}
   on:deleteItem={handleTagDelete}
 />
+
+{#if $pakSelectionStore}
+  <PakFileSelectionModal
+    archiveName={$pakSelectionStore.archiveName}
+    paks={$pakSelectionStore.paks}
+    on:select={(e) => {
+      $pakSelectionStore?.resolve(e.detail.selected);
+      pakSelectionStore.set(null);
+    }}
+    on:cancel={() => {
+      $pakSelectionStore?.resolve(null);
+      pakSelectionStore.set(null);
+    }}
+  />
+{/if}
 
 <!-- Filter Controls -->
 <div class="flex flex-col sm:flex-row gap-2 mb-4 items-center">

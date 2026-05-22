@@ -89,6 +89,95 @@ fn get_archives_root() -> Result<PathBuf> {
     Ok(root)
 }
 
+fn list_archive_paks(path: &Path) -> Result<Vec<PakFileInfo>> {
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default();
+
+    if extension.eq_ignore_ascii_case("zip") {
+        let file = fs::File::open(path)?;
+        let mut archive = zip::ZipArchive::new(file)
+            .map_err(|e| AppError::Validation(format!("invalid zip archive: {e}")))?;
+        let mut paks = Vec::new();
+        for i in 0..archive.len() {
+            let entry = archive
+                .by_index(i)
+                .map_err(|e| AppError::Validation(format!("zip entry error: {e}")))?;
+            if entry.is_dir() {
+                continue;
+            }
+            let entry_path = PathBuf::from(entry.name());
+            if installer::classify_archive_entry(&entry_path) == installer::ModFileType::PakMod {
+                let name = entry_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                paks.push(PakFileInfo {
+                    name,
+                    path: entry.name().to_string(),
+                    size: entry.size(),
+                });
+            }
+        }
+        return Ok(paks);
+    }
+
+    if extension.eq_ignore_ascii_case("rar") {
+        use unrar::Archive as RarArchive;
+        let mut paks = Vec::new();
+        let archive = RarArchive::new(path)
+            .open_for_listing()
+            .map_err(|e| AppError::Validation(format!("failed to open RAR: {e:?}")))?;
+        for entry_result in archive {
+            let entry = entry_result
+                .map_err(|e| AppError::Validation(format!("RAR entry error: {e:?}")))?;
+            if entry.is_directory() {
+                continue;
+            }
+            let entry_path = &entry.filename;
+            if installer::classify_archive_entry(entry_path) == installer::ModFileType::PakMod {
+                let name = entry_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                paks.push(PakFileInfo {
+                    name,
+                    path: entry.filename.to_string_lossy().to_string(),
+                    size: entry.unpacked_size,
+                });
+            }
+        }
+        return Ok(paks);
+    }
+
+    if extension.eq_ignore_ascii_case("7z") {
+        let mut paks = Vec::new();
+        let archive = sevenz_rust2::Archive::open(path)
+            .map_err(|e| AppError::Validation(format!("failed to open 7z: {e}")))?;
+        for entry in &archive.files {
+            if entry.is_directory {
+                continue;
+            }
+            let entry_path = PathBuf::from(&entry.name);
+            if installer::classify_archive_entry(&entry_path) == installer::ModFileType::PakMod {
+                let name = entry_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                paks.push(PakFileInfo {
+                    name,
+                    path: entry.name.clone(),
+                    size: entry.size,
+                });
+            }
+        }
+        return Ok(paks);
+    }
+
+    Ok(vec![])
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddModioResult {
@@ -96,6 +185,7 @@ pub struct AddModioResult {
     pub name: String,
     pub archive_name: String,
     pub source_url: String,
+    pub archive_path: String,
 }
 
 fn parse_modio_input_to_slug_or_id(input: &str) -> Result<(Option<u64>, Option<String>)> {
@@ -157,34 +247,6 @@ fn sanitize_filename_for_download(name: &str) -> String {
     } else {
         trimmed.to_string()
     }
-}
-
-fn update_manifest_metadata(
-    archive_name: &str,
-    display_name: &str,
-    source_url: &str,
-    content_hash_fallback: Option<&str>,
-) -> Result<()> {
-    let manager = manifest::ManifestManager::new(&get_staging_root()?);
-    let manifest_opt = manager.load_manifest(archive_name)?;
-    let mut manifest_data = if let Some(m) = manifest_opt {
-        m
-    } else if let Some(hash) = content_hash_fallback {
-        manager.find_by_content_hash(hash)?.ok_or_else(|| {
-            AppError::Validation(format!("Archive manifest not found: {}", archive_name))
-        })?
-    } else {
-        return Err(AppError::Validation(format!(
-            "Archive manifest not found: {}",
-            archive_name
-        )));
-    };
-
-    manifest_data.display_name = Some(display_name.to_string());
-    manifest_data.source_url = Some(source_url.to_string());
-
-    manager.save_manifest(&manifest_data)?;
-    Ok(())
 }
 
 fn remove_mod_from_active_profile(state: &State<'_, AppState>, mod_name: &str) -> Result<()> {
@@ -644,7 +706,7 @@ pub async fn install_mods(
             "install_progress",
             &ProgressEvent::new_install(&file_name, progress_pct),
         );
-        install_downloaded_file(file, &install_context, &app, &download_root)?;
+        install_downloaded_file(file, &install_context, &app, &download_root, None)?;
     }
 
     let _ = app.emit("install_progress", &ProgressEvent::new_complete());
@@ -830,26 +892,12 @@ pub async fn add_modio_mod(
     )
     .await?;
 
-    let archive_content_hash = hasher::md5_file(&archive_path).ok();
-    install_local_mod(
-        app,
-        state.clone(),
-        archive_path.to_string_lossy().to_string(),
-    )
-    .await?;
-
-    let _ = update_manifest_metadata(
-        &archive_name,
-        &mod_details.name,
-        &mod_details.profile_url,
-        archive_content_hash.as_deref(),
-    );
-
     Ok(AddModioResult {
         mod_id: mod_details.id,
         name: mod_details.name,
         archive_name,
         source_url: mod_details.profile_url,
+        archive_path: archive_path.to_string_lossy().to_string(),
     })
 }
 
@@ -1007,6 +1055,7 @@ pub struct AddNexusResult {
     pub name: String,
     pub archive_name: String,
     pub source_url: String,
+    pub archive_path: String,
 }
 
 #[tauri::command]
@@ -1190,32 +1239,12 @@ pub async fn add_nexus_mod(
         target_path
     };
 
-    let _ = app.emit(
-        "install_progress",
-        &ProgressEvent {
-            operation: "download".to_string(),
-            file: archive_name.clone(),
-            percent: 50.0,
-            message: format!("Installing {}...", mod_name),
-            total_bytes: None,
-            processed_bytes: None,
-        },
-    );
-
-    install_local_mod(
-        app,
-        state.clone(),
-        install_path.to_string_lossy().to_string(),
-    )
-    .await?;
-
-    let _ = update_manifest_metadata(&archive_name, &mod_name, &source_url, None);
-
     Ok(AddNexusResult {
         mod_id,
         name: mod_name,
         archive_name,
         source_url,
+        archive_path: install_path.to_string_lossy().to_string(),
     })
 }
 
@@ -1620,11 +1649,28 @@ pub struct LocalModInstallResult {
     pub was_duplicate: bool,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PakFileInfo {
+    pub name: String,
+    pub path: String,
+    pub size: u64,
+}
+
+#[tauri::command]
+pub async fn get_archive_pak_files(
+    #[allow(non_snake_case)] filePath: String,
+) -> Result<Vec<PakFileInfo>> {
+    let path = PathBuf::from(&filePath);
+    list_archive_paks(&path)
+}
+
 #[tauri::command]
 pub async fn install_local_mod(
     app: AppHandle,
     state: State<'_, AppState>,
     #[allow(non_snake_case)] filePath: String,
+    #[allow(non_snake_case)] selectedPakFiles: Option<Vec<String>>,
 ) -> Result<LocalModInstallResult> {
     let config = state.get_config()?;
     let game_path = config
@@ -1669,7 +1715,8 @@ pub async fn install_local_mod(
     );
 
     let temp_root = crate::state::app_temp_root()?;
-    match install_downloaded_file(&path, &context, &app, &temp_root) {
+    let pak_filter_set: Option<HashSet<String>> = selectedPakFiles.map(|v| v.into_iter().collect());
+    match install_downloaded_file(&path, &context, &app, &temp_root, pak_filter_set.as_ref()) {
         Ok(is_duplicate) => {
             if let Some(installed_mod_name) = path.file_name().and_then(|n| n.to_str()) {
                 let _ = add_mod_to_active_profile(&state, installed_mod_name);
@@ -1802,6 +1849,7 @@ fn install_downloaded_file(
     context: &installer::InstallContext,
     app: &AppHandle,
     temp_root: &Path,
+    pak_filter: Option<&HashSet<String>>,
 ) -> Result<bool> {
     let hash_start = Instant::now();
     let mut hash_last_emit = Instant::now() - Duration::from_millis(500);
@@ -1919,29 +1967,34 @@ fn install_downloaded_file(
         );
         let start = Instant::now();
         let mut last_emit = Instant::now() - Duration::from_millis(500);
-        let report = installer::install_archive_with_progress(path, &staged_context, |progress| {
-            let now = Instant::now();
-            if now.duration_since(last_emit) < Duration::from_millis(120)
-                && progress.processed_bytes < progress.total_bytes
-            {
-                return;
-            }
-            last_emit = now;
-            let elapsed = start.elapsed().as_secs_f64().max(0.001);
-            let mib_per_sec = (progress.processed_bytes as f64 / elapsed) / (1024.0 * 1024.0);
-            let mapped_percent = 55.0 + (progress.percent * 0.40);
-            let _ = app.emit(
-                "install_progress",
-                &ProgressEvent {
-                    operation: "extract".to_string(),
-                    file: progress.file,
-                    percent: mapped_percent.min(95.0),
-                    message: format!("Extracting files... {:.1} MiB/s", mib_per_sec),
-                    total_bytes: Some(progress.total_bytes),
-                    processed_bytes: Some(progress.processed_bytes),
-                },
-            );
-        })?;
+        let report = installer::install_archive_with_progress(
+            path,
+            &staged_context,
+            |progress| {
+                let now = Instant::now();
+                if now.duration_since(last_emit) < Duration::from_millis(120)
+                    && progress.processed_bytes < progress.total_bytes
+                {
+                    return;
+                }
+                last_emit = now;
+                let elapsed = start.elapsed().as_secs_f64().max(0.001);
+                let mib_per_sec = (progress.processed_bytes as f64 / elapsed) / (1024.0 * 1024.0);
+                let mapped_percent = 55.0 + (progress.percent * 0.40);
+                let _ = app.emit(
+                    "install_progress",
+                    &ProgressEvent {
+                        operation: "extract".to_string(),
+                        file: progress.file,
+                        percent: mapped_percent.min(95.0),
+                        message: format!("Extracting files... {:.1} MiB/s", mib_per_sec),
+                        total_bytes: Some(progress.total_bytes),
+                        processed_bytes: Some(progress.processed_bytes),
+                    },
+                );
+            },
+            pak_filter,
+        )?;
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
@@ -1964,7 +2017,7 @@ fn install_downloaded_file(
                 processed_bytes: None,
             },
         );
-        let report = installer::install_rar_archive(path, &staged_context, temp_root)?;
+        let report = installer::install_rar_archive(path, &staged_context, temp_root, pak_filter)?;
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
@@ -1987,7 +2040,7 @@ fn install_downloaded_file(
                 processed_bytes: None,
             },
         );
-        let report = installer::install_7z_archive(path, &staged_context, temp_root)?;
+        let report = installer::install_7z_archive(path, &staged_context, temp_root, pak_filter)?;
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
