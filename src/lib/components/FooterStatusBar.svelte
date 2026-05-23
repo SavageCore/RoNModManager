@@ -108,7 +108,7 @@
       $operationStatusStore.percent,
     );
 
-  // Monotonically increasing per-phase text percent — never goes backwards within a phase.
+  // Monotonically increasing per-phase text percent - never goes backwards within a phase.
   let smoothModPercent = 0;
   let _lastCompletedCount = 0;
   let _lastOperation = "";

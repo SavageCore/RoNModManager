@@ -77,7 +77,7 @@
     ];
     await setAddonMap(addonMap);
 
-    // Refresh — backend repopulates addonFiles and modsForActiveProfile is
+    // Refresh - backend repopulates addonFiles and modsForActiveProfile is
     // reloaded from disk (installLocalMod added each addon to the profile).
     await refresh();
     selectedAddOns = getAddOnsForMod(selectedModName);
@@ -693,7 +693,7 @@
       await persistActiveProfileEnabledGroups(enabledGroups);
       modsForActiveProfile = enabledGroups;
 
-      // Sync game links — includes addon archives for all enabled mods
+      // Sync game links - includes addon archives for all enabled mods
       if (hasGamePath) {
         await syncModLinks(getFullSyncList(enabledGroups));
       }
@@ -1110,7 +1110,7 @@
       pendingIncludeNewModsForActiveProfile = true;
     }
 
-    // Enqueue all dropped files — totalQueued accumulates correctly across drops
+    // Enqueue all dropped files - totalQueued accumulates correctly across drops
     for (const filePath of paths) {
       const fileName = filePath.split(/[\\/]/).pop() || filePath;
       pendingFileQueue.push({
@@ -1120,7 +1120,7 @@
       });
     }
 
-    // Single worker loop — if already running, the new items will be picked up naturally
+    // Single worker loop - if already running, the new items will be picked up naturally
     if (isProcessingFiles) return;
 
     isProcessingFiles = true;
@@ -1150,7 +1150,7 @@
                 selectedPaks = selected;
               }
             } catch {
-              // fall through — install all
+              // fall through - install all
             }
           }
           modAddQueueStore.markRunning(
@@ -1420,8 +1420,8 @@
     class="inline-flex items-center gap-1.5 rounded border px-2 text-xs cursor-pointer"
     style:height="2.5rem"
     title={$showBroken
-      ? "Broken mods visible — click to hide"
-      : "Broken mods hidden — click to show"}
+      ? "Broken mods visible - click to hide"
+      : "Broken mods hidden - click to show"}
   >
     <AlertTriangle size={13} />
     {$showBroken ? "Showing broken" : "Show broken"}

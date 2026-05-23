@@ -144,7 +144,7 @@
     alertStore.clear();
     modioInput = "";
 
-    // Enqueue all submitted mods — totalQueued accumulates correctly across submissions
+    // Enqueue all submitted mods - totalQueued accumulates correctly across submissions
     for (const modInput of modInputs) {
       pendingLinkQueue.push({
         input: modInput,
@@ -152,10 +152,10 @@
       });
     }
 
-    // Close immediately — progress is visible in the bottom bar
+    // Close immediately - progress is visible in the bottom bar
     closeModal();
 
-    // Single worker loop — if already running, the new items will be picked up naturally
+    // Single worker loop - if already running, the new items will be picked up naturally
     if (isProcessingLinks) return;
 
     isProcessingLinks = true;
@@ -211,7 +211,7 @@
       if (result.wasDuplicate) {
         modAddQueueStore.markDone(queueId, `${fileName} is already installed`);
         alertStore.info(
-          `"${fileName}" is already installed — uninstall it first to reinstall.`,
+          `"${fileName}" is already installed - uninstall it first to reinstall.`,
         );
       } else {
         modAddQueueStore.markDone(queueId, `Installed ${fileName}`);
@@ -378,7 +378,7 @@
 
               {#if nexusPreviewName}
                 <p style="color: var(--clr-success-300);" class="text-xs mt-2">
-                  Nexus: {nexusPreviewName} — browser will open to download page
+                  Nexus: {nexusPreviewName} - browser will open to download page
                 </p>
               {:else if nexusPreviewError}
                 <p style="color: var(--clr-danger-300);" class="text-xs mt-2">

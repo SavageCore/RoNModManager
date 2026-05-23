@@ -52,7 +52,7 @@ pub async fn sync_modpack_to_remote(
         .map(expand_tilde)
         .ok_or_else(|| {
             AppError::Validation(
-                "No export directory recorded — export a modpack first.".to_string(),
+                "No export directory recorded - export a modpack first.".to_string(),
             )
         })?;
     let export_dir = PathBuf::from(export_dir);

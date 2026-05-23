@@ -462,7 +462,7 @@ pub async fn get_mod_list(state: State<'_, AppState>) -> Result<Vec<ModInfo>> {
 
 /// Download a modpack archive from Nexus by matching its filename against the mod's file list.
 /// Requires a Premium account (caller must have already confirmed `is_premium`).
-/// Falls back gracefully — callers should catch the error and use the self-hosted URL instead.
+/// Falls back gracefully - callers should catch the error and use the self-hosted URL instead.
 async fn nexus_download_by_filename(
     client: &reqwest::Client,
     nexus_service: &nexus_api::NexusApiService,
@@ -526,7 +526,7 @@ pub async fn install_mods(
     let manifest =
         manifest.ok_or_else(|| AppError::Validation("No modpack manifest found.".to_string()))?;
 
-    // Fetch the pack once — used for collection filtering, Nexus source map, and addon merge.
+    // Fetch the pack once - used for collection filtering, Nexus source map, and addon merge.
     let pack = modpack_service::fetch_modpack(&state.client, &modpack_url)
         .await
         .ok();
@@ -1284,7 +1284,7 @@ pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String)
         }
         let _ = addon_map::write_addon_map(&addon_map_data);
     } else {
-        // Not a parent — still clean up: remove it from any entry where it appears as an addon
+        // Not a parent - still clean up: remove it from any entry where it appears as an addon
         for entry in addon_map_data.values_mut() {
             entry.retain(|a| a != &archive_name);
         }
@@ -1342,7 +1342,7 @@ pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String)
                 Ok(r) => r,
                 Err(_) => continue,
             };
-            // Skip flat files (pak, bank) — only process nested override files
+            // Skip flat files (pak, bank) - only process nested override files
             if relative
                 .parent()
                 .map(|p| p.as_os_str().is_empty())

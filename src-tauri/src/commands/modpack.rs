@@ -223,7 +223,7 @@ pub async fn export_modpack_to_file(
     let archives_root = staging_root.join("archives");
     let manifest_manager = ManifestManager::new(&staging_root);
 
-    // mod.io mods are downloaded directly on import — don't bundle their archives
+    // mod.io mods are downloaded directly on import - don't bundle their archives
     let mod_list: Vec<_> = modpack
         .mods
         .iter()

@@ -77,7 +77,7 @@ fn override_paths(
     let mut components = relative_with_key.components();
     let key = components.next()?;
     let game_relative: PathBuf = components.collect();
-    // Flat files (pak, bank) have no parent dir — only nested paths are overrides
+    // Flat files (pak, bank) have no parent dir - only nested paths are overrides
     if game_relative
         .parent()
         .map(|p| p.as_os_str().is_empty())
