@@ -79,8 +79,8 @@ flatpak-deps: ## Install Flatpak runtimes and SDK extensions (run once)
 	flatpak install -y flathub \
 		org.gnome.Platform//50 \
 		org.gnome.Sdk//50 \
-		org.freedesktop.Sdk.Extension.node24//24.08 \
-		org.freedesktop.Sdk.Extension.rust-stable//24.08
+		org.freedesktop.Sdk.Extension.node24//25.08 \
+		org.freedesktop.Sdk.Extension.rust-stable//25.08
 
 flatpak-vendor: ## Vendor Cargo dependencies for offline Flatpak build
 	cd src-tauri && cargo vendor vendor
@@ -89,7 +89,7 @@ flatpak-build: ## Build Flatpak from local repo (run flatpak-vendor first)
 	flatpak-builder --force-clean --user --install-deps-from=flathub --repo=flatpak-repo build-dir $(FLATPAK_MANIFEST)
 
 flatpak-bundle: ## Export a .flatpak bundle from the local repo
-	flatpak build-bundle flatpak-repo ronmodmanager.flatpak $(FLATPAK_ID)
+	flatpak build-bundle flatpak-repo ronmodmanager.flatpak $(FLATPAK_ID) master
 
 flatpak-install: ## Install the local .flatpak bundle for the current user
 	flatpak install --user --bundle ronmodmanager.flatpak

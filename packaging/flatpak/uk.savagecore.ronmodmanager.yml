@@ -14,6 +14,7 @@ finish-args:
   - --device=dri
   - --filesystem=home
   - --talk-name=org.freedesktop.Flatpak
+  - --env=GDK_BACKEND=x11
 build-options:
   append-path: /usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
 modules:
