@@ -252,6 +252,7 @@
   let activeProfileTags: Record<string, string[]> = {};
   let allTagNames: string[] = [];
   let activeTagFilters = new Set<string>();
+  let activeCollectionFilters = new Set<string>();
   let selectedMods = new Set<string>();
   let showBulkCollectionModal = false;
   let showBulkTagModal = false;
@@ -297,9 +298,20 @@
       const matchesTags =
         activeTagFilters.size === 0 ||
         (modToTagsMap[group.name] ?? []).some((t) => activeTagFilters.has(t));
+      const matchesCollections =
+        activeCollectionFilters.size === 0 ||
+        (modToCollectionsMap[group.name] ?? []).some((c) =>
+          activeCollectionFilters.has(c),
+        );
       const isBroken = brokenModsMap[group.name] !== undefined;
       const matchesBroken = $showBroken || !isBroken;
-      return matchesSearch && matchesSource && matchesTags && matchesBroken;
+      return (
+        matchesSearch &&
+        matchesSource &&
+        matchesTags &&
+        matchesCollections &&
+        matchesBroken
+      );
     })
     .sort((a, b) => {
       const labelA = (a.displayName || a.name).toLowerCase();
@@ -1445,6 +1457,50 @@
   </div>
 {/if}
 
+{#if activeCollectionNames.length > 0}
+  <div class="flex flex-wrap items-center gap-1.5 mb-3">
+    <span
+      style="color: var(--clr-text-secondary);"
+      class="text-xs flex items-center gap-1 mr-1"
+    >
+      <Layers size={12} />
+      Filter by collection:
+    </span>
+    {#each activeCollectionNames as col (col)}
+      {@const colColor =
+        activeProfileCollectionColors[col] ?? "var(--clr-accent-300)"}
+      <button
+        on:click={() => {
+          if (activeCollectionFilters.has(col)) {
+            activeCollectionFilters.delete(col);
+          } else {
+            activeCollectionFilters.add(col);
+          }
+          activeCollectionFilters = activeCollectionFilters;
+        }}
+        style={activeCollectionFilters.has(col)
+          ? `background: color-mix(in srgb, ${colColor} 20%, transparent); border-color: ${colColor}; color: ${colColor};`
+          : "border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
+        class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs cursor-pointer"
+      >
+        <Layers size={10} />
+        {col}
+      </button>
+    {/each}
+    {#if activeCollectionFilters.size > 0}
+      <button
+        on:click={() => {
+          activeCollectionFilters = new Set();
+        }}
+        style="color: var(--clr-text-secondary);"
+        class="text-xs underline ml-1 cursor-pointer"
+      >
+        Clear
+      </button>
+    {/if}
+  </div>
+{/if}
+
 <!-- Gale-style Mod List -->
 <div
   role="region"
@@ -1765,24 +1821,48 @@
                   {#each modToCollectionsMap[group.name] ?? [] as col (col)}
                     {@const colColor =
                       activeProfileCollectionColors[col] ?? null}
-                    <span
+                    {@const isColActive = activeCollectionFilters.has(col)}
+                    <button
+                      on:click|stopPropagation={() => {
+                        if (isColActive) {
+                          activeCollectionFilters.delete(col);
+                        } else {
+                          activeCollectionFilters.add(col);
+                        }
+                        activeCollectionFilters = activeCollectionFilters;
+                      }}
                       style={colColor
-                        ? `background: color-mix(in srgb, ${colColor} 12%, transparent); border-color: ${colColor}; color: ${colColor};`
+                        ? `background: color-mix(in srgb, ${colColor} ${isColActive ? 20 : 12}%, transparent); border-color: color-mix(in srgb, ${colColor} ${isColActive ? 100 : 40}%, transparent); color: ${colColor};`
                         : "background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
-                      class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none"
+                      class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none cursor-pointer"
+                      title="Filter by collection: {col}"
                     >
                       <Layers size={10} />
                       {col}
-                    </span>
+                    </button>
                   {/each}
                   {#each modToTagsMap[group.name] ?? [] as tag (tag)}
-                    <span
-                      style="background: color-mix(in srgb, var(--clr-success-300) 12%, transparent); border-color: var(--clr-success-300); color: var(--clr-success-300);"
-                      class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none"
+                    {@const isTagActive = activeTagFilters.has(tag)}
+                    <button
+                      on:click|stopPropagation={() => {
+                        if (isTagActive) {
+                          activeTagFilters.delete(tag);
+                        } else {
+                          activeTagFilters.add(tag);
+                        }
+                        activeTagFilters = activeTagFilters;
+                      }}
+                      style="background: color-mix(in srgb, var(--clr-success-300) {isTagActive
+                        ? 20
+                        : 12}%, transparent); border-color: color-mix(in srgb, var(--clr-success-300) {isTagActive
+                        ? 100
+                        : 40}%, transparent); color: var(--clr-success-300);"
+                      class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none cursor-pointer"
+                      title="Filter by tag: {tag}"
                     >
                       <Tag size={10} />
                       {tag}
-                    </span>
+                    </button>
                   {/each}
                 </div>
               {/if}
