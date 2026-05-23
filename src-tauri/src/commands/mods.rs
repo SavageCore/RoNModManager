@@ -1514,6 +1514,28 @@ pub async fn get_installed_mod_groups(
             })
             .collect();
         files.sort_by(|a, b| a.name.cmp(&b.name));
+        let staging_mods_root = staging_root.join("mods");
+        let has_override_files = manifest_data.installed_files.iter().any(|path| {
+            let is_bank = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("bank"))
+                .unwrap_or(false);
+            if is_bank {
+                return true;
+            }
+            // Override files nest into subdirs: staging/mods/{key}/ReadyOrNot/Content/... (>1)
+            // Pak files sit flat: staging/mods/{key}/file.pak (1 component after key)
+            // Sav files are in staging/savegames/{key}/... and won't match staging_mods_root
+            if let Ok(rel) = path.strip_prefix(&staging_mods_root) {
+                let mut components = rel.components();
+                let _ = components.next(); // skip install key
+                let after_key: PathBuf = components.collect();
+                after_key.components().count() > 1
+            } else {
+                false
+            }
+        });
         groups.push(InstalledModGroup {
             name: manifest_data.source_archive.clone(),
             display_name: manifest_data.display_name.clone(),
@@ -1522,6 +1544,7 @@ pub async fn get_installed_mod_groups(
             installed_at: Some(manifest_data.installed_at),
             files,
             addon_files: Vec::new(),
+            has_override_files,
         });
     }
 
@@ -1561,6 +1584,7 @@ pub async fn get_installed_mod_groups(
                     archive_name: None,
                 }],
                 addon_files: Vec::new(),
+                has_override_files: false,
             });
         }
     }

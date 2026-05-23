@@ -170,6 +170,7 @@
     Link as LinkIcon,
     Pencil,
     Plus,
+    Shield,
     Tag,
     Trash2,
   } from "lucide-svelte";
@@ -1698,6 +1699,17 @@
                         style="color: var(--clr-danger-300);"
                       >
                         <AlertTriangle size={14} style="flex-shrink: 0;" />
+                      </span>
+                    {/if}
+                    {#if group.hasOverrideFiles}
+                      <span
+                        title="Contains game file overrides"
+                        class="flex items-center"
+                      >
+                        <Shield
+                          size={14}
+                          style="color: #f59e0b; flex-shrink: 0;"
+                        />
                       </span>
                     {/if}
                     <span
