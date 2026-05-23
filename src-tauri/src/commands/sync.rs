@@ -118,18 +118,37 @@ pub async fn sync_modpack_to_remote(
 
     let total = local_files.len();
 
-    for (done, (rel_path, local_size)) in local_files.iter().enumerate() {
+    let mut sorted_files: Vec<(String, u64)> =
+        local_files.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    sorted_files.sort_by(|(a, _), (b, _)| {
+        let a_json = a == "modpack.json";
+        let b_json = b == "modpack.json";
+        match (a_json, b_json) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => {
+                let a_name = a.strip_prefix("mods/").unwrap_or(a.as_str());
+                let b_name = b.strip_prefix("mods/").unwrap_or(b.as_str());
+                a_name.to_lowercase().cmp(&b_name.to_lowercase())
+            }
+        }
+    });
+
+    let mut skipped: usize = 0;
+
+    for (done, (rel_path, local_size)) in sorted_files.iter().enumerate() {
         let remote_size = remote_files.get(rel_path).copied();
         let needs_upload = remote_size != Some(*local_size);
         let pct = 10.0 + (done as f32 / total.max(1) as f32) * 80.0;
+        let display = rel_path.strip_prefix("mods/").unwrap_or(rel_path.as_str());
 
         if needs_upload {
-            let local_full = export_dir.join(rel_path);
+            let local_full = export_dir.join(rel_path.as_str());
             let remote_full = format!("{remote_path}/{rel_path}");
             let msg = if verbose {
-                format!("↑ {rel_path} ({} bytes)", local_size)
+                format!("↑ {display} ({local_size} bytes)")
             } else {
-                format!("↑ {rel_path}")
+                format!("↑ {display}")
             };
             let _ = app.emit(
                 "sync_progress",
@@ -143,36 +162,38 @@ pub async fn sync_modpack_to_remote(
                 },
             );
             upload_file(&sftp, &local_full, &remote_full).await?;
-        } else {
-            let msg = if verbose {
-                format!("  {rel_path} — unchanged ({} bytes)", local_size)
-            } else {
-                format!("  {rel_path} — skipped")
-            };
+        } else if verbose {
             let _ = app.emit(
                 "sync_progress",
                 ProgressEvent {
                     operation: "sync_skip".to_string(),
                     file: rel_path.clone(),
                     percent: pct,
-                    message: msg,
+                    message: format!("  {display} - skipped"),
                     total_bytes: None,
                     processed_bytes: None,
                 },
             );
+        } else {
+            skipped += 1;
         }
+    }
+
+    if !verbose && skipped > 0 {
+        emit_progress(&format!("Modpack in sync - {skipped} files matched"), 90.0);
     }
 
     for rel_path in remote_files.keys() {
         if !local_files.contains_key(rel_path) {
             let remote_full = format!("{remote_path}/{rel_path}");
+            let display = rel_path.strip_prefix("mods/").unwrap_or(rel_path.as_str());
             let _ = app.emit(
                 "sync_progress",
                 ProgressEvent {
                     operation: "sync_delete".to_string(),
                     file: rel_path.clone(),
                     percent: 90.0,
-                    message: format!("✕ {rel_path} — deleted from remote"),
+                    message: format!("✕ {display} - deleted from remote"),
                     total_bytes: None,
                     processed_bytes: None,
                 },
