@@ -1,7 +1,9 @@
 use serde::Deserialize;
 use tauri::State;
 
-use crate::models::config::{AppConfig, ThemeMode};
+use crate::models::config::{
+    AppConfig, CloseAction, MinimizeTarget, OnGameLaunchAction, ThemeMode,
+};
 use crate::models::Result;
 use crate::services::nexus_api;
 use crate::state::AppState;
@@ -16,6 +18,10 @@ pub struct ConfigUpdate {
     pub modpack_version: Option<String>,
     pub sync_remote_host: Option<String>,
     pub sync_remote_path: Option<String>,
+    pub on_game_launch: Option<OnGameLaunchAction>,
+    pub close_action: Option<CloseAction>,
+    pub minimize_target: Option<MinimizeTarget>,
+    pub asked_close_preference: Option<bool>,
 }
 
 #[tauri::command]
@@ -63,6 +69,18 @@ pub async fn update_config(state: State<'_, AppState>, updates: ConfigUpdate) ->
         }
         if let Some(v) = updates.sync_remote_path {
             config.sync_remote_path = if v.is_empty() { None } else { Some(v) };
+        }
+        if let Some(v) = updates.on_game_launch {
+            config.on_game_launch = v;
+        }
+        if let Some(v) = updates.close_action {
+            config.close_action = v;
+        }
+        if let Some(v) = updates.minimize_target {
+            config.minimize_target = v;
+        }
+        if let Some(v) = updates.asked_close_preference {
+            config.asked_close_preference = v;
         }
     })?;
 

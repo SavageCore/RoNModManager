@@ -22,7 +22,12 @@
   import ExportModpackModal from "$lib/components/ExportModpackModal.svelte";
   import SyncAuthModal from "$lib/components/SyncAuthModal.svelte";
   import SyncProgressModal from "$lib/components/SyncProgressModal.svelte";
-  import type { SyncAuth } from "$lib/types";
+  import type {
+    CloseAction,
+    MinimizeTarget,
+    OnGameLaunchAction,
+    SyncAuth,
+  } from "$lib/types";
   import { listen } from "@tauri-apps/api/event";
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import type { ModProgressEvent } from "$lib/types";
@@ -103,6 +108,9 @@
   let syncLog: string[] = [];
   let syncVerbose = false;
   let syncAuthPurpose: "manual" | "fallback" = "manual";
+  let onGameLaunch: OnGameLaunchAction = "nothing";
+  let closeAction: CloseAction = "quit";
+  let minimizeTarget: MinimizeTarget = "taskbar";
 
   $: updateLastChecked = $updateCheckStore ? new Date($updateCheckStore) : null;
 
@@ -203,6 +211,9 @@
     applyThemeClass(theme);
     syncRemoteHost = config.sync_remote_host ?? "";
     syncRemotePath = config.sync_remote_path ?? "";
+    onGameLaunch = config.on_game_launch ?? "nothing";
+    closeAction = config.close_action ?? "quit";
+    minimizeTarget = config.minimize_target ?? "taskbar";
   }
   function openModioApiKeyModal() {
     modioApiKeyInput = modioApiKey;
@@ -768,6 +779,72 @@
         <option value="dark">Dark</option>
       </select>
     </label>
+  </div>
+
+  <div class="card mt-4">
+    <h3 style="color: var(--clr-text);" class="font-semibold mb-3">
+      App Behaviour
+    </h3>
+    <div class="flex flex-col gap-4">
+      <label class="block text-sm">
+        <span style="color: var(--clr-text-secondary);" class="mb-1 block"
+          >When launching game</span
+        >
+        <select
+          class="select w-full"
+          bind:value={onGameLaunch}
+          on:change={() => {
+            void updateConfig({ on_game_launch: onGameLaunch });
+          }}
+        >
+          <option value="nothing">Do nothing</option>
+          <option value="minimize">Minimise</option>
+          <option value="close">Quit</option>
+        </select>
+      </label>
+
+      <label class="block text-sm">
+        <span style="color: var(--clr-text-secondary);" class="mb-1 block"
+          >When closing window</span
+        >
+        <select
+          class="select w-full"
+          bind:value={closeAction}
+          on:change={() => {
+            void updateConfig({
+              close_action: closeAction,
+              asked_close_preference: true,
+            });
+          }}
+        >
+          <option value="quit">Quit</option>
+          <option value="minimize">Minimise</option>
+        </select>
+      </label>
+
+      <label
+        class="block text-sm"
+        class:opacity-50={onGameLaunch === "nothing" && closeAction === "quit"}
+      >
+        <span style="color: var(--clr-text-secondary);" class="mb-1 block"
+          >Minimise to</span
+        >
+        <select
+          class="select w-full"
+          bind:value={minimizeTarget}
+          disabled={onGameLaunch === "nothing" && closeAction === "quit"}
+          on:change={() => {
+            void updateConfig({
+              minimize_target: minimizeTarget,
+              asked_close_preference: true,
+            });
+          }}
+        >
+          <option value="taskbar">Taskbar</option>
+          <option value="tray">System tray</option>
+        </select>
+      </label>
+    </div>
   </div>
 
   <div class="card mt-4">

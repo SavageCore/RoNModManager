@@ -630,6 +630,19 @@
         await refresh();
         await launchGameWithGroups([...profile.installed_mod_names]);
         toastStore.success(`Launched game with profile: ${selectedProfile}`);
+
+        const cfg = await getConfig();
+        const appWindow = getCurrentWindow();
+        if (cfg.on_game_launch === "minimize") {
+          if (cfg.minimize_target === "tray") {
+            await appWindow.hide();
+          } else {
+            await appWindow.minimize();
+          }
+        } else if (cfg.on_game_launch === "close") {
+          window.dispatchEvent(new CustomEvent("ron:launch-close"));
+          await appWindow.close();
+        }
         return;
       }
     } catch (error) {

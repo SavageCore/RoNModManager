@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from "$app/navigation";
+  import { afterNavigate, goto } from "$app/navigation";
   import { page } from "$app/stores";
   import {
     applyProfile,
@@ -12,13 +12,20 @@
     saveWindowState,
     setGamePath,
     setWindowTitle,
+    updateConfig,
   } from "$lib/api/commands";
   import FooterStatusBar from "$lib/components/FooterStatusBar.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
   import { tokenStore } from "$lib/stores/token";
   import { initTheme } from "$lib/theme";
-  import type { ModProgressEvent, Profile } from "$lib/types";
+  import type {
+    CloseAction,
+    MinimizeTarget,
+    ModProgressEvent,
+    OnGameLaunchAction,
+    Profile,
+  } from "$lib/types";
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import { listen } from "@tauri-apps/api/event";
   import {
@@ -63,6 +70,12 @@
   let modpackNewVersion: string | null = null;
   let showAddModpackModal = false;
   let updateAvailable = false;
+  let onGameLaunch: OnGameLaunchAction = "nothing";
+  let closeAction: CloseAction = "quit";
+  let minimizeTarget: MinimizeTarget = "taskbar";
+  let askedClosePreference = false;
+  let showClosePreferenceDialog = false;
+  let closingFromLaunch = false;
 
   function resolveSelectedProfile(
     activeProfile: string | null | undefined,
@@ -87,6 +100,10 @@
       hasSavedToken = Boolean(config.oauth_token?.trim());
       tokenStore.set(hasSavedToken);
       selectedProfile = resolveSelectedProfile(config.active_profile);
+      onGameLaunch = config.on_game_launch ?? "nothing";
+      closeAction = config.close_action ?? "quit";
+      minimizeTarget = config.minimize_target ?? "taskbar";
+      askedClosePreference = config.asked_close_preference ?? false;
       await updateWindowTitle();
     } catch {
       // Non-fatal: shell can continue using previous state.
@@ -122,6 +139,15 @@
     }
   }
 
+  async function doMinimize() {
+    const appWindow = getCurrentWindow();
+    if (minimizeTarget === "tray") {
+      await appWindow.hide();
+    } else {
+      await appWindow.minimize();
+    }
+  }
+
   async function launchWithProfile() {
     if (!hasGamePath) {
       alert("Game path is not configured. Open Settings first.");
@@ -136,6 +162,13 @@
 
       const profile = await applyProfile(selectedProfile);
       await launchGameWithGroups(profile.installed_mod_names);
+
+      if (onGameLaunch === "minimize") {
+        await doMinimize();
+      } else if (onGameLaunch === "close") {
+        window.dispatchEvent(new CustomEvent("ron:launch-close"));
+        await getCurrentWindow().close();
+      }
     } catch (error) {
       console.error("Failed to launch game:", error);
       alert(`Failed to launch game: ${String(error)}`);
@@ -162,6 +195,26 @@
     }
   }
 
+  async function handleClosePreference(
+    action: CloseAction,
+    target: MinimizeTarget,
+  ) {
+    showClosePreferenceDialog = false;
+    closeAction = action;
+    minimizeTarget = target;
+    askedClosePreference = true;
+    await updateConfig({
+      close_action: action,
+      minimize_target: target,
+      asked_close_preference: true,
+    });
+    if (action === "minimize") {
+      await doMinimize();
+    } else {
+      await getCurrentWindow().close();
+    }
+  }
+
   // Called when user accepts update
   function startModpackUpdate() {
     showUpdatePrompt = false;
@@ -172,6 +225,10 @@
   function closeAddModpackModal() {
     showAddModpackModal = false;
   }
+
+  afterNavigate(() => {
+    void refreshShellConfigState();
+  });
 
   onMount(() => {
     const unsubscribe = tokenStore.subscribe((val) => {
@@ -222,9 +279,14 @@
       void refreshShellConfigState();
     };
 
+    const handleLaunchClose = () => {
+      closingFromLaunch = true;
+    };
+
     window.addEventListener("focus", handleAppFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("ron:profile-changed", handleProfileChanged);
+    window.addEventListener("ron:launch-close", handleLaunchClose);
 
     void Promise.all([
       getConfig().then(async (config) => {
@@ -285,6 +347,11 @@
             // Wayland often rejects or virtualizes window position APIs.
           }
         }
+
+        onGameLaunch = config.on_game_launch ?? "nothing";
+        closeAction = config.close_action ?? "quit";
+        minimizeTarget = config.minimize_target ?? "taskbar";
+        askedClosePreference = config.asked_close_preference ?? false;
       }),
       loadProfiles(),
     ]).catch(() => {
@@ -315,6 +382,24 @@
       })
       .then((fn) => {
         unlistenMove = fn;
+      });
+
+    void appWindow
+      .onCloseRequested(async (event) => {
+        if (closingFromLaunch) {
+          closingFromLaunch = false;
+          return;
+        }
+        if (!askedClosePreference) {
+          event.preventDefault();
+          showClosePreferenceDialog = true;
+        } else if (closeAction === "minimize") {
+          event.preventDefault();
+          await doMinimize();
+        }
+      })
+      .then((fn) => {
+        unlistenFunctions.push(fn);
       });
 
     void listen<ModProgressEvent>("install_progress", (event) => {
@@ -353,6 +438,7 @@
       window.removeEventListener("focus", handleAppFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("ron:profile-changed", handleProfileChanged);
+      window.removeEventListener("ron:launch-close", handleLaunchClose);
     };
   });
 </script>
@@ -521,4 +607,45 @@
   </div>
 
   <FooterStatusBar />
+
+  {#if showClosePreferenceDialog}
+    <div
+      class="fixed inset-0 bg-black/60 flex items-center justify-center z-[100]"
+    >
+      <div
+        style="background: var(--clr-surface); border: 1px solid var(--adw-border-color);"
+        class="rounded-lg shadow-2xl w-[420px] p-6"
+      >
+        <h2 class="text-lg font-semibold mb-2" style="color: var(--clr-text);">
+          When closing the window…
+        </h2>
+        <p class="text-sm mb-6" style="color: var(--clr-text-secondary);">
+          Choose what happens when you click the close button. You can change
+          this at any time in Settings.
+        </p>
+        <div class="flex flex-col gap-3">
+          <button
+            class="btn btn-primary w-full"
+            on:click={() => void handleClosePreference("quit", minimizeTarget)}
+          >
+            Quit the app
+          </button>
+          <button
+            class="btn w-full"
+            style="background: var(--clr-surface-variant); color: var(--clr-text);"
+            on:click={() => void handleClosePreference("minimize", "taskbar")}
+          >
+            Minimise to taskbar
+          </button>
+          <button
+            class="btn w-full"
+            style="background: var(--clr-surface-variant); color: var(--clr-text);"
+            on:click={() => void handleClosePreference("minimize", "tray")}
+          >
+            Minimise to system tray
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>

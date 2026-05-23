@@ -157,6 +157,10 @@ export const updateConfig = (updates: {
   modpack_version?: string | null;
   sync_remote_host?: string;
   sync_remote_path?: string;
+  on_game_launch?: "nothing" | "minimize" | "close";
+  close_action?: "quit" | "minimize";
+  minimize_target?: "taskbar" | "tray";
+  asked_close_preference?: boolean;
 }) => invoke<void>("update_config", { updates });
 
 export const verifyNexusApiKey = (apiKey: string) =>

@@ -12,6 +12,31 @@ pub enum ThemeMode {
     System,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum OnGameLaunchAction {
+    #[default]
+    Nothing,
+    Minimize,
+    Close,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum CloseAction {
+    #[default]
+    Quit,
+    Minimize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MinimizeTarget {
+    #[default]
+    Taskbar,
+    Tray,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
     #[serde(default)]
@@ -50,6 +75,14 @@ pub struct AppConfig {
     pub sync_remote_host: Option<String>,
     #[serde(default)]
     pub sync_remote_path: Option<String>,
+    #[serde(default)]
+    pub on_game_launch: OnGameLaunchAction,
+    #[serde(default)]
+    pub close_action: CloseAction,
+    #[serde(default)]
+    pub minimize_target: MinimizeTarget,
+    #[serde(default)]
+    pub asked_close_preference: bool,
 }
 
 impl Default for AppConfig {
@@ -73,6 +106,10 @@ impl Default for AppConfig {
             last_export_dir: None,
             sync_remote_host: None,
             sync_remote_path: None,
+            on_game_launch: OnGameLaunchAction::Nothing,
+            close_action: CloseAction::Quit,
+            minimize_target: MinimizeTarget::Taskbar,
+            asked_close_preference: false,
         }
     }
 }

@@ -1,4 +1,7 @@
 export type ThemeMode = "light" | "dark" | "system";
+export type OnGameLaunchAction = "nothing" | "minimize" | "close";
+export type CloseAction = "quit" | "minimize";
+export type MinimizeTarget = "taskbar" | "tray";
 
 export interface AppConfig {
   game_path: string | null;
@@ -17,6 +20,10 @@ export interface AppConfig {
   last_update_check: string | null;
   sync_remote_host: string | null;
   sync_remote_path: string | null;
+  on_game_launch: OnGameLaunchAction;
+  close_action: CloseAction;
+  minimize_target: MinimizeTarget;
+  asked_close_preference: boolean;
 }
 
 export interface Collection {

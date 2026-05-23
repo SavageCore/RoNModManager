@@ -1,4 +1,3 @@
-#[cfg(debug_assertions)]
 use tauri::Manager;
 pub mod commands;
 pub mod models;
@@ -30,11 +29,46 @@ pub fn run() {
             .is_test(false)
             .try_init();
     }
-    let builder = tauri::Builder::default();
-    #[cfg(debug_assertions)]
-    let builder = builder.setup(|app| {
-        let window = app.get_webview_window("main").unwrap();
-        window.open_devtools();
+    let builder = tauri::Builder::default().setup(|app| {
+        #[cfg(debug_assertions)]
+        {
+            let window = app.get_webview_window("main").unwrap();
+            window.open_devtools();
+        }
+
+        use tauri::menu::{Menu, MenuItem};
+        use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+
+        let show = MenuItem::with_id(app, "show", "Show RoN Mod Manager", true, None::<&str>)?;
+        let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+        let menu = Menu::with_items(app, &[&show, &quit])?;
+
+        TrayIconBuilder::new()
+            .icon(app.default_window_icon().unwrap().clone())
+            .menu(&menu)
+            .on_menu_event(|app: &tauri::AppHandle, event: tauri::menu::MenuEvent| {
+                match event.id().as_ref() {
+                    "show" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                }
+            })
+            .on_tray_icon_event(|tray: &tauri::tray::TrayIcon, event: TrayIconEvent| {
+                if let TrayIconEvent::Click { .. } = event {
+                    let app = tray.app_handle();
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.show();
+                        let _ = w.set_focus();
+                    }
+                }
+            })
+            .build(app)?;
+
         Ok(())
     });
     builder
