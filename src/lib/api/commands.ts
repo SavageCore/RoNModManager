@@ -86,6 +86,13 @@ export const setModBroken = (modName: string, note: string) =>
 export const clearModBroken = (modName: string) =>
   invoke<void>("clear_mod_broken", { modName });
 
+export const getNoWorldGenMods = () =>
+  invoke<string[]>("get_no_world_gen_mods");
+export const setModNoWorldGen = (modName: string) =>
+  invoke<void>("set_mod_no_world_gen", { modName });
+export const clearModNoWorldGen = (modName: string) =>
+  invoke<void>("clear_mod_no_world_gen", { modName });
+
 export const getAuthStatus = () => invoke<boolean>("get_auth_status");
 export const openModioLogin = () => invoke<void>("open_modio_login");
 export const saveToken = (token: string) =>

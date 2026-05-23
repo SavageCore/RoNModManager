@@ -35,4 +35,7 @@ pub struct ModPack {
     /// Archive name → reason note; travels with the pack so recipients know not to re-enable
     #[serde(default)]
     pub broken: BTreeMap<String, String>,
+    /// Archive names of map mods exempt from the missing-world-gen warning
+    #[serde(default)]
+    pub no_world_gen: Vec<String>,
 }

@@ -22,6 +22,9 @@ pub struct Profile {
     /// Archive name → reason note (empty string = no note)
     #[serde(default)]
     pub broken_mods: HashMap<String, String>,
+    /// Archive names of map mods exempt from the missing-world-gen warning
+    #[serde(default)]
+    pub no_world_gen: Vec<String>,
 }
 
 impl Profile {
@@ -36,6 +39,7 @@ impl Profile {
             collection_colors: HashMap::new(),
             created_at: chrono::Utc::now().to_rfc3339(),
             broken_mods: HashMap::new(),
+            no_world_gen: Vec::new(),
         }
     }
 

@@ -39,6 +39,7 @@ export interface ModPack {
   description: string;
   author: string | null;
   collections: Record<string, Collection>;
+  no_world_gen?: string[];
 }
 
 export type ModSource =

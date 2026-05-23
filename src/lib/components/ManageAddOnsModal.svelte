@@ -9,6 +9,7 @@
   export let modName = "";
   export let displayName = "";
   export let addOns: InstalledModFile[] = [];
+  export let noWorldGen = false;
 
   const dispatch = createEventDispatcher();
   let isDraggingOver = false;
@@ -35,6 +36,10 @@
 
   function handleRemoveAddOn(index: number) {
     dispatch("removeAddOn", { index });
+  }
+
+  function handleToggleNoWorldGen() {
+    dispatch("toggleNoWorldGen", { exempt: !noWorldGen });
   }
 </script>
 
@@ -85,6 +90,34 @@
             </div>
           {/if}
         </div>
+      </div>
+      <div
+        class="flex items-center justify-between rounded p-3 mt-4"
+        style="background: #2d323b;"
+      >
+        <div>
+          <div class="text-sm font-medium" style="color: #f3f3f3;">
+            No world generation required
+          </div>
+          <div class="text-xs mt-0.5" style="color: #aaa;">
+            Suppresses the missing world generation warning for this map.
+          </div>
+        </div>
+        <button
+          role="switch"
+          aria-checked={noWorldGen}
+          aria-label="No world generation required"
+          on:click={handleToggleNoWorldGen}
+          class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200"
+          style="background: {noWorldGen ? '#2196f3' : '#555'};"
+        >
+          <span
+            class="pointer-events-none inline-block h-4 w-4 rounded-full shadow transition-transform duration-200"
+            style="background: #fff; transform: translateX({noWorldGen
+              ? '16px'
+              : '0px'});"
+          ></span>
+        </button>
       </div>
       <div class="flex gap-2 mt-4">
         <button on:click={closeModal} class="flex-1 btn">Close</button>

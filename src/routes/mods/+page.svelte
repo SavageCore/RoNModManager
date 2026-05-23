@@ -26,6 +26,9 @@
     getBrokenMods,
     setModBroken,
     clearModBroken,
+    getNoWorldGenMods,
+    setModNoWorldGen,
+    clearModNoWorldGen,
   } from "$lib/api/commands";
   import AddModModal from "$lib/components/AddModModal.svelte";
   import AddModpackModal from "$lib/components/AddModpackModal.svelte";
@@ -197,6 +200,7 @@
     return [...new Set([...enabledGroups, ...addonArchives])];
   }
   let brokenModsMap: Record<string, string> = {};
+  let noWorldGenSet: Set<string> = new Set();
   let showBrokenModal = false;
   let brokenModalModName = "";
   let brokenModalModLabel = "";
@@ -357,6 +361,7 @@
   $: missingSavMapMods = new Set(
     modGroups
       .filter((group) => {
+        if (noWorldGenSet.has(group.name)) return false;
         const tags = modToTagsMap[group.name] ?? [];
         if (!tags.some((t) => t.toLowerCase() === "map")) return false;
         const allFiles = [...group.files, ...(group.addonFiles ?? [])];
@@ -487,14 +492,17 @@
 
   async function refresh() {
     try {
-      const [groups, config, profileList, map, broken] = await Promise.all([
-        getInstalledModGroups(),
-        getConfig(),
-        listProfiles().catch(() => []),
-        getAddonMap(),
-        getBrokenMods().catch(() => ({}) as Record<string, string>),
-      ]);
+      const [groups, config, profileList, map, broken, noWorldGen] =
+        await Promise.all([
+          getInstalledModGroups(),
+          getConfig(),
+          listProfiles().catch(() => []),
+          getAddonMap(),
+          getBrokenMods().catch(() => ({}) as Record<string, string>),
+          getNoWorldGenMods().catch(() => [] as string[]),
+        ]);
       brokenModsMap = broken;
+      noWorldGenSet = new Set(noWorldGen);
 
       const previousGroupNames = new Set(allInstalledGroupNames);
       allInstalledGroupNames = new Set(groups.map((group) => group.name));
@@ -2061,9 +2069,22 @@
     displayName={modGroups.find((g) => g.name === selectedModName)
       ?.displayName || selectedModName}
     addOns={selectedAddOns}
+    noWorldGen={noWorldGenSet.has(selectedModName)}
     on:close={closeAddOnsModal}
     on:addAddOns={handleAddAddOns}
     on:removeAddOn={handleRemoveAddOn}
+    on:toggleNoWorldGen={async (e) => {
+      try {
+        if (e.detail.exempt) {
+          await setModNoWorldGen(selectedModName);
+        } else {
+          await clearModNoWorldGen(selectedModName);
+        }
+        noWorldGenSet = new Set(await getNoWorldGenMods());
+      } catch (err) {
+        toastStore.error(`Failed to update world gen setting: ${String(err)}`);
+      }
+    }}
   />
 
   <BrokenModModal

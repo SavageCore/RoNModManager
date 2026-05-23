@@ -119,3 +119,52 @@ pub async fn clear_mod_broken(
     profiles::save_profile(&profile)?;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn get_no_world_gen_mods(state: State<'_, AppState>) -> Result<Vec<String>> {
+    let config = state.get_config()?;
+    let active_profile_name = match config.active_profile {
+        Some(name) => name,
+        None => return Ok(Vec::new()),
+    };
+    let profile = profiles::get_profile(&active_profile_name)?.ok_or_else(|| {
+        crate::models::AppError::Validation(format!("Profile '{}' not found", active_profile_name))
+    })?;
+    Ok(profile.no_world_gen)
+}
+
+#[tauri::command]
+pub async fn set_mod_no_world_gen(
+    state: State<'_, AppState>,
+    #[allow(non_snake_case)] modName: String,
+) -> Result<()> {
+    let config = state.get_config()?;
+    let active_profile_name = config
+        .active_profile
+        .ok_or_else(|| crate::models::AppError::Validation("No active profile".to_string()))?;
+    let mut profile = profiles::get_profile(&active_profile_name)?.ok_or_else(|| {
+        crate::models::AppError::Validation(format!("Profile '{}' not found", active_profile_name))
+    })?;
+    if !profile.no_world_gen.contains(&modName) {
+        profile.no_world_gen.push(modName);
+    }
+    profiles::save_profile(&profile)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn clear_mod_no_world_gen(
+    state: State<'_, AppState>,
+    #[allow(non_snake_case)] modName: String,
+) -> Result<()> {
+    let config = state.get_config()?;
+    let active_profile_name = config
+        .active_profile
+        .ok_or_else(|| crate::models::AppError::Validation("No active profile".to_string()))?;
+    let mut profile = profiles::get_profile(&active_profile_name)?.ok_or_else(|| {
+        crate::models::AppError::Validation(format!("Profile '{}' not found", active_profile_name))
+    })?;
+    profile.no_world_gen.retain(|n| n != &modName);
+    profiles::save_profile(&profile)?;
+    Ok(())
+}

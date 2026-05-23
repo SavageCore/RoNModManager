@@ -165,6 +165,9 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
+    let mut no_world_gen = profile.no_world_gen.clone();
+    no_world_gen.sort_by_key(|a| a.to_lowercase());
+
     Ok(ModPack {
         schema_version: 1,
         name: format!("{} ModPack", active_profile_name),
@@ -176,6 +179,7 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
         addons,
         tags,
         broken,
+        no_world_gen,
     })
 }
 
