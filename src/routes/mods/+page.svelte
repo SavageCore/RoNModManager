@@ -31,7 +31,7 @@
     clearModNoWorldGen,
   } from "$lib/api/commands";
   import AddModModal from "$lib/components/AddModModal.svelte";
-  import AddModpackPanel from "$lib/components/AddModpackPanel.svelte";
+  import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import PakFileSelectionModal from "$lib/components/PakFileSelectionModal.svelte";
   import {
     pakSelectionStore,
@@ -212,7 +212,11 @@
   let modSourceFilter: "all" | "nexus" | "modio" = "all";
   let modsForActiveProfile: string[] = [];
   let showAddModModal = false;
-  let showAddModpackPanel = false;
+  let prevDoneCounter = $addModpackPanelStore.doneCounter;
+  $: if ($addModpackPanelStore.doneCounter !== prevDoneCounter) {
+    prevDoneCounter = $addModpackPanelStore.doneCounter;
+    void refresh();
+  }
   let nexusFreeDownloads: Array<{
     prettyName: string | null;
     fileName: string;
@@ -1324,16 +1328,6 @@
   on:modAdded={handleModAdded}
 />
 
-<AddModpackPanel
-  isVisible={showAddModpackPanel}
-  on:close={() => {
-    showAddModpackPanel = false;
-  }}
-  on:done={() => {
-    void refresh();
-  }}
-/>
-
 <ConfirmModal
   bind:isVisible={confirmModal.isVisible}
   title={confirmModal.title}
@@ -1633,7 +1627,7 @@
       </button>
       <button
         on:click={() => {
-          showAddModpackPanel = true;
+          addModpackPanelStore.open("add");
         }}
         class="btn btn-sm btn-primary"
         title="Add Modpack"

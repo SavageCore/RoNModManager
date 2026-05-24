@@ -1,8 +1,12 @@
 <script lang="ts">
   import { cancelNexusDownload } from "$lib/api/commands";
+  import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import { importLogStore } from "$lib/stores/importLogStore";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { operationStatusStore } from "$lib/stores/operationStatus";
+  import { syncLogStore } from "$lib/stores/syncLogStore";
+  import ChevronDown from "lucide-svelte/icons/chevron-down";
+  import ChevronUp from "lucide-svelte/icons/chevron-up";
 
   function formatBytes(value: number): string {
     if (!Number.isFinite(value) || value <= 0) {
@@ -251,11 +255,48 @@
   {#if $importLogStore.mods.length > 0 || activeQueue.length > 0}
     <button
       on:click={() => importLogStore.toggle()}
-      class="shrink-0 text-xs px-2 py-0.5 rounded"
+      class="shrink-0 text-xs px-2 py-0.5 rounded flex items-center gap-1"
       style="color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 40%, transparent); background: color-mix(in srgb, var(--clr-primary-300) 10%, transparent); cursor: pointer;"
       title="Toggle import log"
     >
+      {#if $importLogStore.isOpen}
+        <ChevronDown size={11} />
+      {:else}
+        <ChevronUp size={11} />
+      {/if}
       {queueProgress ? `${queueProgress} mods` : "Import Log"}
+    </button>
+  {/if}
+  {#if $syncLogStore.log.length > 0 || $syncLogStore.isBusy}
+    <button
+      on:click={() => syncLogStore.toggle()}
+      class="shrink-0 text-xs px-2 py-0.5 rounded flex items-center gap-1"
+      style="color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 40%, transparent); background: color-mix(in srgb, var(--clr-primary-300) 10%, transparent); cursor: pointer;"
+      title="Toggle sync log"
+    >
+      {#if $syncLogStore.isOpen}
+        <ChevronDown size={11} />
+      {:else}
+        <ChevronUp size={11} />
+      {/if}
+      Sync Log
+    </button>
+  {/if}
+  {#if $addModpackPanelStore.hasActivity}
+    <button
+      on:click={() => addModpackPanelStore.toggle()}
+      class="shrink-0 text-xs px-2 py-0.5 rounded flex items-center gap-1"
+      style="color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 40%, transparent); background: color-mix(in srgb, var(--clr-primary-300) 10%, transparent); cursor: pointer;"
+      title="Toggle modpack log"
+    >
+      {#if $addModpackPanelStore.isOpen}
+        <ChevronDown size={11} />
+      {:else}
+        <ChevronUp size={11} />
+      {/if}
+      {$addModpackPanelStore.mode === "update"
+        ? "Update Modpack"
+        : "Add Modpack"}
     </button>
   {/if}
 

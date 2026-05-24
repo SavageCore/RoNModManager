@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
+  import Minus from "lucide-svelte/icons/minus";
 
   export let title: string;
   export let isVisible = true;
@@ -51,8 +52,7 @@
         class="h-6 w-6 flex items-center justify-center rounded"
         style="color: var(--clr-text-secondary);"
         on:click={() => dispatch("close")}
-        disabled={isLoading}
-        aria-label="Close">&times;</button
+        aria-label="Minimise"><Minus size={14} /></button
       >
     </div>
 

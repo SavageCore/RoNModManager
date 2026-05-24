@@ -1,27 +1,17 @@
 <script lang="ts">
-  import { createEventDispatcher } from "svelte";
-  const dispatch = createEventDispatcher();
+  import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import type { ModInfo } from "$lib/types/modpack";
-
-  export let isVisible = false;
-  export let mode: "add" | "update" = "add";
-  export let currentVersion: string | null = null;
-  export let newVersion: string | null = null;
 
   let url = "";
   let log: string[] = [];
   let isLoading = false;
-  let isValid = false;
   let error = "";
   let existingUrl: string | null = null;
 
+  $: addModpackPanelStore.setActivity(isLoading || log.length > 0);
+
   function close() {
-    if (mode === "add") url = "";
-    log = [];
-    isLoading = false;
-    isValid = false;
-    error = "";
-    dispatch("close");
+    addModpackPanelStore.close();
   }
 
   import {
@@ -50,7 +40,7 @@
     return value.includes("nexusmods.com/") && value.includes("/mods/");
   }
 
-  $: if (isVisible) {
+  $: if ($addModpackPanelStore.isOpen) {
     (async () => {
       try {
         const config = await getConfig();
@@ -63,15 +53,14 @@
 
   async function handleSave() {
     log = ["Validating URL..."];
-    isLoading = true;
     error = "";
-    isValid = false;
+    isLoading = true;
     let hadError = false;
     let data;
     const archiveRootPath = await getArchiveRootPath();
     try {
       let modpackUrl: string | null = url;
-      if (mode === "update") {
+      if ($addModpackPanelStore.mode === "update") {
         const config = await getConfig();
         modpackUrl = config.modpack_url;
         url = modpackUrl || "";
@@ -505,7 +494,7 @@
         log = log;
         await tick();
       }
-      dispatch("done");
+      addModpackPanelStore.notifyDone();
     } catch (e: any) {
       log.push(`Unexpected error: ${e.message || String(e)}`);
       await tick();
@@ -517,8 +506,10 @@
 </script>
 
 <LogPanel
-  title={mode === "update" ? "Update Modpack" : "Add Modpack"}
-  {isVisible}
+  title={$addModpackPanelStore.mode === "update"
+    ? "Update Modpack"
+    : "Add Modpack"}
+  isVisible={$addModpackPanelStore.isOpen}
   {isLoading}
   {log}
   width="480px"
@@ -527,13 +518,13 @@
   on:close={close}
 >
   <div slot="controls" class="px-3 pt-3 pb-2 shrink-0">
-    {#if existingUrl && mode === "add"}
+    {#if existingUrl && $addModpackPanelStore.mode === "add"}
       <p class="text-xs mb-2" style="color: var(--clr-text-secondary);">
         A modpack URL is already configured. Adding a new modpack will append
         mods to the existing installation.
       </p>
     {/if}
-    {#if mode === "add"}
+    {#if $addModpackPanelStore.mode === "add"}
       <div class="flex gap-2 mb-2">
         <input
           id="modpack-url"
@@ -555,9 +546,9 @@
     {:else}
       <div class="text-xs mb-2" style="color: var(--clr-text-secondary);">
         Updating from configured URL.
-        {#if currentVersion && newVersion}
+        {#if $addModpackPanelStore.currentVersion && $addModpackPanelStore.newVersion}
           <span class="ml-2" style="color: var(--clr-text);">
-            {currentVersion} → {newVersion}
+            {$addModpackPanelStore.currentVersion} → {$addModpackPanelStore.newVersion}
           </span>
         {/if}
       </div>

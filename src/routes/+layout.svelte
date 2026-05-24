@@ -48,6 +48,7 @@
   import "../app.css";
 
   import AddModpackPanel from "$lib/components/AddModpackPanel.svelte";
+  import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
 
   const APP_NAME = "Mod Manager";
 
@@ -67,10 +68,8 @@
   let isRefreshingMetadata = false;
   let metadataRefreshMessage = "";
   let metadataRefreshTone: "idle" | "success" | "error" = "idle";
-  let showUpdatePrompt = false;
   let modpackCurrentVersion: string | null = null;
   let modpackNewVersion: string | null = null;
-  let showAddModpackPanel = false;
   let updateAvailable = false;
   let onGameLaunch: OnGameLaunchAction = "nothing";
   let closeAction: CloseAction = "quit";
@@ -217,17 +216,6 @@
     }
   }
 
-  // Called when user accepts update
-  function startModpackUpdate() {
-    showUpdatePrompt = false;
-    showAddModpackPanel = true;
-  }
-
-  // Called when update modal closes
-  function closeAddModpackPanel() {
-    showAddModpackPanel = false;
-  }
-
   afterNavigate(() => {
     void refreshShellConfigState();
   });
@@ -312,7 +300,10 @@
               modpackCurrentVersion = config.modpack_version;
               modpackNewVersion = remote.version;
               updateAvailable = true;
-              showUpdatePrompt = true;
+              addModpackPanelStore.open("update", {
+                currentVersion: modpackCurrentVersion,
+                newVersion: modpackNewVersion,
+              });
             }
           } catch (e) {
             console.error("Failed to check for modpack update:", e);
@@ -519,17 +510,6 @@
     </div>
   </header>
 
-  {#if showUpdatePrompt}
-    <AddModpackPanel
-      isVisible={true}
-      mode="update"
-      currentVersion={modpackCurrentVersion}
-      newVersion={modpackNewVersion}
-      on:close={() => (showUpdatePrompt = false)}
-      on:confirm={startModpackUpdate}
-    />
-  {/if}
-
   {#if metadataRefreshMessage}
     <div
       style="background: {metadataRefreshTone === 'error'
@@ -610,6 +590,7 @@
 
   <ImportLogPanel />
   <SyncPanel />
+  <AddModpackPanel />
   <FooterStatusBar />
 
   {#if showClosePreferenceDialog}
