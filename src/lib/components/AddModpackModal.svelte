@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { afterUpdate, createEventDispatcher } from "svelte";
+  import { createEventDispatcher } from "svelte";
   const dispatch = createEventDispatcher();
   import type { ModInfo } from "$lib/types/modpack";
 
@@ -13,34 +13,7 @@
   let isLoading = false;
   let isValid = false;
   let error = "";
-  let logDiv: HTMLDivElement | null;
   let existingUrl: string | null = null;
-
-  function scrollLog() {
-    if (logDiv) {
-      logDiv.scrollTop = logDiv.scrollHeight;
-    }
-  }
-
-  afterUpdate(scrollLog);
-
-  function copyLog() {
-    navigator.clipboard.writeText(log.join("\n")).catch(() => {});
-  }
-
-  function saveLog() {
-    const now = new Date();
-    const pad = (n: number) => n.toString().padStart(2, "0");
-    const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    const filename = `modpack-log-${timestamp}.txt`;
-    const blob = new Blob([log.join("\n")], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
 
   function close() {
     if (mode === "add") url = "";
@@ -66,6 +39,7 @@
     updateModSourceUrl,
   } from "$lib/api/commands";
   import { tick } from "svelte";
+  import LogPanel from "./LogPanel.svelte";
 
   $: if (isVisible) {
     (async () => {
@@ -312,111 +286,75 @@
   }
 </script>
 
-{#if isVisible}
-  <div
-    class="fixed right-4 z-[900] flex flex-col rounded-lg border shadow-xl"
-    style="bottom: calc(2.25rem + 0.5rem); width: 480px; max-height: 480px; background: var(--clr-surface); border-color: var(--adw-border-color);"
-  >
-    <!-- Header -->
-    <div
-      class="flex items-center justify-between px-3 py-2 border-b shrink-0"
-      style="border-color: var(--adw-border-color);"
-    >
-      <span class="text-sm font-medium" style="color: var(--clr-text);">
-        {mode === "update" ? "Update Modpack" : "Add Modpack"}
-      </span>
-      <button
-        class="h-6 w-6 flex items-center justify-center rounded"
-        style="color: var(--clr-text-secondary);"
-        on:click={close}
-        disabled={isLoading}
-        aria-label="Close">&times;</button
-      >
-    </div>
-
-    <!-- Controls -->
-    <div class="px-3 pt-3 pb-2 shrink-0">
-      {#if existingUrl && mode === "add"}
-        <p class="text-xs mb-2" style="color: var(--clr-text-secondary);">
-          A modpack URL is already configured. Adding a new modpack will append
-          mods to the existing installation.
-        </p>
-      {/if}
-      {#if mode === "add"}
-        <div class="flex gap-2 mb-2">
-          <input
-            id="modpack-url"
-            class="input flex-1 text-xs"
-            style="height: 2rem;"
-            type="text"
-            bind:value={url}
-            placeholder="https://.../modpack.json"
-            disabled={isLoading}
-          />
-          <button
-            class="btn btn-sm primary shrink-0"
-            on:click={handleSave}
-            disabled={isLoading || !url}
-          >
-            {isLoading ? "Working..." : "Start"}
-          </button>
-        </div>
-      {:else}
-        <div class="text-xs mb-2" style="color: var(--clr-text-secondary);">
-          Updating from configured URL.
-          {#if currentVersion && newVersion}
-            <span class="ml-2" style="color: var(--clr-text);">
-              {currentVersion} → {newVersion}
-            </span>
-          {/if}
-        </div>
-        <button
-          class="btn btn-sm primary mb-2"
-          on:click={handleSave}
+<LogPanel
+  title={mode === "update" ? "Update Modpack" : "Add Modpack"}
+  {isVisible}
+  {isLoading}
+  {log}
+  width="480px"
+  maxHeight="480px"
+  logFilename="modpack-log"
+  on:close={close}
+>
+  <div slot="controls" class="px-3 pt-3 pb-2 shrink-0">
+    {#if existingUrl && mode === "add"}
+      <p class="text-xs mb-2" style="color: var(--clr-text-secondary);">
+        A modpack URL is already configured. Adding a new modpack will append
+        mods to the existing installation.
+      </p>
+    {/if}
+    {#if mode === "add"}
+      <div class="flex gap-2 mb-2">
+        <input
+          id="modpack-url"
+          class="input flex-1 text-xs"
+          style="height: 2rem;"
+          type="text"
+          bind:value={url}
+          placeholder="https://.../modpack.json"
           disabled={isLoading}
+        />
+        <button
+          class="btn btn-sm primary shrink-0"
+          on:click={handleSave}
+          disabled={isLoading || !url}
         >
-          {isLoading ? "Updating..." : "Start Update"}
+          {isLoading ? "Working..." : "Start"}
         </button>
-      {/if}
-      {#if error}
-        <p class="text-xs mt-1" style="color: var(--clr-danger-300);">
-          {error}
-        </p>
-      {/if}
-    </div>
-
-    <!-- Log -->
-    <div
-      bind:this={logDiv}
-      class="overflow-y-auto flex-1 mx-3 mb-2 p-2 rounded text-xs font-mono"
-      style="background: var(--clr-surface-variant, var(--adw-dark-fill-color, #1e1e1e)); color: var(--clr-text);"
-    >
-      {#each log as line}
-        {#if line === "---"}
-          <div
-            class="my-1.5"
-            style="border-top: 1px solid var(--adw-border-color);"
-          ></div>
-        {:else}
-          <div class="leading-relaxed">{line}</div>
+      </div>
+    {:else}
+      <div class="text-xs mb-2" style="color: var(--clr-text-secondary);">
+        Updating from configured URL.
+        {#if currentVersion && newVersion}
+          <span class="ml-2" style="color: var(--clr-text);">
+            {currentVersion} → {newVersion}
+          </span>
         {/if}
-      {/each}
-      {#if log.length === 0}
-        <div style="color: var(--clr-text-secondary);">Waiting...</div>
-      {/if}
-    </div>
-
-    <!-- Footer buttons -->
-    <div class="flex justify-end gap-2 px-3 pb-3 shrink-0">
-      <button class="btn btn-sm" disabled={log.length === 0} on:click={copyLog}
-        >Copy</button
+      </div>
+      <button
+        class="btn btn-sm primary mb-2"
+        on:click={handleSave}
+        disabled={isLoading}
       >
-      <button class="btn btn-sm" disabled={log.length === 0} on:click={saveLog}
-        >Save</button
-      >
-      <button class="btn btn-sm" on:click={close} disabled={isLoading}
-        >Close</button
-      >
-    </div>
+        {isLoading ? "Updating..." : "Start Update"}
+      </button>
+    {/if}
+    {#if error}
+      <p class="text-xs mt-1" style="color: var(--clr-danger-300);">{error}</p>
+    {/if}
   </div>
-{/if}
+
+  {#each log as line}
+    {#if line === "---"}
+      <div
+        class="my-1.5"
+        style="border-top: 1px solid var(--adw-border-color);"
+      ></div>
+    {:else}
+      <div class="leading-relaxed">{line}</div>
+    {/if}
+  {/each}
+  {#if log.length === 0}
+    <div style="color: var(--clr-text-secondary);">Waiting...</div>
+  {/if}
+</LogPanel>
