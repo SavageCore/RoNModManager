@@ -128,6 +128,7 @@ pub fn run() {
             mods::add_nexus_mod,
             mods::list_nexus_file_options,
             mods::cancel_nexus_download,
+            mods::check_nexus_premium,
             mods::fetch_nexus_mod_info,
             mods::refresh_mod_metadata,
             mods::uninstall_mods,

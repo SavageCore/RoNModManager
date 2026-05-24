@@ -2382,3 +2382,16 @@ pub async fn cancel_nexus_download(state: State<'_, AppState>) -> Result<()> {
         .store(true, std::sync::atomic::Ordering::SeqCst);
     Ok(())
 }
+
+#[tauri::command]
+pub async fn check_nexus_premium(state: State<'_, AppState>) -> Result<bool> {
+    let config = state.get_config()?;
+    let Some(api_key) = config.nexus_api_key else {
+        return Ok(false);
+    };
+    let svc = nexus_api::NexusApiService::new(state.client.clone());
+    match svc.get_user_info(&api_key).await {
+        Ok(user) => Ok(user.is_premium),
+        Err(_) => Ok(false),
+    }
+}

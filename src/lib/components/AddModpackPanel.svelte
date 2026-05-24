@@ -27,6 +27,7 @@
   import {
     addModIoMod,
     addNexusMod,
+    checkNexusPremium,
     downloadModArchive,
     fetchModpackJson,
     fetchModioRemoteInfo,
@@ -114,6 +115,7 @@
       log = log;
       await tick();
       const baseUrl = url.replace(/\/[^/]*$/, "");
+      const isNexusPremium = await checkNexusPremium();
 
       type PendingNexus = {
         modFile: string;
@@ -173,7 +175,7 @@
           continue;
         }
 
-        if (isNexusUrl(src)) {
+        if (isNexusUrl(src) && isNexusPremium) {
           log.push(`Checking Nexus mod: ${modFile}...`);
           log = log;
           await tick();
@@ -232,6 +234,109 @@
             await tick();
             error = modErr.message || String(modErr);
             hadError = true;
+          }
+          continue;
+        }
+
+        if (isNexusUrl(src)) {
+          // Non-premium: try self-hosted first, fall back to Nexus manual download
+          log.push(`Checking Nexus mod (non-premium): ${modFile}...`);
+          log = log;
+          await tick();
+          const archivePath = `${archiveRootPath}/${modFile}`;
+          let manifestHashMatched = false;
+          try {
+            const manifest = await readManifestForArchive(modFile).catch(
+              () => null,
+            );
+            if (
+              manifest?.content_hash &&
+              modInfo.content_hash &&
+              manifest.content_hash === modInfo.content_hash &&
+              (await fileExists(archivePath).catch(() => false))
+            ) {
+              log.push(`Already up-to-date, skipping.`);
+              log = log;
+              await tick();
+              manifestHashMatched = true;
+            }
+          } catch {}
+          if (!manifestHashMatched) {
+            const downloadUrl = `${baseUrl}/mods/${encodeURIComponent(modFile)}`;
+            let selfHosted = false;
+            try {
+              await downloadModArchive(downloadUrl, modFile);
+              selfHosted = true;
+              log.push(`Downloaded '${modFile}' from server.`);
+              log = log;
+              await tick();
+            } catch {
+              log.push(
+                `Server download failed, falling back to Nexus manual download...`,
+              );
+              log = log;
+              await tick();
+            }
+            if (selfHosted) {
+              try {
+                await installLocalMod(
+                  archivePath,
+                  modInfo.selected_pak_files ?? undefined,
+                );
+                log.push(`Installed '${modFile}'.`);
+                log = log;
+                await tick();
+                await updateModSourceUrl(modFile, src).catch(() => {});
+              } catch (installErr: any) {
+                log.push(
+                  `Error installing archive: ${installErr.message || String(installErr)}`,
+                );
+                log = log;
+                await tick();
+                error = installErr.message || String(installErr);
+                hadError = true;
+              }
+            } else {
+              let chosenFileId: number | undefined =
+                modInfo.nexus_file_id ?? undefined;
+              if (chosenFileId == null) {
+                try {
+                  const fileOptions = await listNexusFileOptions(src);
+                  if (fileOptions.length > 1) {
+                    const chosen = await requestNexusFileSelection(
+                      modFile,
+                      fileOptions,
+                    );
+                    if (chosen === null) {
+                      log.push(`Skipped: ${modFile} (cancelled)`);
+                      log = log;
+                      await tick();
+                      continue;
+                    }
+                    chosenFileId = chosen.fileId;
+                  } else if (fileOptions.length === 1) {
+                    chosenFileId = fileOptions[0].fileId;
+                  }
+                } catch (optErr: any) {
+                  log.push(
+                    `Error listing Nexus files: ${optErr.message || String(optErr)}`,
+                  );
+                  log = log;
+                  await tick();
+                  error = optErr.message || String(optErr);
+                  hadError = true;
+                  continue;
+                }
+              }
+              log.push(`Nexus download queued, continuing with other mods...`);
+              log = log;
+              await tick();
+              pendingNexus.push({
+                modFile,
+                modInfo,
+                promise: addNexusMod(src, chosenFileId),
+              });
+            }
           }
           continue;
         }
