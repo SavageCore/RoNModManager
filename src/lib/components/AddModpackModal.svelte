@@ -25,14 +25,7 @@
   afterUpdate(scrollLog);
 
   function copyLog() {
-    navigator.clipboard
-      .writeText(log.join("\n"))
-      .then(() => {
-        // optional feedback
-      })
-      .catch((err) => {
-        console.error("Failed to copy: ", err);
-      });
+    navigator.clipboard.writeText(log.join("\n")).catch(() => {});
   }
 
   function saveLog() {
@@ -79,9 +72,8 @@
       try {
         const config = await getConfig();
         existingUrl = config.modpack_url || null;
-        console.log("Existing modpack URL from config:", existingUrl);
-      } catch (e) {
-        console.warn("Could not retrieve existing modpack URL from config.");
+      } catch {
+        // ignore
       }
     })();
   }
@@ -95,13 +87,8 @@
     let data;
     const archiveRootPath = await getArchiveRootPath();
     try {
-      // Basic URL validation
       let modpackUrl: string | null = url;
       if (mode === "update") {
-        console.log(
-          "Update mode: Ignoring input URL and using existing config value",
-        );
-        // Always use config value for update
         const config = await getConfig();
         modpackUrl = config.modpack_url;
         url = modpackUrl || "";
@@ -122,12 +109,11 @@
         }
       }
 
-      // Update config with modpack_url and modpack_version
       try {
         await updateConfig({ modpack_url: url, modpack_version: data.version });
         log.push("Saved modpack URL and version to config.");
         await tick();
-      } catch (e) {
+      } catch {
         log.push("Warning: Could not update config with modpack URL/version.");
         await tick();
       }
@@ -143,15 +129,18 @@
       }
       log.push("Mods folder found.");
       await tick();
-      // Get base URL for self-hosted downloads
       const baseUrl = url.replace(/\/[^/]*$/, "");
 
-      // Process all mods in the mods object
-      // Define the type for modInfo based on expected modpack.json structure
+      let modCount = 0;
       for (const [modFile, modInfo] of modEntries as [string, ModInfo][]) {
+        if (modCount > 0) {
+          log.push("---");
+          log = log;
+          await tick();
+        }
+        modCount++;
         const src = modInfo.source_url || "";
 
-        // mod.io mods are always direct-downloaded, never self-hosted
         if (src.toLowerCase().includes("mod.io")) {
           log.push(`Installing mod.io mod: ${modFile}...`);
           log = log;
@@ -195,8 +184,6 @@
 
         log.push(`Processing mod: ${modFile} ...`);
         log = log;
-        // Download from self-hosted server or Nexus
-        // Manifest hash check logic
         let manifestHashMatched = false;
         try {
           let manifest = null;
@@ -216,13 +203,12 @@
             modInfo.content_hash &&
             manifest.content_hash === modInfo.content_hash
           ) {
-            // Check file existence using backend Tauri command
             let fileExistsResult = false;
             try {
               fileExistsResult = await fileExists(archivePath);
             } catch {
               log.push(
-                `Error checking file existence for ${archivePath}. Will attempt download. (Error details hidden)`,
+                `Error checking file existence for ${archivePath}. Will attempt download.`,
               );
               log = log;
               await tick();
@@ -258,9 +244,6 @@
             log = log;
             await tick();
             const archivePath = `${archiveRootPath}/${modFile}`;
-            // log.push(`Checking file exists: ${archivePath}`); // REMOVE per requirements
-            // log = log;
-            // await tick();
             try {
               await installLocalMod(
                 archivePath,
@@ -271,9 +254,6 @@
               await tick();
               try {
                 await updateModSourceUrl(modFile, src);
-                // log.push(`Set source_url for '${modFile}'.`);
-                // log = log;
-                // await tick();
               } catch (setUrlErr: any) {
                 log.push(
                   `Warning: Failed to set source_url: ${setUrlErr.message || String(setUrlErr)}`,
@@ -301,7 +281,6 @@
           }
         }
       }
-      // Always refresh mod list after processing
       try {
         await getInstalledModGroups();
         log.push("Refreshed mod list.");
@@ -318,7 +297,6 @@
         log.push("All mods processed.");
         log = log;
         await tick();
-        // Do not auto-close modal; let user close it manually
       } else {
         log.push("Some mods failed. Please review the log above.");
         log = log;
@@ -335,52 +313,65 @@
 </script>
 
 {#if isVisible}
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+  <div
+    class="fixed right-4 z-[900] flex flex-col rounded-lg border shadow-xl"
+    style="bottom: calc(2.25rem + 0.5rem); width: 480px; max-height: 480px; background: var(--clr-surface); border-color: var(--adw-border-color);"
+  >
+    <!-- Header -->
     <div
-      class="bg-white dark:bg-zinc-900 rounded-lg shadow-2xl w-[480px] p-6 border border-gray-300 dark:border-zinc-700"
+      class="flex items-center justify-between px-3 py-2 border-b shrink-0"
+      style="border-color: var(--adw-border-color);"
     >
-      <h2 class="text-xl font-bold mb-4">
-        {mode === "update" ? "Updating Modpack" : "Add Modpack"}
-      </h2>
+      <span class="text-sm font-medium" style="color: var(--clr-text);">
+        {mode === "update" ? "Update Modpack" : "Add Modpack"}
+      </span>
+      <button
+        class="h-6 w-6 flex items-center justify-center rounded"
+        style="color: var(--clr-text-secondary);"
+        on:click={close}
+        disabled={isLoading}
+        aria-label="Close">&times;</button
+      >
+    </div>
+
+    <!-- Controls -->
+    <div class="px-3 pt-3 pb-2 shrink-0">
       {#if existingUrl && mode === "add"}
-        <div class="mb-4 text-sm text-gray-700 dark:text-gray-300">
+        <p class="text-xs mb-2" style="color: var(--clr-text-secondary);">
           A modpack URL is already configured. Adding a new modpack will append
           mods to the existing installation.
-        </div>
+        </p>
       {/if}
       {#if mode === "add"}
-        <label for="modpack-url" class="block mb-2 text-sm font-medium"
-          >Modpack URL</label
-        >
-        <input
-          id="modpack-url"
-          class="input w-full mb-2"
-          type="text"
-          bind:value={url}
-          placeholder="https://.../modpack.json"
-          disabled={isLoading}
-        />
-        <button
-          class="btn btn-sm btn-primary mb-4"
-          on:click={handleSave}
-          disabled={isLoading || !url}
-        >
-          {isLoading ? "Validating..." : "Save"}
-        </button>
+        <div class="flex gap-2 mb-2">
+          <input
+            id="modpack-url"
+            class="input flex-1 text-xs"
+            style="height: 2rem;"
+            type="text"
+            bind:value={url}
+            placeholder="https://.../modpack.json"
+            disabled={isLoading}
+          />
+          <button
+            class="btn btn-sm primary shrink-0"
+            on:click={handleSave}
+            disabled={isLoading || !url}
+          >
+            {isLoading ? "Working..." : "Start"}
+          </button>
+        </div>
       {:else}
-        <div class="mb-4 text-sm text-gray-700 dark:text-gray-300">
-          The modpack will be updated from the configured URL.<br />
+        <div class="text-xs mb-2" style="color: var(--clr-text-secondary);">
+          Updating from configured URL.
           {#if currentVersion && newVersion}
-            <div class="mt-2">
-              <span class="font-semibold">Current version:</span>
-              <span class="font-mono">{currentVersion}</span><br />
-              <span class="font-semibold">New version:</span>
-              <span class="font-mono">{newVersion}</span>
-            </div>
+            <span class="ml-2" style="color: var(--clr-text);">
+              {currentVersion} → {newVersion}
+            </span>
           {/if}
         </div>
         <button
-          class="btn btn-sm btn-primary mb-4"
+          class="btn btn-sm primary mb-2"
           on:click={handleSave}
           disabled={isLoading}
         >
@@ -388,23 +379,44 @@
         </button>
       {/if}
       {#if error}
-        <div class="text-red-500 text-sm mb-2">{error}</div>
+        <p class="text-xs mt-1" style="color: var(--clr-danger-300);">
+          {error}
+        </p>
       {/if}
-      <div
-        bind:this={logDiv}
-        class="bg-zinc-100 dark:bg-zinc-800 rounded p-2 text-xs h-32 overflow-y-auto mb-4"
+    </div>
+
+    <!-- Log -->
+    <div
+      bind:this={logDiv}
+      class="overflow-y-auto flex-1 mx-3 mb-2 p-2 rounded text-xs font-mono"
+      style="background: var(--clr-surface-variant, var(--adw-dark-fill-color, #1e1e1e)); color: var(--clr-text);"
+    >
+      {#each log as line}
+        {#if line === "---"}
+          <div
+            class="my-1.5"
+            style="border-top: 1px solid var(--adw-border-color);"
+          ></div>
+        {:else}
+          <div class="leading-relaxed">{line}</div>
+        {/if}
+      {/each}
+      {#if log.length === 0}
+        <div style="color: var(--clr-text-secondary);">Waiting...</div>
+      {/if}
+    </div>
+
+    <!-- Footer buttons -->
+    <div class="flex justify-end gap-2 px-3 pb-3 shrink-0">
+      <button class="btn btn-sm" disabled={log.length === 0} on:click={copyLog}
+        >Copy</button
       >
-        {#each log as line}
-          <div>{line}</div>
-        {/each}
-      </div>
-      <div class="flex justify-end gap-2">
-        <button class="btn btn-sm" on:click={copyLog}>Copy Log</button>
-        <button class="btn btn-sm" on:click={saveLog}>Save Log</button>
-        <button class="btn btn-sm" on:click={close} disabled={isLoading}
-          >Close</button
-        >
-      </div>
+      <button class="btn btn-sm" disabled={log.length === 0} on:click={saveLog}
+        >Save</button
+      >
+      <button class="btn btn-sm" on:click={close} disabled={isLoading}
+        >Close</button
+      >
     </div>
   </div>
 {/if}
