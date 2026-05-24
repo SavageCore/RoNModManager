@@ -41,6 +41,7 @@
     updateNexusFileId,
   } from "$lib/api/commands";
   import { requestNexusFileSelection } from "$lib/stores/nexusFileSelection";
+  import { listen } from "@tauri-apps/api/event";
   import { tick } from "svelte";
   import LogPanel from "./LogPanel.svelte";
 
@@ -339,37 +340,50 @@
         log.push("Processing Nexus downloads...");
         log = log;
         await tick();
-        for (const pending of pendingNexus) {
-          log.push(`Installing Nexus mod: ${pending.modFile}...`);
+        const unlistenWaiting = await listen<{
+          prettyName: string | null;
+          fileName: string;
+          modUrl: string;
+        }>("nexus_free_download_waiting", (event) => {
+          log.push(`Waiting for manual download: ${event.payload.fileName}...`);
           log = log;
-          await tick();
-          try {
-            const result = await pending.promise;
-            await installLocalMod(
-              result.archivePath,
-              pending.modInfo.selected_pak_files ?? undefined,
-            );
-            await updateModSourceUrl(
-              result.archiveName,
-              result.sourceUrl,
-            ).catch(() => {});
-            if (result.fileId != null) {
-              await updateNexusFileId(result.archiveName, result.fileId).catch(
-                () => {},
+        });
+        try {
+          for (const pending of pendingNexus) {
+            log.push(`Installing Nexus mod: ${pending.modFile}...`);
+            log = log;
+            await tick();
+            try {
+              const result = await pending.promise;
+              await installLocalMod(
+                result.archivePath,
+                pending.modInfo.selected_pak_files ?? undefined,
               );
+              await updateModSourceUrl(
+                result.archiveName,
+                result.sourceUrl,
+              ).catch(() => {});
+              if (result.fileId != null) {
+                await updateNexusFileId(
+                  result.archiveName,
+                  result.fileId,
+                ).catch(() => {});
+              }
+              log.push(`Installed '${result.name}' from Nexus.`);
+              log = log;
+              await tick();
+            } catch (modErr: any) {
+              log.push(
+                `Error installing Nexus mod ${pending.modFile}: ${modErr.message || String(modErr)}`,
+              );
+              log = log;
+              await tick();
+              error = modErr.message || String(modErr);
+              hadError = true;
             }
-            log.push(`Installed '${result.name}' from Nexus.`);
-            log = log;
-            await tick();
-          } catch (modErr: any) {
-            log.push(
-              `Error installing Nexus mod ${pending.modFile}: ${modErr.message || String(modErr)}`,
-            );
-            log = log;
-            await tick();
-            error = modErr.message || String(modErr);
-            hadError = true;
           }
+        } finally {
+          unlistenWaiting();
         }
       }
       if (modCount > 0) {
