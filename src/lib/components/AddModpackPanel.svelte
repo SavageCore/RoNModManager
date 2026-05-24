@@ -102,6 +102,8 @@
         return;
       }
       log.push("Mods folder found.");
+      log.push("---");
+      log = log;
       await tick();
       const baseUrl = url.replace(/\/[^/]*$/, "");
 
