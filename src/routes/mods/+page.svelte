@@ -329,6 +329,18 @@
           return (a.installedAt ?? 0) - (b.installedAt ?? 0);
         case "date-desc":
           return (b.installedAt ?? 0) - (a.installedAt ?? 0);
+        case "files-desc": {
+          const aCount = a.files.length + (a.addonFiles?.length ?? 0);
+          const bCount = b.files.length + (b.addonFiles?.length ?? 0);
+          if (bCount !== aCount) return bCount - aCount;
+          return labelA.localeCompare(labelB);
+        }
+        case "files-asc": {
+          const aCount = a.files.length + (a.addonFiles?.length ?? 0);
+          const bCount = b.files.length + (b.addonFiles?.length ?? 0);
+          if (aCount !== bCount) return aCount - bCount;
+          return labelA.localeCompare(labelB);
+        }
         case "missing-sav-first": {
           const aNeeds = missingSavMapMods.has(a.name) ? 0 : 1;
           const bNeeds = missingSavMapMods.has(b.name) ? 0 : 1;
@@ -1418,6 +1430,8 @@
     <option value="alpha-desc">Z → A</option>
     <option value="date-desc">Newest First</option>
     <option value="date-asc">Oldest First</option>
+    <option value="files-desc">Most Files First</option>
+    <option value="files-asc">Fewest Files First</option>
     <option value="missing-sav-first">Missing World Gen</option>
   </select>
   <button

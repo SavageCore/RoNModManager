@@ -5,6 +5,8 @@ export type SortOrder =
   | "alpha-desc"
   | "date-asc"
   | "date-desc"
+  | "files-desc"
+  | "files-asc"
   | "missing-sav-first";
 
 const STORAGE_KEY = "ronmodmanager.modSortOrder";
@@ -14,6 +16,8 @@ const VALID: SortOrder[] = [
   "alpha-desc",
   "date-asc",
   "date-desc",
+  "files-desc",
+  "files-asc",
   "missing-sav-first",
 ];
 
