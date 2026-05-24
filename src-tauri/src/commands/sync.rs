@@ -6,6 +6,7 @@ use russh::client;
 use russh_sftp::client::SftpSession;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
+use tokio::io::AsyncWriteExt;
 
 use crate::models::{AppError, ProgressEvent, Result};
 use crate::state::AppState;
@@ -145,10 +146,59 @@ pub async fn sync_modpack_to_remote(
         if needs_upload {
             let local_full = export_dir.join(rel_path.as_str());
             let remote_full = format!("{remote_path}/{rel_path}");
-            let msg = if verbose {
-                format!("↑ {display} ({local_size} bytes)")
+
+            let data = tokio::fs::read(&local_full)
+                .await
+                .map_err(|e| AppError::Validation(format!("Failed to read {local_full:?}: {e}")))?;
+
+            let mut remote_file = sftp.create(&remote_full).await.map_err(|e| {
+                AppError::Validation(format!("Failed to create remote file {remote_full}: {e}"))
+            })?;
+
+            let upload_start = std::time::Instant::now();
+            let mut bytes_written: u64 = 0;
+
+            for chunk in data.chunks(256 * 1024) {
+                remote_file.write_all(chunk).await.map_err(|e| {
+                    AppError::Validation(format!("Failed to write {remote_full}: {e}"))
+                })?;
+                bytes_written += chunk.len() as u64;
+
+                let elapsed = upload_start.elapsed().as_secs_f64();
+                let speed_str = if elapsed > 0.001 {
+                    format!(
+                        " - {:.1} MiB/s",
+                        (bytes_written as f64 / 1_048_576.0) / elapsed
+                    )
+                } else {
+                    String::new()
+                };
+                let _ = app.emit(
+                    "sync_progress",
+                    ProgressEvent {
+                        operation: "sync_uploading".to_string(),
+                        file: rel_path.clone(),
+                        percent: pct,
+                        message: format!("Uploading {display}{speed_str}"),
+                        total_bytes: Some(*local_size),
+                        processed_bytes: Some(bytes_written),
+                    },
+                );
+            }
+
+            remote_file
+                .flush()
+                .await
+                .map_err(|e| AppError::Validation(format!("Failed to flush {remote_full}: {e}")))?;
+
+            let elapsed = upload_start.elapsed().as_secs_f64();
+            let speed_str = if elapsed > 0.001 {
+                format!(
+                    " ({:.1} MiB/s)",
+                    (*local_size as f64 / 1_048_576.0) / elapsed
+                )
             } else {
-                format!("↑ {display}")
+                String::new()
             };
             let _ = app.emit(
                 "sync_progress",
@@ -156,12 +206,11 @@ pub async fn sync_modpack_to_remote(
                     operation: "sync_upload".to_string(),
                     file: rel_path.clone(),
                     percent: pct,
-                    message: msg,
+                    message: format!("Uploaded {display}{speed_str}"),
                     total_bytes: Some(*local_size),
-                    processed_bytes: None,
+                    processed_bytes: Some(*local_size),
                 },
             );
-            upload_file(&sftp, &local_full, &remote_full).await?;
         } else if verbose {
             let _ = app.emit(
                 "sync_progress",
@@ -323,29 +372,6 @@ fn list_local_files(base: &Path) -> Result<HashMap<String, u64>> {
     }
 
     Ok(map)
-}
-
-async fn upload_file(sftp: &SftpSession, local: &Path, remote: &str) -> Result<()> {
-    use tokio::io::AsyncWriteExt;
-
-    let data = tokio::fs::read(local)
-        .await
-        .map_err(|e| AppError::Validation(format!("Failed to read {local:?}: {e}")))?;
-
-    let mut file = sftp
-        .create(remote)
-        .await
-        .map_err(|e| AppError::Validation(format!("Failed to create remote file {remote}: {e}")))?;
-
-    file.write_all(&data)
-        .await
-        .map_err(|e| AppError::Validation(format!("Failed to write {remote}: {e}")))?;
-
-    file.flush()
-        .await
-        .map_err(|e| AppError::Validation(format!("Failed to flush {remote}: {e}")))?;
-
-    Ok(())
 }
 
 fn parse_user_host(user_host: &str) -> Result<(String, String)> {

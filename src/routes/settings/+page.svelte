@@ -21,7 +21,7 @@
   } from "$lib/api/commands";
   import ExportModpackModal from "$lib/components/ExportModpackModal.svelte";
   import SyncAuthModal from "$lib/components/SyncAuthModal.svelte";
-  import SyncProgressModal from "$lib/components/SyncProgressModal.svelte";
+  import { syncLogStore } from "$lib/stores/syncLogStore";
   import type {
     CloseAction,
     MinimizeTarget,
@@ -102,10 +102,7 @@
   let updateLastChecked: Date | null = null;
   let syncRemoteHost = "";
   let syncRemotePath = "";
-  let isSyncing = false;
   let showSyncAuthModal = false;
-  let showSyncProgressModal = false;
-  let syncLog: string[] = [];
   let syncVerbose = false;
   let syncAuthPurpose: "manual" | "fallback" = "manual";
   let onGameLaunch: OnGameLaunchAction = "nothing";
@@ -531,28 +528,28 @@
       sync_remote_host: syncRemoteHost.trim(),
       sync_remote_path: syncRemotePath.trim(),
     });
-    syncLog = [];
-    showSyncProgressModal = true;
-    isSyncing = true;
+    syncLogStore.start();
 
     let unlisten: UnlistenFn | null = null;
     try {
       unlisten = await listen<ModProgressEvent>("sync_progress", (event) => {
-        syncLog = [...syncLog, event.payload.message];
+        if (event.payload.operation !== "sync_uploading") {
+          syncLogStore.addLine(event.payload.message);
+        }
       });
 
       await syncModpackToRemote(auth, syncVerbose);
     } catch (error) {
       const msg = String(error);
       if (msg.includes("AUTH_REQUIRED")) {
-        showSyncProgressModal = false;
+        syncLogStore.close();
         syncAuthPurpose = "fallback";
         showSyncAuthModal = true;
       } else {
-        syncLog = [...syncLog, `Error: ${msg}`];
+        syncLogStore.addLine(`Error: ${msg}`);
       }
     } finally {
-      isSyncing = false;
+      syncLogStore.finish();
       unlisten?.();
     }
   }
@@ -1117,7 +1114,7 @@
       <div class="flex gap-2">
         <button
           class="btn btn-sm"
-          disabled={isSyncing ||
+          disabled={$syncLogStore.isBusy ||
             !syncRemoteHost.trim() ||
             !syncRemotePath.trim()}
           on:click={openSyncAuthManual}
@@ -1126,12 +1123,12 @@
         </button>
         <button
           class="btn btn-sm primary"
-          disabled={isSyncing ||
+          disabled={$syncLogStore.isBusy ||
             !syncRemoteHost.trim() ||
             !syncRemotePath.trim()}
           on:click={handleSync}
         >
-          {isSyncing ? "Syncing..." : "Sync Now"}
+          {$syncLogStore.isBusy ? "Syncing..." : "Sync Now"}
         </button>
       </div>
     </div>
@@ -1144,13 +1141,6 @@
       : "Choose how to authenticate with the remote server. Sync Now will try your SSH keys automatically if you skip this."}
     on:close={() => (showSyncAuthModal = false)}
     on:submit={(e) => handleSyncAuthSubmit(e.detail)}
-  />
-
-  <SyncProgressModal
-    isVisible={showSyncProgressModal}
-    log={syncLog}
-    isBusy={isSyncing}
-    on:close={() => (showSyncProgressModal = false)}
   />
 
   <div class="card mt-6">

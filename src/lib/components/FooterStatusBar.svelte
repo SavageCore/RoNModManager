@@ -79,6 +79,11 @@
   function normalizeTaskPercent(operation: string, percent: number): number {
     const op = operation || "";
 
+    if (op === "sync" || op === "sync_uploading" || op === "sync_upload") {
+      // Sync backend maps overall progress to 10-90; normalise to 0-100.
+      return mapRangeToPercent(percent, 10, 90);
+    }
+
     if (op.includes("download")) {
       // add_modio_mod backend maps download to 5-50.
       return mapRangeToPercent(percent, 5, 50);
