@@ -9,6 +9,7 @@
     updateModSourceUrl,
   } from "$lib/api/commands";
   import { alertStore } from "$lib/stores/alert";
+  import { importLogStore } from "$lib/stores/importLogStore";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { requestPakSelection } from "$lib/stores/pakSelection";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -189,10 +190,13 @@
           modAddQueueStore.markDone(entry.queueId, `Installed ${result.name}`);
         } catch (error) {
           const msg = String(error);
-          modAddQueueStore.markError(
-            entry.queueId,
-            msg.includes("CANCELLED:") ? "Cancelled" : `Failed: ${msg}`,
-          );
+          if (msg.includes("CANCELLED:")) {
+            modAddQueueStore.markError(entry.queueId, "Cancelled");
+            importLogStore.clear();
+            modAddQueueStore.resetBatch();
+          } else {
+            modAddQueueStore.markError(entry.queueId, `Failed: ${msg}`);
+          }
         }
       }
     } finally {
