@@ -46,7 +46,7 @@
   import { onMount } from "svelte";
   import "../app.css";
 
-  import AddModpackModal from "$lib/components/AddModpackModal.svelte";
+  import AddModpackPanel from "$lib/components/AddModpackPanel.svelte";
 
   const APP_NAME = "Mod Manager";
 
@@ -69,7 +69,7 @@
   let showUpdatePrompt = false;
   let modpackCurrentVersion: string | null = null;
   let modpackNewVersion: string | null = null;
-  let showAddModpackModal = false;
+  let showAddModpackPanel = false;
   let updateAvailable = false;
   let onGameLaunch: OnGameLaunchAction = "nothing";
   let closeAction: CloseAction = "quit";
@@ -219,12 +219,12 @@
   // Called when user accepts update
   function startModpackUpdate() {
     showUpdatePrompt = false;
-    showAddModpackModal = true;
+    showAddModpackPanel = true;
   }
 
   // Called when update modal closes
-  function closeAddModpackModal() {
-    showAddModpackModal = false;
+  function closeAddModpackPanel() {
+    showAddModpackPanel = false;
   }
 
   afterNavigate(() => {
@@ -519,7 +519,7 @@
   </header>
 
   {#if showUpdatePrompt}
-    <AddModpackModal
+    <AddModpackPanel
       isVisible={true}
       mode="update"
       currentVersion={modpackCurrentVersion}

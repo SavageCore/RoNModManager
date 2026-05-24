@@ -31,7 +31,7 @@
     clearModNoWorldGen,
   } from "$lib/api/commands";
   import AddModModal from "$lib/components/AddModModal.svelte";
-  import AddModpackModal from "$lib/components/AddModpackModal.svelte";
+  import AddModpackPanel from "$lib/components/AddModpackPanel.svelte";
   import PakFileSelectionModal from "$lib/components/PakFileSelectionModal.svelte";
   import {
     pakSelectionStore,
@@ -208,7 +208,7 @@
   let modSourceFilter: "all" | "nexus" | "modio" = "all";
   let modsForActiveProfile: string[] = [];
   let showAddModModal = false;
-  let showAddModpackModal = false;
+  let showAddModpackPanel = false;
   let confirmModal: {
     isVisible: boolean;
     title: string;
@@ -1282,10 +1282,10 @@
   on:modAdded={handleModAdded}
 />
 
-<AddModpackModal
-  isVisible={showAddModpackModal}
+<AddModpackPanel
+  isVisible={showAddModpackPanel}
   on:close={() => {
-    showAddModpackModal = false;
+    showAddModpackPanel = false;
   }}
 />
 
@@ -1564,7 +1564,7 @@
       </button>
       <button
         on:click={() => {
-          showAddModpackModal = true;
+          showAddModpackPanel = true;
         }}
         class="btn btn-sm btn-primary"
         title="Add Modpack"
