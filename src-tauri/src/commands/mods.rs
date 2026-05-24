@@ -1055,6 +1055,46 @@ pub async fn fetch_nexus_mod_info(
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct NexusFileOption {
+    pub file_id: u64,
+    pub file_name: String,
+    pub name: Option<String>,
+    pub version: Option<String>,
+    pub description: Option<String>,
+}
+
+#[tauri::command]
+pub async fn list_nexus_file_options(
+    state: State<'_, AppState>,
+    input: String,
+) -> Result<Vec<NexusFileOption>> {
+    let config = state.get_config()?;
+    let api_key = config.nexus_api_key.ok_or_else(|| {
+        AppError::Validation(
+            "Nexus Mods API key is not configured. Add it in Settings first.".to_string(),
+        )
+    })?;
+
+    let mod_id = nexus_api::parse_nexus_url_to_mod_id(&input)?;
+    let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
+    let files = nexus_service.list_mod_files(&api_key, mod_id).await?;
+
+    let options = nexus_api::get_file_options(&files)
+        .into_iter()
+        .map(|f| NexusFileOption {
+            file_id: f.file_id,
+            file_name: f.file_name.clone(),
+            name: f.name.clone(),
+            version: f.version.clone(),
+            description: f.description.clone(),
+        })
+        .collect();
+
+    Ok(options)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AddNexusResult {
     pub mod_id: u64,
     pub name: String,
@@ -1068,6 +1108,7 @@ pub async fn add_nexus_mod(
     app: AppHandle,
     state: State<'_, AppState>,
     input: String,
+    file_id: Option<u64>,
 ) -> Result<AddNexusResult> {
     state
         .nexus_cancel
@@ -1089,9 +1130,15 @@ pub async fn add_nexus_mod(
     let mod_name = mod_info.name.clone();
 
     let files = nexus_service.list_mod_files(&api_key, mod_id).await?;
-    let primary_file = nexus_api::pick_primary_file(&files).ok_or_else(|| {
-        AppError::Validation(format!("No downloadable files found for mod {}", mod_id))
-    })?;
+    let primary_file = if let Some(fid) = file_id {
+        files.iter().find(|f| f.file_id == fid).ok_or_else(|| {
+            AppError::Validation(format!("File ID {} not found for mod {}", fid, mod_id))
+        })?
+    } else {
+        nexus_api::pick_primary_file(&files).ok_or_else(|| {
+            AppError::Validation(format!("No downloadable files found for mod {}", mod_id))
+        })?
+    };
     let expected_filename = primary_file.file_name.clone();
     let file_id = primary_file.file_id;
 

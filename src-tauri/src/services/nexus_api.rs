@@ -27,6 +27,9 @@ pub struct NexusModInfo {
 pub struct NexusModFile {
     pub file_id: u64,
     pub file_name: String,
+    pub name: Option<String>,
+    pub version: Option<String>,
+    pub description: Option<String>,
     pub category_id: Option<u32>,
     pub category_name: Option<String>,
     pub is_primary: Option<bool>,
@@ -38,11 +41,15 @@ struct NexusFilesResponse {
     files: Vec<NexusModFile>,
 }
 
-/// Pick the best file to download from a mod's file list.
-/// Prefers: explicitly primary > newest MAIN (category_id=1) > newest of any active file.
-/// Excludes OLD_VERSION (4), DELETED (6), and ARCHIVED (7) files.
-pub fn pick_primary_file(files: &[NexusModFile]) -> Option<&NexusModFile> {
-    let active: Vec<&NexusModFile> = files
+/// Returns the candidates a user should choose from, applying the same filtering as
+/// `pick_primary_file` but without collapsing to a single result.
+/// - Excludes OLD_VERSION (4), DELETED (6), ARCHIVED (7)
+/// - If any file is `is_primary`, returns only that file (unambiguous)
+/// - Otherwise returns all MAIN (category_id=1) files, or all active files if none
+///
+/// Sorted newest-first by uploaded_timestamp.
+pub fn get_file_options(files: &[NexusModFile]) -> Vec<&NexusModFile> {
+    let mut active: Vec<&NexusModFile> = files
         .iter()
         .filter(|f| {
             f.category_id
@@ -52,19 +59,28 @@ pub fn pick_primary_file(files: &[NexusModFile]) -> Option<&NexusModFile> {
         .collect();
 
     if let Some(primary) = active.iter().find(|f| f.is_primary == Some(true)) {
-        return Some(primary);
+        return vec![primary];
     }
 
-    let mut mains: Vec<&&NexusModFile> =
-        active.iter().filter(|f| f.category_id == Some(1)).collect();
-    mains.sort_by_key(|f| Reverse(f.uploaded_timestamp.unwrap_or(0)));
-    if let Some(main_file) = mains.first() {
-        return Some(main_file);
+    let mut mains: Vec<&NexusModFile> = active
+        .iter()
+        .copied()
+        .filter(|f| f.category_id == Some(1))
+        .collect();
+    if !mains.is_empty() {
+        mains.sort_by_key(|f| Reverse(f.uploaded_timestamp.unwrap_or(0)));
+        return mains;
     }
 
-    let mut sorted = active.clone();
-    sorted.sort_by_key(|f| Reverse(f.uploaded_timestamp.unwrap_or(0)));
-    sorted.into_iter().next()
+    active.sort_by_key(|f| Reverse(f.uploaded_timestamp.unwrap_or(0)));
+    active
+}
+
+/// Pick the best file to download from a mod's file list.
+/// Prefers: explicitly primary > newest MAIN (category_id=1) > newest of any active file.
+/// Excludes OLD_VERSION (4), DELETED (6), and ARCHIVED (7) files.
+pub fn pick_primary_file(files: &[NexusModFile]) -> Option<&NexusModFile> {
+    get_file_options(files).into_iter().next()
 }
 
 #[derive(Debug, Deserialize, Clone)]

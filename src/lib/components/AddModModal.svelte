@@ -5,6 +5,7 @@
     fetchNexusModInfo,
     getArchivePakFiles,
     installLocalMod,
+    listNexusFileOptions,
     updateModDisplayName,
     updateModSourceUrl,
   } from "$lib/api/commands";
@@ -12,6 +13,7 @@
   import { importLogStore } from "$lib/stores/importLogStore";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { requestPakSelection } from "$lib/stores/pakSelection";
+  import { requestNexusFileSelection } from "$lib/stores/nexusFileSelection";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { open } from "@tauri-apps/plugin-dialog";
   import { createEventDispatcher, onDestroy, onMount } from "svelte";
@@ -165,9 +167,38 @@
         const entry = pendingLinkQueue.shift()!;
         modAddQueueStore.markRunning(entry.queueId, "Starting...");
         try {
-          const result = isNexusUrl(entry.input)
-            ? await addNexusMod(entry.input)
-            : await addModIoMod(entry.input);
+          let result;
+          if (isNexusUrl(entry.input)) {
+            modAddQueueStore.markRunning(
+              entry.queueId,
+              "Checking available files...",
+            );
+            const fileOptions = await listNexusFileOptions(entry.input);
+            let chosenFileId: number | undefined;
+            if (fileOptions.length > 1) {
+              modAddQueueStore.markRunning(
+                entry.queueId,
+                "Select file variant...",
+              );
+              const chosen = await requestNexusFileSelection(
+                nexusPreviewName || entry.input,
+                fileOptions,
+              );
+              if (chosen === null) {
+                modAddQueueStore.markError(entry.queueId, "Cancelled");
+                importLogStore.clear();
+                modAddQueueStore.resetBatch();
+                continue;
+              }
+              chosenFileId = chosen.fileId;
+            } else if (fileOptions.length === 1) {
+              chosenFileId = fileOptions[0].fileId;
+            }
+            modAddQueueStore.markRunning(entry.queueId, "Starting...");
+            result = await addNexusMod(entry.input, chosenFileId);
+          } else {
+            result = await addModIoMod(entry.input);
+          }
 
           const selectedPaks = await choosePaks(
             result.archivePath,

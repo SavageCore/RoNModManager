@@ -130,10 +130,20 @@ export interface ModAddResult {
   archivePath: string;
 }
 
+export interface NexusFileOption {
+  fileId: number;
+  fileName: string;
+  name: string | null;
+  version: string | null;
+  description: string | null;
+}
+
 export const addModIoMod = (input: string) =>
   invoke<ModAddResult>("add_modio_mod", { input });
-export const addNexusMod = (input: string) =>
-  invoke<ModAddResult>("add_nexus_mod", { input });
+export const addNexusMod = (input: string, fileId?: number) =>
+  invoke<ModAddResult>("add_nexus_mod", { input, fileId: fileId ?? null });
+export const listNexusFileOptions = (input: string) =>
+  invoke<NexusFileOption[]>("list_nexus_file_options", { input });
 export const cancelNexusDownload = () => invoke<void>("cancel_nexus_download");
 export const fetchNexusModInfo = (input: string) =>
   invoke<{

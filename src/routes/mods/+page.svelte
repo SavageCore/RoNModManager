@@ -37,6 +37,8 @@
     pakSelectionStore,
     requestPakSelection,
   } from "$lib/stores/pakSelection";
+  import NexusFileSelectionModal from "$lib/components/NexusFileSelectionModal.svelte";
+  import { nexusFileSelectionStore } from "$lib/stores/nexusFileSelection";
   import ManageAddOnsModal from "$lib/components/ManageAddOnsModal.svelte";
   let showAddOnsModal = false;
   let selectedModName = "";
@@ -1397,6 +1399,21 @@
     on:cancel={() => {
       $pakSelectionStore?.resolve(null);
       pakSelectionStore.set(null);
+    }}
+  />
+{/if}
+
+{#if $nexusFileSelectionStore}
+  <NexusFileSelectionModal
+    modName={$nexusFileSelectionStore.modName}
+    files={$nexusFileSelectionStore.files}
+    on:select={(e) => {
+      $nexusFileSelectionStore?.resolve(e.detail);
+      nexusFileSelectionStore.set(null);
+    }}
+    on:cancel={() => {
+      $nexusFileSelectionStore?.resolve(null);
+      nexusFileSelectionStore.set(null);
     }}
   />
 {/if}

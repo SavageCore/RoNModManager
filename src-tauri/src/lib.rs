@@ -126,6 +126,7 @@ pub fn run() {
             mods::get_archive_pak_files,
             mods::add_modio_mod,
             mods::add_nexus_mod,
+            mods::list_nexus_file_options,
             mods::cancel_nexus_download,
             mods::fetch_nexus_mod_info,
             mods::refresh_mod_metadata,
