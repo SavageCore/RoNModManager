@@ -15,6 +15,7 @@
     updateConfig,
   } from "$lib/api/commands";
   import FooterStatusBar from "$lib/components/FooterStatusBar.svelte";
+  import ImportLogPanel from "$lib/components/ImportLogPanel.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
   import { tokenStore } from "$lib/stores/token";
@@ -606,6 +607,7 @@
     </main>
   </div>
 
+  <ImportLogPanel />
   <FooterStatusBar />
 
   {#if showClosePreferenceDialog}

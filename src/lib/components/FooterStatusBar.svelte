@@ -1,5 +1,6 @@
 <script lang="ts">
   import { cancelNexusDownload } from "$lib/api/commands";
+  import { importLogStore } from "$lib/stores/importLogStore";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { operationStatusStore } from "$lib/stores/operationStatus";
 
@@ -242,12 +243,15 @@
   style="background: var(--clr-surface); border-top: 1px solid var(--adw-border-color);"
   class="h-9 px-3 flex items-center text-xs gap-4"
 >
-  {#if activeQueue.length > 0}
-    <span style="color: var(--clr-primary-300);" class="shrink-0">
-      {queueProgress
-        ? `Progress: ${queueProgress}`
-        : `Queue: ${activeQueue.length}`}
-    </span>
+  {#if $importLogStore.mods.length > 0 || activeQueue.length > 0}
+    <button
+      on:click={() => importLogStore.toggle()}
+      class="shrink-0 text-xs px-2 py-0.5 rounded"
+      style="color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 40%, transparent); background: color-mix(in srgb, var(--clr-primary-300) 10%, transparent); cursor: pointer;"
+      title="Toggle import log"
+    >
+      {queueProgress ? `${queueProgress} mods` : "Import Log"}
+    </button>
   {/if}
 
   {#if showOperationStatus}
