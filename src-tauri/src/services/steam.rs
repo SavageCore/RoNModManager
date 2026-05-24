@@ -180,6 +180,40 @@ pub fn get_savegames_path() -> Result<PathBuf> {
         .join("SaveGames"))
 }
 
+/// Get the Config directory path for Ready or Not
+#[cfg(target_os = "windows")]
+pub fn get_config_path() -> Result<PathBuf> {
+    let local_appdata = std::env::var("LOCALAPPDATA")
+        .map_err(|_| crate::models::AppError::NotFound("LOCALAPPDATA not found".to_string()))?;
+
+    Ok(PathBuf::from(local_appdata)
+        .join("ReadyOrNot")
+        .join("Saved")
+        .join("Config")
+        .join("Windows"))
+}
+
+/// Get the Config directory path for Ready or Not (Proton on Linux)
+#[cfg(target_os = "linux")]
+pub fn get_config_path() -> Result<PathBuf> {
+    let steam_path = find_steam_path()?;
+
+    Ok(steam_path
+        .join("steamapps")
+        .join("compatdata")
+        .join(READY_OR_NOT_APP_ID)
+        .join("pfx")
+        .join("drive_c")
+        .join("users")
+        .join("steamuser")
+        .join("AppData")
+        .join("Local")
+        .join("ReadyOrNot")
+        .join("Saved")
+        .join("Config")
+        .join("Windows"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -205,6 +205,7 @@ pub(crate) fn sync_mod_links_for_game_path(
     let live_mods_path = steam::get_mods_path(game_path);
     let live_savegames_path = steam::get_savegames_path().map_err(|e| e.to_string())?;
     let live_fmod_path = steam::get_fmod_desktop_path(game_path);
+    let live_config_path = steam::get_config_path().map_err(|e| e.to_string())?;
     fs::create_dir_all(&live_mods_path).map_err(|e| e.to_string())?;
     fs::create_dir_all(&live_savegames_path).map_err(|e| e.to_string())?;
 
@@ -214,15 +215,16 @@ pub(crate) fn sync_mod_links_for_game_path(
     let manifests = manager.list_all_manifests().unwrap_or_default();
 
     // First remove all managed live links/files for tracked staged files.
-    // For .bank files, restore the original from the backup rather than just deleting.
+    // For .bank and .ini files, restore the original from the backup rather than just deleting.
     // For override files, remove the symlink and restore the backed-up original.
     for manifest_data in manifests.values() {
         for staged_path in &manifest_data.installed_files {
-            let is_bank = staged_path
+            let ext = staged_path
                 .extension()
                 .and_then(|e| e.to_str())
-                .map(|e| e.eq_ignore_ascii_case("bank"))
-                .unwrap_or(false);
+                .unwrap_or_default();
+            let is_bank = ext.eq_ignore_ascii_case("bank");
+            let is_ini = ext.eq_ignore_ascii_case("ini");
 
             if is_bank {
                 let Some(file_name) = staged_path.file_name() else {
@@ -234,10 +236,27 @@ pub(crate) fn sync_mod_links_for_game_path(
                     .join("backups")
                     .join(&install_key)
                     .join(file_name);
+                if game_dest.is_symlink() || game_dest.exists() {
+                    let _ = fs::remove_file(&game_dest);
+                }
                 if backup.exists() {
                     let _ = fs::copy(&backup, &game_dest);
-                } else if game_dest.exists() {
+                }
+            } else if is_ini {
+                let Some(file_name) = staged_path.file_name() else {
+                    continue;
+                };
+                let game_dest = live_config_path.join(file_name);
+                let install_key = archive_install_key(&manifest_data.source_archive);
+                let backup = staging_root
+                    .join("backups")
+                    .join(&install_key)
+                    .join(file_name);
+                if game_dest.is_symlink() || game_dest.exists() {
                     let _ = fs::remove_file(&game_dest);
+                }
+                if backup.exists() {
+                    let _ = fs::copy(&backup, &game_dest);
                 }
             } else if let Some((game_target, backup)) =
                 override_paths(staged_path, &staging_root, game_path)
@@ -271,11 +290,12 @@ pub(crate) fn sync_mod_links_for_game_path(
                 continue;
             }
 
-            let is_bank = staged_path
+            let ext = staged_path
                 .extension()
                 .and_then(|e| e.to_str())
-                .map(|e| e.eq_ignore_ascii_case("bank"))
-                .unwrap_or(false);
+                .unwrap_or_default();
+            let is_bank = ext.eq_ignore_ascii_case("bank");
+            let is_ini = ext.eq_ignore_ascii_case("ini");
 
             if is_bank {
                 let Some(file_name) = staged_path.file_name() else {
@@ -283,6 +303,17 @@ pub(crate) fn sync_mod_links_for_game_path(
                 };
                 fs::create_dir_all(&live_fmod_path).map_err(|e| e.to_string())?;
                 let game_dest = live_fmod_path.join(file_name);
+                // Remove the original (already backed up at install time) then symlink.
+                if game_dest.exists() || game_dest.is_symlink() {
+                    let _ = fs::remove_file(&game_dest);
+                }
+                create_file_link(staged_path, &game_dest)?;
+            } else if is_ini {
+                let Some(file_name) = staged_path.file_name() else {
+                    continue;
+                };
+                fs::create_dir_all(&live_config_path).map_err(|e| e.to_string())?;
+                let game_dest = live_config_path.join(file_name);
                 // Remove the original (already backed up at install time) then symlink.
                 if game_dest.exists() || game_dest.is_symlink() {
                     let _ = fs::remove_file(&game_dest);

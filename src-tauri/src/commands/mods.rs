@@ -408,9 +408,9 @@ pub(crate) fn archive_install_key(archive_name: &str) -> String {
 
 fn cleanup_mod_staging_directories(archive_name: &str, staging_root: &Path) {
     let install_key = archive_install_key(archive_name);
-    let _ = fs::remove_dir(staging_root.join("mods").join(&install_key));
-    let _ = fs::remove_dir(staging_root.join("savegames").join(&install_key));
-    let _ = fs::remove_dir(staging_root.join("backups").join(&install_key));
+    let _ = fs::remove_dir_all(staging_root.join("mods").join(&install_key));
+    let _ = fs::remove_dir_all(staging_root.join("savegames").join(&install_key));
+    let _ = fs::remove_dir_all(staging_root.join("backups").join(&install_key));
 }
 
 #[tauri::command]
@@ -1390,10 +1390,11 @@ pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String)
             if let Some(file_name) = file_path.file_name() {
                 let backup = backup_dir.join(file_name);
                 let game_dest = fmod_path.join(file_name);
+                if game_dest.is_symlink() || game_dest.exists() {
+                    let _ = fs::remove_file(&game_dest);
+                }
                 if backup.exists() {
                     let _ = fs::copy(&backup, &game_dest);
-                } else if game_dest.exists() {
-                    let _ = fs::remove_file(&game_dest);
                 }
             }
         }
@@ -1433,6 +1434,33 @@ pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String)
                     let _ = fs::create_dir_all(parent);
                 }
                 let _ = fs::copy(&backup, &game_dest);
+            }
+        }
+    }
+
+    // Restore original config files before deleting backups.
+    {
+        let install_key = archive_install_key(&archive_name);
+        let backup_dir = staging_root.join("backups").join(&install_key);
+        let config_path = steam::get_config_path()?;
+        for file_path in &manifest_data.installed_files {
+            let is_ini = file_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("ini"))
+                .unwrap_or(false);
+            if !is_ini {
+                continue;
+            }
+            if let Some(file_name) = file_path.file_name() {
+                let backup = backup_dir.join(file_name);
+                let game_dest = config_path.join(file_name);
+                if game_dest.is_symlink() || game_dest.exists() {
+                    let _ = fs::remove_file(&game_dest);
+                }
+                if backup.exists() {
+                    let _ = fs::copy(&backup, &game_dest);
+                }
             }
         }
     }
@@ -1884,6 +1912,31 @@ fn backup_bank_files_from_report(
     Ok(())
 }
 
+fn backup_config_files_from_report(
+    report: &installer::InstallReport,
+    backup_path: &Path,
+) -> Result<()> {
+    let config_path = steam::get_config_path()?;
+    for installed_file in &report.installed_files {
+        let is_ini = installed_file
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("ini"))
+            .unwrap_or(false);
+        if !is_ini {
+            continue;
+        }
+        if let Some(file_name) = installed_file.file_name() {
+            let original = config_path.join(file_name);
+            if original.exists() {
+                fs::create_dir_all(backup_path)?;
+                fs::copy(&original, backup_path.join(file_name))?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn backup_override_files_from_report(
     report: &installer::InstallReport,
     game_path: &Path,
@@ -2110,6 +2163,7 @@ fn install_downloaded_file(
             pak_filter,
         )?;
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
+        backup_config_files_from_report(&report, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
@@ -2133,6 +2187,7 @@ fn install_downloaded_file(
         );
         let report = installer::install_rar_archive(path, &staged_context, temp_root, pak_filter)?;
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
+        backup_config_files_from_report(&report, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
@@ -2156,6 +2211,7 @@ fn install_downloaded_file(
         );
         let report = installer::install_7z_archive(path, &staged_context, temp_root, pak_filter)?;
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
+        backup_config_files_from_report(&report, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
@@ -2240,6 +2296,40 @@ fn install_downloaded_file(
         if game_bank.exists() {
             fs::create_dir_all(&staged_context.backup_path)?;
             fs::copy(&game_bank, staged_context.backup_path.join(file_name))?;
+        }
+        let report = installer::InstallReport {
+            installed: 1,
+            skipped: 0,
+            overrides_backed_up: 0,
+            installed_files: vec![destination],
+        };
+        save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
+        return Ok(false);
+    }
+
+    if extension.eq_ignore_ascii_case("ini") {
+        let _ = app.emit(
+            "install_progress",
+            &ProgressEvent {
+                operation: "install".to_string(),
+                file: path.to_string_lossy().to_string(),
+                percent: 75.0,
+                message: "Installing config file...".to_string(),
+                total_bytes: None,
+                processed_bytes: None,
+            },
+        );
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| AppError::Validation("invalid ini file path".to_string()))?;
+        fs::create_dir_all(&staged_context.mods_path)?;
+        let destination = staged_context.mods_path.join(file_name);
+        fs::copy(path, &destination)?;
+        let config_path = steam::get_config_path()?;
+        let game_config = config_path.join(file_name);
+        if game_config.exists() {
+            fs::create_dir_all(&staged_context.backup_path)?;
+            fs::copy(&game_config, staged_context.backup_path.join(file_name))?;
         }
         let report = installer::InstallReport {
             installed: 1,

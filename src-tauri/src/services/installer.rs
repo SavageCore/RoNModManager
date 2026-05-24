@@ -15,6 +15,7 @@ pub enum ModFileType {
     WorldGenSave,
     Override,
     BankMod,
+    ConfigMod,
     Unknown,
 }
 
@@ -59,6 +60,7 @@ pub fn classify_archive_entry(path: &Path) -> ModFileType {
         Some(ext) if ext.eq_ignore_ascii_case("pak") => ModFileType::PakMod,
         Some(ext) if ext.eq_ignore_ascii_case("sav") => ModFileType::WorldGenSave,
         Some(ext) if ext.eq_ignore_ascii_case("bank") => ModFileType::BankMod,
+        Some(ext) if ext.eq_ignore_ascii_case("ini") => ModFileType::ConfigMod,
         _ => ModFileType::Unknown,
     }
 }
@@ -175,6 +177,25 @@ where
             ModFileType::BankMod => {
                 let file_name = entry_path.file_name().ok_or_else(|| {
                     AppError::Validation(format!("invalid bank path in archive: {}", entry.name()))
+                })?;
+                fs::create_dir_all(&context.mods_path)?;
+                let destination = context.mods_path.join(file_name);
+                let entry_size = entry.size();
+                if copy_entry_if_changed_with_progress(&mut entry, &destination, |chunk| {
+                    processed_bytes = processed_bytes.saturating_add(chunk);
+                    emit_progress(&entry_name, processed_bytes);
+                })? {
+                    report.installed += 1;
+                    report.installed_files.push(destination);
+                } else {
+                    report.skipped += 1;
+                    processed_bytes = processed_bytes.saturating_add(entry_size);
+                    emit_progress(&entry_name, processed_bytes);
+                }
+            }
+            ModFileType::ConfigMod => {
+                let file_name = entry_path.file_name().ok_or_else(|| {
+                    AppError::Validation(format!("invalid ini path in archive: {}", entry.name()))
                 })?;
                 fs::create_dir_all(&context.mods_path)?;
                 let destination = context.mods_path.join(file_name);
@@ -338,6 +359,19 @@ pub fn install_rar_archive(
                     report.skipped += 1;
                 }
             }
+            ModFileType::ConfigMod => {
+                let file_name = entry_path.file_name().ok_or_else(|| {
+                    AppError::Validation(format!("invalid ini path in archive: {}", entry_name))
+                })?;
+                fs::create_dir_all(&context.mods_path)?;
+                let destination = context.mods_path.join(file_name);
+                if copy_file_if_changed(&temp_file, &destination)? {
+                    report.installed += 1;
+                    report.installed_files.push(destination);
+                } else {
+                    report.skipped += 1;
+                }
+            }
             ModFileType::Override => {
                 let override_relative = if entry_path.starts_with("_overrides") {
                     entry_path.strip_prefix("_overrides").map_err(|_| {
@@ -453,6 +487,22 @@ pub fn install_7z_archive(
                 let file_name = rel_path.file_name().ok_or_else(|| {
                     AppError::Validation(format!(
                         "invalid bank path in archive: {}",
+                        rel_path.display()
+                    ))
+                })?;
+                fs::create_dir_all(&context.mods_path)?;
+                let destination = context.mods_path.join(file_name);
+                if copy_file_if_changed(&abs_path, &destination)? {
+                    report.installed += 1;
+                    report.installed_files.push(destination);
+                } else {
+                    report.skipped += 1;
+                }
+            }
+            ModFileType::ConfigMod => {
+                let file_name = rel_path.file_name().ok_or_else(|| {
+                    AppError::Validation(format!(
+                        "invalid ini path in archive: {}",
                         rel_path.display()
                     ))
                 })?;
