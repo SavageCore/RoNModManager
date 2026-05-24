@@ -1113,6 +1113,12 @@ struct NexusFreeDownloadWaitingPayload {
     mod_url: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NexusFreeDownloadCompletePayload {
+    file_name: String,
+}
+
 #[tauri::command]
 pub async fn add_nexus_mod(
     app: AppHandle,
@@ -1300,6 +1306,12 @@ pub async fn add_nexus_mod(
                 tokio::time::sleep(poll_interval).await;
                 let size_second = fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0);
                 if size_first > 0 && size_first == size_second {
+                    let _ = app.emit(
+                        "nexus_free_download_complete",
+                        &NexusFreeDownloadCompletePayload {
+                            file_name: expected_filename.clone(),
+                        },
+                    );
                     break;
                 }
             } else {

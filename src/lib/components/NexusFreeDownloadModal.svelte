@@ -2,11 +2,13 @@
   import { createEventDispatcher } from "svelte";
   import { cancelNexusDownload } from "$lib/api/commands";
 
-  export let prettyName: string | null = null;
-  export let fileName: string = "";
+  export let downloads: Array<{
+    prettyName: string | null;
+    fileName: string;
+    modUrl: string;
+  }> = [];
 
   const dispatch = createEventDispatcher<{ cancel: void }>();
-  const displayName = prettyName || fileName;
 
   async function handleCancel() {
     await cancelNexusDownload();
@@ -48,18 +50,23 @@
     </div>
 
     <p style="color: var(--clr-text-secondary);" class="text-sm mb-3">
-      The Nexus files tab has opened in your browser. Find and download:
+      The Nexus files tab has opened in your browser. Find and download
+      {downloads.length === 1 ? "this file" : "these files"}:
     </p>
 
-    <div
-      class="rounded px-3 py-2 mb-4 text-sm font-medium"
-      style="background: color-mix(in srgb, var(--clr-primary-300) 12%, transparent); color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 30%, transparent);"
-    >
-      {displayName}
+    <div class="flex flex-col gap-2 mb-4">
+      {#each downloads as dl (dl.fileName)}
+        <div
+          class="rounded px-3 py-2 text-sm font-medium"
+          style="background: color-mix(in srgb, var(--clr-primary-300) 12%, transparent); color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 30%, transparent);"
+        >
+          {dl.prettyName || dl.fileName}
+        </div>
+      {/each}
     </div>
 
     <p style="color: var(--clr-text-secondary);" class="text-xs mb-4">
-      The download will be detected automatically once the file appears in your
+      Downloads will be detected automatically once the files appear in your
       Downloads folder.
     </p>
 

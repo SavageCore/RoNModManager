@@ -213,11 +213,11 @@
   let modsForActiveProfile: string[] = [];
   let showAddModModal = false;
   let showAddModpackPanel = false;
-  let nexusFreeDownload: {
+  let nexusFreeDownloads: Array<{
     prettyName: string | null;
     fileName: string;
     modUrl: string;
-  } | null = null;
+  }> = [];
   let confirmModal: {
     isVisible: boolean;
     title: string;
@@ -1239,18 +1239,25 @@
       fileName: string;
       modUrl: string;
     }>("nexus_free_download_waiting", (event) => {
-      nexusFreeDownload = event.payload;
+      if (
+        !nexusFreeDownloads.some((d) => d.fileName === event.payload.fileName)
+      ) {
+        nexusFreeDownloads = [...nexusFreeDownloads, event.payload];
+      }
     }).then((fn) => {
       unlistenFreeDownload = fn;
     });
 
-    let unlistenInstallProgress: (() => void) | null = null;
-    void listen<{ operation: string }>("install_progress", (event) => {
-      if (event.payload.operation !== "download") {
-        nexusFreeDownload = null;
-      }
-    }).then((fn) => {
-      unlistenInstallProgress = fn;
+    let unlistenFreeDownloadComplete: (() => void) | null = null;
+    void listen<{ fileName: string }>(
+      "nexus_free_download_complete",
+      (event) => {
+        nexusFreeDownloads = nexusFreeDownloads.filter(
+          (d) => d.fileName !== event.payload.fileName,
+        );
+      },
+    ).then((fn) => {
+      unlistenFreeDownloadComplete = fn;
     });
 
     const appWindow = getCurrentWindow();
@@ -1296,8 +1303,8 @@
       if (unlistenFreeDownload) {
         unlistenFreeDownload();
       }
-      if (unlistenInstallProgress) {
-        unlistenInstallProgress();
+      if (unlistenFreeDownloadComplete) {
+        unlistenFreeDownloadComplete();
       }
     };
   });
@@ -1454,12 +1461,11 @@
   />
 {/if}
 
-{#if nexusFreeDownload}
+{#if nexusFreeDownloads.length > 0}
   <NexusFreeDownloadModal
-    prettyName={nexusFreeDownload.prettyName}
-    fileName={nexusFreeDownload.fileName}
+    downloads={nexusFreeDownloads}
     on:cancel={() => {
-      nexusFreeDownload = null;
+      nexusFreeDownloads = [];
     }}
   />
 {/if}
