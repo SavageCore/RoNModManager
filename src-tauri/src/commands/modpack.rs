@@ -126,6 +126,7 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
                 source_url,
                 content_hash,
                 selected_pak_files,
+                nexus_file_id: manifest.nexus_file_id,
             },
         );
     }

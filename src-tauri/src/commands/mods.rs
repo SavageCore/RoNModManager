@@ -1101,6 +1101,16 @@ pub struct AddNexusResult {
     pub archive_name: String,
     pub source_url: String,
     pub archive_path: String,
+    pub file_id: u64,
+    pub file_pretty_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NexusFreeDownloadWaitingPayload {
+    pretty_name: Option<String>,
+    file_name: String,
+    mod_url: String,
 }
 
 #[tauri::command]
@@ -1140,6 +1150,7 @@ pub async fn add_nexus_mod(
         })?
     };
     let expected_filename = primary_file.file_name.clone();
+    let file_pretty_name = primary_file.name.clone();
     let file_id = primary_file.file_id;
 
     let source_url = format!("https://www.nexusmods.com/readyornot/mods/{}", mod_id);
@@ -1209,7 +1220,6 @@ pub async fn add_nexus_mod(
     } else {
         // Non-premium: open browser to the files tab and watch ~/Downloads
         let files_url = format!("{}?tab=files", source_url);
-
         let _ = app.emit(
             "install_progress",
             &ProgressEvent {
@@ -1226,6 +1236,15 @@ pub async fn add_nexus_mod(
 
         let downloads_dir = dirs::download_dir()
             .ok_or_else(|| AppError::Validation("Cannot locate Downloads directory".to_string()))?;
+
+        let _ = app.emit(
+            "nexus_free_download_waiting",
+            &NexusFreeDownloadWaitingPayload {
+                pretty_name: file_pretty_name.clone(),
+                file_name: expected_filename.clone(),
+                mod_url: files_url.clone(),
+            },
+        );
 
         let _ = app.emit(
             "install_progress",
@@ -1297,6 +1316,8 @@ pub async fn add_nexus_mod(
         archive_name,
         source_url,
         archive_path: install_path.to_string_lossy().to_string(),
+        file_id,
+        file_pretty_name,
     })
 }
 
@@ -1476,6 +1497,7 @@ pub async fn update_mod_source_url(
                 .unwrap_or_default()
                 .as_secs(),
             content_hash: None,
+            nexus_file_id: None,
         },
     };
     manifest_data.source_url = if source_url.trim().is_empty() {
@@ -1516,6 +1538,21 @@ pub async fn update_mod_source_url(
     }
 
     manager.save_manifest(&manifest_data)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_nexus_file_id(
+    _state: State<'_, AppState>,
+    archive_name: String,
+    file_id: u64,
+) -> Result<()> {
+    let staging_root = get_staging_root()?;
+    let manager = manifest::ManifestManager::new(&staging_root);
+    if let Some(mut manifest_data) = manager.load_manifest(&archive_name)? {
+        manifest_data.nexus_file_id = Some(file_id);
+        manager.save_manifest(&manifest_data)?;
+    }
     Ok(())
 }
 
@@ -1906,6 +1943,7 @@ fn save_install_manifest(
             .unwrap_or_default()
             .as_secs(),
         content_hash,
+        nexus_file_id: None,
     };
 
     if let Some(file_name) = archive_path.file_name() {

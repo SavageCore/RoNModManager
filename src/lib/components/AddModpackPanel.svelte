@@ -26,20 +26,27 @@
 
   import {
     addModIoMod,
+    addNexusMod,
     downloadModArchive,
     fetchModpackJson,
     fetchModioRemoteInfo,
     fileExists,
     getArchiveRootPath,
     getConfig,
-    getInstalledModGroups,
     installLocalMod,
+    listNexusFileOptions,
     readManifestForArchive,
     updateConfig,
     updateModSourceUrl,
+    updateNexusFileId,
   } from "$lib/api/commands";
+  import { requestNexusFileSelection } from "$lib/stores/nexusFileSelection";
   import { tick } from "svelte";
   import LogPanel from "./LogPanel.svelte";
+
+  function isNexusUrl(value: string): boolean {
+    return value.includes("nexusmods.com/") && value.includes("/mods/");
+  }
 
   $: if (isVisible) {
     (async () => {
@@ -158,6 +165,78 @@
           continue;
         }
 
+        if (isNexusUrl(src)) {
+          log.push(`Installing Nexus mod: ${modFile}...`);
+          log = log;
+          await tick();
+          try {
+            let manifest = null;
+            try {
+              manifest = await readManifestForArchive(modFile);
+            } catch {}
+            const archivePath = `${archiveRootPath}/${modFile}`;
+            if (
+              manifest?.content_hash &&
+              modInfo.content_hash &&
+              manifest.content_hash === modInfo.content_hash &&
+              (await fileExists(archivePath).catch(() => false))
+            ) {
+              log.push(`Already up-to-date, skipping download.`);
+              log = log;
+              await tick();
+              continue;
+            }
+
+            let chosenFileId: number | undefined =
+              modInfo.nexus_file_id ?? undefined;
+            if (chosenFileId == null) {
+              const fileOptions = await listNexusFileOptions(src);
+              if (fileOptions.length > 1) {
+                const chosen = await requestNexusFileSelection(
+                  modFile,
+                  fileOptions,
+                );
+                if (chosen === null) {
+                  log.push(`Skipped: ${modFile} (cancelled)`);
+                  log = log;
+                  await tick();
+                  continue;
+                }
+                chosenFileId = chosen.fileId;
+              } else if (fileOptions.length === 1) {
+                chosenFileId = fileOptions[0].fileId;
+              }
+            }
+
+            const result = await addNexusMod(src, chosenFileId);
+            await installLocalMod(
+              result.archivePath,
+              modInfo.selected_pak_files ?? undefined,
+            );
+            await updateModSourceUrl(
+              result.archiveName,
+              result.sourceUrl,
+            ).catch(() => {});
+            if (result.fileId != null) {
+              await updateNexusFileId(result.archiveName, result.fileId).catch(
+                () => {},
+              );
+            }
+            log.push(`Installed '${result.name}' from Nexus.`);
+            log = log;
+            await tick();
+          } catch (modErr: any) {
+            log.push(
+              `Error installing Nexus mod: ${modErr.message || String(modErr)}`,
+            );
+            log = log;
+            await tick();
+            error = modErr.message || String(modErr);
+            hadError = true;
+          }
+          continue;
+        }
+
         log.push(`Processing mod: ${modFile} ...`);
         log = log;
         let manifestHashMatched = false;
@@ -262,18 +341,6 @@
         log = log;
         await tick();
       }
-      try {
-        await getInstalledModGroups();
-        log.push("Refreshed mod list.");
-        log = log;
-        await tick();
-      } catch (refreshErr: any) {
-        log.push(
-          `Error refreshing mod list: ${refreshErr.message || String(refreshErr)}`,
-        );
-        log = log;
-        await tick();
-      }
       if (!hadError) {
         log.push("All mods processed.");
         log = log;
@@ -283,6 +350,7 @@
         log = log;
         await tick();
       }
+      dispatch("done");
     } catch (e: any) {
       log.push(`Unexpected error: ${e.message || String(e)}`);
       await tick();

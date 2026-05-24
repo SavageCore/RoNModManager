@@ -10,6 +10,9 @@ pub struct ModEntry {
     pub content_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_pak_files: Option<Vec<String>>,
+    /// Nexus Mods file ID of the specific variant chosen at install time
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nexus_file_id: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

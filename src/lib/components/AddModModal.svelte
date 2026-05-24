@@ -8,6 +8,7 @@
     listNexusFileOptions,
     updateModDisplayName,
     updateModSourceUrl,
+    updateNexusFileId,
   } from "$lib/api/commands";
   import { alertStore } from "$lib/stores/alert";
   import { importLogStore } from "$lib/stores/importLogStore";
@@ -218,6 +219,11 @@
           await updateModSourceUrl(result.archiveName, result.sourceUrl).catch(
             () => {},
           );
+          if (result.fileId != null) {
+            await updateNexusFileId(result.archiveName, result.fileId).catch(
+              () => {},
+            );
+          }
           modAddQueueStore.markDone(entry.queueId, `Installed ${result.name}`);
         } catch (error) {
           const msg = String(error);

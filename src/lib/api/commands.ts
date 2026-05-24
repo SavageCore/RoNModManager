@@ -128,6 +128,8 @@ export interface ModAddResult {
   archiveName: string;
   sourceUrl: string;
   archivePath: string;
+  fileId?: number;
+  filePrettyName?: string | null;
 }
 
 export interface NexusFileOption {
@@ -145,6 +147,8 @@ export const addNexusMod = (input: string, fileId?: number) =>
 export const listNexusFileOptions = (input: string) =>
   invoke<NexusFileOption[]>("list_nexus_file_options", { input });
 export const cancelNexusDownload = () => invoke<void>("cancel_nexus_download");
+export const updateNexusFileId = (archiveName: string, fileId: number) =>
+  invoke<void>("update_nexus_file_id", { archiveName, fileId });
 export const fetchNexusModInfo = (input: string) =>
   invoke<{
     modId: number;

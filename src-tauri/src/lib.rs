@@ -135,6 +135,7 @@ pub fn run() {
             mods::uninstall_archive,
             mods::update_mod_display_name,
             mods::update_mod_source_url,
+            mods::update_nexus_file_id,
             mods::read_manifest_for_archive,
             mods::get_modio_remote_info,
             mods::get_addon_map,

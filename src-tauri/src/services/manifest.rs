@@ -22,6 +22,9 @@ pub struct InstallManifest {
     /// Optional MD5 hash of the source archive for deduplication
     #[serde(default)]
     pub content_hash: Option<String>,
+    /// Nexus Mods file ID of the specific variant chosen at install time
+    #[serde(default)]
+    pub nexus_file_id: Option<u64>,
 }
 
 pub struct ManifestManager {

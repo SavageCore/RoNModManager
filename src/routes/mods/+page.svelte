@@ -39,6 +39,8 @@
   } from "$lib/stores/pakSelection";
   import NexusFileSelectionModal from "$lib/components/NexusFileSelectionModal.svelte";
   import { nexusFileSelectionStore } from "$lib/stores/nexusFileSelection";
+  import NexusFreeDownloadModal from "$lib/components/NexusFreeDownloadModal.svelte";
+  import { listen } from "@tauri-apps/api/event";
   import ManageAddOnsModal from "$lib/components/ManageAddOnsModal.svelte";
   let showAddOnsModal = false;
   let selectedModName = "";
@@ -211,6 +213,11 @@
   let modsForActiveProfile: string[] = [];
   let showAddModModal = false;
   let showAddModpackPanel = false;
+  let nexusFreeDownload: {
+    prettyName: string | null;
+    fileName: string;
+    modUrl: string;
+  } | null = null;
   let confirmModal: {
     isVisible: boolean;
     title: string;
@@ -1226,6 +1233,26 @@
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("ron:metadata-refreshed", handleMetadataRefreshed);
 
+    let unlistenFreeDownload: (() => void) | null = null;
+    void listen<{
+      prettyName: string | null;
+      fileName: string;
+      modUrl: string;
+    }>("nexus_free_download_waiting", (event) => {
+      nexusFreeDownload = event.payload;
+    }).then((fn) => {
+      unlistenFreeDownload = fn;
+    });
+
+    let unlistenInstallProgress: (() => void) | null = null;
+    void listen<{ operation: string }>("install_progress", (event) => {
+      if (event.payload.operation !== "download") {
+        nexusFreeDownload = null;
+      }
+    }).then((fn) => {
+      unlistenInstallProgress = fn;
+    });
+
     const appWindow = getCurrentWindow();
     let unlistenDragDrop: (() => void) | null = null;
 
@@ -1266,6 +1293,12 @@
       if (unlistenDragDrop) {
         unlistenDragDrop();
       }
+      if (unlistenFreeDownload) {
+        unlistenFreeDownload();
+      }
+      if (unlistenInstallProgress) {
+        unlistenInstallProgress();
+      }
     };
   });
 </script>
@@ -1288,6 +1321,9 @@
   isVisible={showAddModpackPanel}
   on:close={() => {
     showAddModpackPanel = false;
+  }}
+  on:done={() => {
+    void refresh();
   }}
 />
 
@@ -1414,6 +1450,16 @@
     on:cancel={() => {
       $nexusFileSelectionStore?.resolve(null);
       nexusFileSelectionStore.set(null);
+    }}
+  />
+{/if}
+
+{#if nexusFreeDownload}
+  <NexusFreeDownloadModal
+    prettyName={nexusFreeDownload.prettyName}
+    fileName={nexusFreeDownload.fileName}
+    on:cancel={() => {
+      nexusFreeDownload = null;
     }}
   />
 {/if}
