@@ -255,6 +255,11 @@
           }
         }
       }
+      if (modCount > 0) {
+        log.push("---");
+        log = log;
+        await tick();
+      }
       try {
         await getInstalledModGroups();
         log.push("Refreshed mod list.");
