@@ -4,6 +4,7 @@
   import { importLogStore } from "$lib/stores/importLogStore";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { operationStatusStore } from "$lib/stores/operationStatus";
+  import { infoLogStore } from "$lib/stores/infoLogStore";
   import { syncLogStore } from "$lib/stores/syncLogStore";
   import ChevronDown from "lucide-svelte/icons/chevron-down";
   import ChevronUp from "lucide-svelte/icons/chevron-up";
@@ -265,6 +266,21 @@
         <ChevronUp size={11} />
       {/if}
       {queueProgress ? `${queueProgress} mods` : "Import Log"}
+    </button>
+  {/if}
+  {#if $infoLogStore.lines.length > 0 || $infoLogStore.isBusy}
+    <button
+      on:click={() => infoLogStore.toggle()}
+      class="shrink-0 text-xs px-2 py-0.5 rounded flex items-center gap-1"
+      style="color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 40%, transparent); background: color-mix(in srgb, var(--clr-primary-300) 10%, transparent); cursor: pointer;"
+      title="Toggle metadata refresh log"
+    >
+      {#if $infoLogStore.isOpen}
+        <ChevronDown size={11} />
+      {:else}
+        <ChevronUp size={11} />
+      {/if}
+      Metadata Refresh
     </button>
   {/if}
   {#if $syncLogStore.log.length > 0 || $syncLogStore.isBusy}

@@ -48,7 +48,9 @@
   import "../app.css";
 
   import AddModpackPanel from "$lib/components/AddModpackPanel.svelte";
+  import InfoPanel from "$lib/components/InfoPanel.svelte";
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
+  import { infoLogStore } from "$lib/stores/infoLogStore";
 
   const APP_NAME = "Mod Manager";
 
@@ -66,8 +68,6 @@
   let isApplyingProfile = false;
   let isLaunching = false;
   let isRefreshingMetadata = false;
-  let metadataRefreshMessage = "";
-  let metadataRefreshTone: "idle" | "success" | "error" = "idle";
   let modpackCurrentVersion: string | null = null;
   let modpackNewVersion: string | null = null;
   let updateAvailable = false;
@@ -181,16 +181,19 @@
   async function handleRefreshMetadata() {
     try {
       isRefreshingMetadata = true;
-      metadataRefreshTone = "idle";
-      metadataRefreshMessage = "Refreshing mod metadata from source links...";
+      infoLogStore.start();
+      infoLogStore.addLine("Refreshing mod metadata from source links...");
       const result = await refreshModMetadata();
-      metadataRefreshTone = result.failed > 0 ? "error" : "success";
-      metadataRefreshMessage = `Metadata refresh complete: checked ${result.checked}, refreshed ${result.refreshed}, skipped ${result.skipped}, failed ${result.failed}.`;
+      const tone = result.failed > 0 ? "error" : "success";
+      infoLogStore.addLine(
+        `Metadata refresh complete: checked ${result.checked}, refreshed ${result.refreshed}, skipped ${result.skipped}, failed ${result.failed}.`,
+      );
+      infoLogStore.finish(tone);
       window.dispatchEvent(new CustomEvent("ron:metadata-refreshed"));
     } catch (error) {
       console.error("Failed to refresh mod metadata:", error);
-      metadataRefreshTone = "error";
-      metadataRefreshMessage = `Metadata refresh failed: ${String(error)}`;
+      infoLogStore.addLine(`Metadata refresh failed: ${String(error)}`);
+      infoLogStore.finish("error");
     } finally {
       isRefreshingMetadata = false;
     }
@@ -510,19 +513,6 @@
     </div>
   </header>
 
-  {#if metadataRefreshMessage}
-    <div
-      style="background: {metadataRefreshTone === 'error'
-        ? 'color-mix(in srgb, var(--clr-error) 12%, var(--clr-surface))'
-        : metadataRefreshTone === 'success'
-          ? 'color-mix(in srgb, var(--clr-success) 12%, var(--clr-surface))'
-          : 'color-mix(in srgb, var(--clr-primary-300) 10%, var(--clr-surface))'}; border-bottom: 1px solid var(--adw-border-color);"
-      class="px-4 py-2 text-sm"
-    >
-      <span style="color: var(--clr-text);">{metadataRefreshMessage}</span>
-    </div>
-  {/if}
-
   {#if !hasSavedToken}
     <div
       role="button"
@@ -591,6 +581,7 @@
   <ImportLogPanel />
   <SyncPanel />
   <AddModpackPanel />
+  <InfoPanel />
   <FooterStatusBar />
 
   {#if showClosePreferenceDialog}
