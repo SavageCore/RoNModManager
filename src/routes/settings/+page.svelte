@@ -448,7 +448,7 @@
     // If removing the key, just save and return
     if (!trimmed) {
       try {
-        await updateConfig({ nexus_api_key: null });
+        await updateConfig({ nexus_api_key: "" });
         clearValidationCache(NEXUS_VALIDATION_CACHE_KEY);
         nexusKeyValid = null;
         await refresh();
