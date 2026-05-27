@@ -118,8 +118,11 @@ fn launch_game_internal(game_path: &Path, intro_skip_enabled: bool) -> Result<()
                 exe_path.display()
             ));
         }
-        Command::new("cmd")
-            .args(&["/C", &format!("start \"\" \"{}\"", exe_path.display())])
+        // Use explorer to open the Steam URI rather than spawning the exe directly.
+        // cmd /C start with a path can fail when the path has a \\?\ extended-length
+        // prefix, which Windows interprets as a UNC network path.
+        Command::new("explorer")
+            .arg("steam://rungameid/1144200")
             .spawn()
             .map_err(|e| format!("Failed to launch game: {}", e))?;
     }
