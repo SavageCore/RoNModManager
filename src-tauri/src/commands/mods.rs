@@ -775,7 +775,12 @@ pub async fn uninstall_mods(_app: AppHandle, state: State<'_, AppState>) -> Resu
         }
     }
 
-    // 2. Delete files and manifests
+    // 2. Remove game-folder files while manifests still exist so the path
+    //    mapping is available. On Windows, files may be hard links or copies
+    //    (not symlinks), so remove_orphan_symlinks() won't catch them later.
+    game::sync_mod_links_for_game_path(&game_path, Vec::new()).map_err(AppError::Validation)?;
+
+    // 3. Delete files and manifests
     for manifest_data in all_manifests.into_values() {
         let mod_name = manifest_data.source_archive.clone();
 
@@ -788,7 +793,7 @@ pub async fn uninstall_mods(_app: AppHandle, state: State<'_, AppState>) -> Resu
         let _ = manager.delete_manifest(&mod_name);
     }
 
-    // 2b. Remove any orphaned per-mod subdirectories in staging (not caught by manifests)
+    // 3b. Remove any orphaned per-mod subdirectories in staging (not caught by manifests)
     for subdir in &["mods", "savegames", "backups"] {
         let parent = staging_root.join(subdir);
         if let Ok(entries) = fs::read_dir(&parent) {
@@ -801,15 +806,12 @@ pub async fn uninstall_mods(_app: AppHandle, state: State<'_, AppState>) -> Resu
         }
     }
 
-    // 3. Clear archives
+    // 4. Clear archives
     let archives_root = get_archives_root()?;
     if archives_root.exists() {
         let _ = fs::remove_dir_all(&archives_root);
         let _ = fs::create_dir_all(&archives_root);
     }
-
-    // 4. Sync links (should result in empty mods folder)
-    game::sync_mod_links_for_game_path(&game_path, Vec::new()).map_err(AppError::Validation)?;
 
     Ok(())
 }
