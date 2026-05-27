@@ -71,7 +71,7 @@ jobs:
           flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.node24//25.08 org.freedesktop.Sdk.Extension.rust-stable//25.08
       - name: Build Flatpak bundle
         run: |
-          flatpak-builder --force-clean --user --allow=network --install-deps-from=flathub --repo=flatpak-repo build-dir packaging/flatpak/uk.savagecore.ronmodmanager.yml
+          flatpak-builder --force-clean --user --install-deps-from=flathub --repo=flatpak-repo build-dir packaging/flatpak/uk.savagecore.ronmodmanager.yml
           flatpak build-bundle flatpak-repo ronmodmanager.flatpak uk.savagecore.ronmodmanager master
       - name: Upload Flatpak to GitHub Release
         uses: softprops/action-gh-release@v3
