@@ -34,9 +34,18 @@ fn create_file_link(src: &Path, dst: &Path) -> Result<(), String> {
         std::os::unix::fs::symlink(src, dst).map_err(|e| e.to_string())
     }
 
+    // On Windows, symlinks require SeCreateSymbolicLinkPrivilege (or Developer
+    // Mode). Fall back to a hard link (same volume) or plain copy if that
+    // privilege is absent (error 1314).
     #[cfg(windows)]
     {
-        std::os::windows::fs::symlink_file(src, dst).map_err(|e| e.to_string())
+        match std::os::windows::fs::symlink_file(src, dst) {
+            Ok(()) => Ok(()),
+            Err(e) if e.raw_os_error() == Some(1314) => fs::hard_link(src, dst)
+                .or_else(|_| fs::copy(src, dst).map(|_| ()))
+                .map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        }
     }
 }
 
