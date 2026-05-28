@@ -1,5 +1,7 @@
 FLATPAK_ID       := uk.savagecore.ronmodmanager
 FLATPAK_MANIFEST := packaging/flatpak/$(FLATPAK_ID).yml
+FLATPAK_GPG_KEY  := 65A3B75AC7807CC569F4730F26970A50720B91A6
+FLATPAK_GPG_PUB  := packaging/flatpak/ronmodmanager-flatpak.gpg
 CARGO_MANIFEST   := src-tauri/Cargo.toml
 
 .PHONY: help install dev dev-xwayland build build-frontend release \
@@ -86,13 +88,19 @@ flatpak-vendor: ## Vendor Cargo dependencies for offline Flatpak build
 	cd src-tauri && cargo vendor vendor
 
 flatpak-build: ## Build Flatpak from local repo (run flatpak-vendor first)
-	flatpak-builder --force-clean --user --install-deps-from=flathub --repo=flatpak-repo build-dir $(FLATPAK_MANIFEST)
+	flatpak-builder --force-clean --user --install-deps-from=flathub \
+		--gpg-sign=$(FLATPAK_GPG_KEY) \
+		--repo=flatpak-repo build-dir $(FLATPAK_MANIFEST)
 
 flatpak-bundle: ## Export a .flatpak bundle from the local repo
-	flatpak build-bundle flatpak-repo ronmodmanager.flatpak $(FLATPAK_ID) master
+	flatpak build-bundle \
+		--gpg-sign=$(FLATPAK_GPG_KEY) \
+		--gpg-keys=$(FLATPAK_GPG_PUB) \
+		flatpak-repo ronmodmanager.flatpak $(FLATPAK_ID) master
 
 flatpak-install: ## Install the local .flatpak bundle for the current user
-	flatpak install --user --bundle -y ronmodmanager.flatpak
+	-flatpak uninstall --user -y $(FLATPAK_ID) 2>/dev/null || true
+	flatpak install --user --bundle --gpg-file=$(FLATPAK_GPG_PUB) -y ronmodmanager.flatpak
 
 flatpak-run: ## Run the installed Flatpak
 	flatpak run $(FLATPAK_ID)
