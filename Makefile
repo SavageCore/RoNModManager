@@ -92,12 +92,12 @@ flatpak-bundle: ## Export a .flatpak bundle from the local repo
 	flatpak build-bundle flatpak-repo ronmodmanager.flatpak $(FLATPAK_ID) master
 
 flatpak-install: ## Install the local .flatpak bundle for the current user
-	flatpak install --user --bundle ronmodmanager.flatpak
+	flatpak install --user --bundle -y ronmodmanager.flatpak
 
 flatpak-run: ## Run the installed Flatpak
 	flatpak run $(FLATPAK_ID)
 
-flatpak: flatpak-vendor flatpak-build flatpak-bundle ## Full local Flatpak pipeline (vendor → build → bundle)
+flatpak: flatpak-vendor flatpak-build flatpak-bundle flatpak-install ## Full local Flatpak pipeline (vendor → build → bundle)
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
 

@@ -53,7 +53,7 @@
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import { infoLogStore } from "$lib/stores/infoLogStore";
 
-  const APP_NAME = "Mod Manager";
+  const APP_NAME = "RoN Mod Manager";
 
   const nav = [
     { href: "/mods", label: "Mods", icon: Package },
