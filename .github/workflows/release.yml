@@ -71,6 +71,10 @@ jobs:
           flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.node24//25.08 org.freedesktop.Sdk.Extension.rust-stable//25.08
       - name: Import Flatpak GPG key
         run: |
+          if [ -z "${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}" ]; then
+            echo "::error::FLATPAK_GPG_PRIVATE_KEY secret is not set"
+            exit 1
+          fi
           echo "${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}" | base64 -d | gpg --import
       - name: Build Flatpak bundle
         run: |
