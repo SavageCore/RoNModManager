@@ -84,6 +84,19 @@ Run local bundle:
 make flatpak-run
 ```
 
+## Versioning
+
+Version is stored in three files (`package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`).
+Use `npm version` to bump all three at once:
+
+```bash
+npm version patch   # 0.0.0 -> 0.0.1
+npm version minor   # 0.0.0 -> 0.1.0
+npm version major   # 0.0.0 -> 1.0.0
+```
+
+The `version` hook syncs `tauri.conf.json` and `Cargo.toml` and stages them before npm creates the version commit and tag, so all three files land in a single commit.
+
 ## License
 
 MIT

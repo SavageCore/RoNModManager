@@ -23,7 +23,8 @@
     "test:unit:watch": "vitest",
     "tauri": "tauri",
     "prepare": "husky",
-    "release": "dotenvx run -- npm run tauri build"
+    "release": "dotenvx run -- npm run tauri build",
+    "version": "node scripts/sync-version.js && git add src-tauri/tauri.conf.json src-tauri/Cargo.toml"
   },
   "license": "MIT",
   "dependencies": {
