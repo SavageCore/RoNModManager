@@ -746,6 +746,11 @@ pub async fn install_mods(
                         profile
                             .broken_mods
                             .entry(archive.clone())
+                            .and_modify(|existing| {
+                                if existing.is_empty() && !note.is_empty() {
+                                    *existing = note.clone();
+                                }
+                            })
                             .or_insert_with(|| note.clone());
                     }
                     for archive in &pack_data.no_world_gen {
@@ -753,7 +758,7 @@ pub async fn install_mods(
                             profile.no_world_gen.push(archive.clone());
                         }
                     }
-                    let _ = profiles::save_profile(&profile);
+                    profiles::save_profile(&profile)?;
                 }
             }
         }

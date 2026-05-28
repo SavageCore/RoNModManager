@@ -2168,6 +2168,7 @@
     isVisible={showBrokenModal}
     modLabel={brokenModalModLabel}
     existingNote={brokenModsMap[brokenModalModName] ?? ""}
+    isAlreadyBroken={brokenModsMap[brokenModalModName] !== undefined}
     on:close={() => (showBrokenModal = false)}
     on:save={async (e) => {
       try {

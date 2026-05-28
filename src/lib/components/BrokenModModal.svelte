@@ -5,6 +5,7 @@
   export let isVisible = false;
   export let modLabel = "";
   export let existingNote = "";
+  export let isAlreadyBroken = false;
 
   const dispatch = createEventDispatcher<{
     close: void;
@@ -53,7 +54,7 @@
           style="color: var(--clr-danger-300); flex-shrink: 0;"
         />
         <h2 style="color: var(--clr-text);" class="text-lg font-semibold">
-          {existingNote !== "" ? "Edit broken note" : "Mark as broken"}
+          {isAlreadyBroken ? "Edit broken note" : "Mark as broken"}
         </h2>
       </div>
       <p
@@ -74,13 +75,13 @@
 
       <div class="flex gap-2 justify-end">
         <button class="btn" on:click={handleClose}>Cancel</button>
-        {#if existingNote !== ""}
+        {#if isAlreadyBroken}
           <button class="btn btn-danger" on:click={handleClear}
             >Remove flag</button
           >
         {/if}
         <button class="btn primary" on:click={handleSave}>
-          {existingNote !== "" ? "Save" : "Mark as broken"}
+          {isAlreadyBroken ? "Save" : "Mark as broken"}
         </button>
       </div>
     </div>

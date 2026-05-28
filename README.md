@@ -75,13 +75,12 @@ Local Flatpak build:
 
 ```bash
 make flatpak-deps    # install runtimes once
-make flatpak         # vendor → build → bundle
+make flatpak         # vendor → build → bundle → install
 ```
 
-Install and run local bundle:
+Run local bundle:
 
 ```bash
-make flatpak-install
 make flatpak-run
 ```
 

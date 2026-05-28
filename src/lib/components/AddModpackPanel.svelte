@@ -495,10 +495,29 @@
           unlistenWaiting();
         }
       }
-      await applyModpackProfileMetadata(data).catch(() => {});
+      let brokenCount = 0;
+      let metaErr: any = null;
+      try {
+        await applyModpackProfileMetadata(data);
+        brokenCount = data.broken ? Object.keys(data.broken).length : 0;
+      } catch (err: any) {
+        metaErr = err;
+      }
 
       if (modCount > 0) {
         log.push("---");
+        log = log;
+        await tick();
+      }
+      if (brokenCount > 0) {
+        log.push(`Applied ${brokenCount} broken note(s) from modpack.`);
+        log = log;
+        await tick();
+      }
+      if (metaErr) {
+        log.push(
+          `Warning: Could not apply modpack metadata - ${metaErr?.message ?? String(metaErr)}`,
+        );
         log = log;
         await tick();
       }

@@ -39,7 +39,11 @@ export interface ModPack {
   version: string;
   description: string;
   author: string | null;
+  mods: Record<string, import("./modpack").ModInfo>;
   collections: Record<string, Collection>;
+  addons?: Record<string, string[]>;
+  tags?: Record<string, string[]>;
+  broken?: Record<string, string>;
   no_world_gen?: string[];
 }
 

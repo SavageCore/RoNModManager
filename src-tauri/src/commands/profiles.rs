@@ -63,6 +63,8 @@ pub async fn save_profile(
         profile.tags = existing.tags;
         profile.collection_colors = existing.collection_colors;
         profile.created_at = existing.created_at;
+        profile.broken_mods = existing.broken_mods;
+        profile.no_world_gen = existing.no_world_gen;
     }
     if let Some(desc) = description {
         profile = profile.with_description(desc);

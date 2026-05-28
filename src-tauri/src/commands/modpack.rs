@@ -191,10 +191,15 @@ pub async fn apply_modpack_profile_metadata(
 ) -> Result<()> {
     let config = state.get_config()?;
     let Some(profile_name) = config.active_profile else {
-        return Ok(());
+        return Err(AppError::Validation(
+            "No active profile - modpack metadata not applied. Select or create a profile first."
+                .to_string(),
+        ));
     };
     let Some(mut profile) = profiles::get_profile(&profile_name)? else {
-        return Ok(());
+        return Err(AppError::Validation(format!(
+            "Profile '{profile_name}' not found - modpack metadata not applied."
+        )));
     };
 
     for (tag_name, archives) in &modpack.tags {
@@ -222,6 +227,11 @@ pub async fn apply_modpack_profile_metadata(
         profile
             .broken_mods
             .entry(archive.clone())
+            .and_modify(|existing| {
+                if existing.is_empty() && !note.is_empty() {
+                    *existing = note.clone();
+                }
+            })
             .or_insert_with(|| note.clone());
     }
 
