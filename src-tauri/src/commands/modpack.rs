@@ -231,7 +231,27 @@ pub async fn apply_modpack_profile_metadata(
         }
     }
 
+    let mut disabled_changed = false;
+    for (archive, entry) in &modpack.mods {
+        if !entry.enabled {
+            let before = profile.installed_mod_names.len();
+            profile.installed_mod_names.retain(|name| name != archive);
+            if profile.installed_mod_names.len() != before {
+                disabled_changed = true;
+            }
+        }
+    }
+
     profiles::save_profile(&profile)?;
+
+    if disabled_changed {
+        if let Some(game_path) = config.game_path.as_ref() {
+            let _ = super::game::sync_mod_links_for_game_path(
+                game_path,
+                profile.installed_mod_names.clone(),
+            );
+        }
+    }
 
     if !modpack.addons.is_empty() {
         let mut local_map = addon_map::read_addon_map().unwrap_or_default();

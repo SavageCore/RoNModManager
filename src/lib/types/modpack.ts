@@ -1,5 +1,6 @@
 // Shared type for modpack mod entries
 export type ModInfo = {
+  enabled?: boolean;
   source_url?: string;
   content_hash?: string;
   selected_pak_files?: string[];
