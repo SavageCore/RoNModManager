@@ -10,7 +10,7 @@
   export let maxHeight = "400px";
   export let logFilename = "log";
 
-  const dispatch = createEventDispatcher<{ close: void }>();
+  const dispatch = createEventDispatcher<{ close: void; clear: void }>();
 
   function autoScroll(node: HTMLElement) {
     const observer = new MutationObserver(() => {
@@ -77,7 +77,7 @@
       <button
         class="btn btn-sm"
         disabled={isLoading}
-        on:click={() => dispatch("close")}>Close</button
+        on:click={() => dispatch("clear")}>Close</button
       >
     </div>
   </div>

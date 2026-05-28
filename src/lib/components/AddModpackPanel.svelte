@@ -533,6 +533,11 @@
   maxHeight="480px"
   logFilename="modpack-log"
   on:close={close}
+  on:clear={() => {
+    log = [];
+    error = "";
+    addModpackPanelStore.close();
+  }}
 >
   <div slot="controls" class="px-3 pt-3 pb-2 shrink-0">
     {#if existingUrl && $addModpackPanelStore.mode === "add"}

@@ -17,15 +17,8 @@
   log={$infoLogStore.lines}
   logFilename="metadata-refresh-log"
   on:close={() => infoLogStore.close()}
+  on:clear={() => infoLogStore.clear()}
 >
-  <svelte:fragment slot="extra-actions">
-    <button
-      class="btn btn-sm"
-      disabled={$infoLogStore.lines.length === 0 || $infoLogStore.isBusy}
-      on:click={() => infoLogStore.clear()}>Clear</button
-    >
-  </svelte:fragment>
-
   {#if $infoLogStore.lines.length === 0}
     <div style="color: var(--clr-text-secondary);">Waiting...</div>
   {:else}
