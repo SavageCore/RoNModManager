@@ -100,7 +100,8 @@ flatpak-bundle: ## Export a .flatpak bundle from the local repo
 
 flatpak-install: ## Install the local .flatpak bundle for the current user
 	-flatpak uninstall --user -y $(FLATPAK_ID) 2>/dev/null || true
-	flatpak install --user --bundle --gpg-file=$(FLATPAK_GPG_PUB) -y ronmodmanager.flatpak
+	flatpak install --user --bundle --gpg-file=$(FLATPAK_GPG_PUB) -y ronmodmanager.flatpak || \
+		flatpak info --user $(FLATPAK_ID) > /dev/null
 
 flatpak-run: ## Run the installed Flatpak
 	flatpak run $(FLATPAK_ID)
