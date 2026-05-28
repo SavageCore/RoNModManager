@@ -83,6 +83,8 @@ pub struct AppConfig {
     pub minimize_target: MinimizeTarget,
     #[serde(default)]
     pub asked_close_preference: bool,
+    #[serde(default)]
+    pub setup_wizard_complete: bool,
 }
 
 impl Default for AppConfig {
@@ -110,6 +112,7 @@ impl Default for AppConfig {
             close_action: CloseAction::Quit,
             minimize_target: MinimizeTarget::Taskbar,
             asked_close_preference: false,
+            setup_wizard_complete: false,
         }
     }
 }

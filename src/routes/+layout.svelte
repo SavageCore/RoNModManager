@@ -49,6 +49,7 @@
 
   import AddModpackPanel from "$lib/components/AddModpackPanel.svelte";
   import InfoPanel from "$lib/components/InfoPanel.svelte";
+  import SetupWizard from "$lib/components/SetupWizard.svelte";
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import { infoLogStore } from "$lib/stores/infoLogStore";
 
@@ -76,6 +77,7 @@
   let minimizeTarget: MinimizeTarget = "taskbar";
   let askedClosePreference = false;
   let showClosePreferenceDialog = false;
+  let showSetupWizard = false;
   let closingFromLaunch = false;
 
   function resolveSelectedProfile(
@@ -197,6 +199,11 @@
     } finally {
       isRefreshingMetadata = false;
     }
+  }
+
+  async function handleWizardDismiss() {
+    showSetupWizard = false;
+    await refreshShellConfigState();
   }
 
   async function handleClosePreference(
@@ -348,6 +355,18 @@
         closeAction = config.close_action ?? "quit";
         minimizeTarget = config.minimize_target ?? "taskbar";
         askedClosePreference = config.asked_close_preference ?? false;
+
+        if (!config.setup_wizard_complete) {
+          const hasAnyKey =
+            Boolean(config.modio_api_key?.trim()) ||
+            Boolean(config.oauth_token?.trim()) ||
+            Boolean(config.nexus_api_key?.trim());
+          if (hasAnyKey) {
+            void updateConfig({ setup_wizard_complete: true });
+          } else {
+            showSetupWizard = true;
+          }
+        }
       }),
       loadProfiles(),
     ]).catch(() => {
@@ -583,6 +602,10 @@
   <AddModpackPanel />
   <InfoPanel />
   <FooterStatusBar />
+
+  {#if showSetupWizard}
+    <SetupWizard onDismiss={handleWizardDismiss} />
+  {/if}
 
   {#if showClosePreferenceDialog}
     <div

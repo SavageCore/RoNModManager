@@ -183,10 +183,14 @@ export const updateConfig = (updates: {
   close_action?: "quit" | "minimize";
   minimize_target?: "taskbar" | "tray";
   asked_close_preference?: boolean;
+  setup_wizard_complete?: boolean;
 }) => invoke<void>("update_config", { updates });
 
 export const verifyNexusApiKey = (apiKey: string) =>
   invoke<boolean>("verify_nexus_api_key", { apiKey });
+
+export const verifyModioApiKey = (apiKey: string) =>
+  invoke<boolean>("verify_modio_api_key", { apiKey });
 
 export const uninstallMods = () => invoke<void>("uninstall_mods");
 export const uninstallMod = (filename: string) =>

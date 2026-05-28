@@ -10,7 +10,6 @@
     installUpdate,
     isIntroSkipApplied,
     logout,
-    saveToken,
     setGamePath,
     setTheme,
     syncModpackToRemote,
@@ -19,6 +18,11 @@
     validateToken,
     verifyNexusApiKey,
   } from "$lib/api/commands";
+  import {
+    validateAndSaveModioApiKey,
+    validateAndSaveModioToken,
+    validateAndSaveNexusApiKey,
+  } from "$lib/api/apiKeyValidation";
   import ExportModpackModal from "$lib/components/ExportModpackModal.svelte";
   import SyncAuthModal from "$lib/components/SyncAuthModal.svelte";
   import { syncLogStore } from "$lib/stores/syncLogStore";
@@ -237,17 +241,9 @@
   async function saveModioApiKey() {
     const trimmed = modioApiKeyInput.trim();
     modioApiKeyModalError = "";
-    console.debug(
-      "[mod.io API] saveModioApiKey: input=",
-      modioApiKeyInput,
-      "trimmed=",
-      trimmed,
-    );
 
-    // If removing the key, just save and return
     if (!trimmed) {
       try {
-        console.debug("[mod.io API] Removing key (set to empty string)");
         await updateConfig({ modio_api_key: "" });
         await refresh();
         closeModioApiKeyModal();
@@ -263,30 +259,13 @@
 
     validatingModioApiKey = true;
     try {
-      // Validate API key by calling mod.io games endpoint
-      const url = `https://api.mod.io/v1/games?api_key=${encodeURIComponent(trimmed)}&name_id=readyornot`;
-      console.debug("[mod.io API] Validating key with fetch:", url);
-      const res = await fetch(url);
-      console.debug("[mod.io API] Fetch response status:", res.status);
-      if (!res.ok) {
-        modioApiKeyModalError = `API key validation failed: HTTP ${res.status}`;
-        toastStore.error(
-          `mod.io API key validation failed: HTTP ${res.status}`,
-        );
-        validatingModioApiKey = false;
+      const ok = await validateAndSaveModioApiKey(trimmed);
+      if (!ok) {
+        modioApiKeyModalError =
+          "API key validation failed. Please check the key and try again.";
+        toastStore.error("mod.io API key validation failed.");
         return;
       }
-      const data = await res.json();
-      console.debug("[mod.io API] Fetch response data:", data);
-      if (!data || !Array.isArray(data.data) || data.data.length === 0) {
-        modioApiKeyModalError = "API key validation failed: No game found.";
-        toastStore.error("mod.io API key validation failed: No game found.");
-        validatingModioApiKey = false;
-        return;
-      }
-      // Save the key if valid
-      console.debug("[mod.io API] Saving key to config:", trimmed);
-      await updateConfig({ modio_api_key: trimmed });
       await refresh();
       closeModioApiKeyModal();
       toastStore.success(
@@ -297,7 +276,6 @@
       toastStore.error(
         `Failed to validate/save mod.io API Access key: ${String(error)}`,
       );
-      console.error("[mod.io API] Exception in saveModioApiKey:", error);
     } finally {
       validatingModioApiKey = false;
     }
@@ -388,8 +366,7 @@
     tokenModalError = "";
 
     try {
-      await saveToken(trimmed);
-      const valid = await validateToken();
+      const valid = await validateAndSaveModioToken(trimmed);
       if (!valid) {
         writeValidationCache(MODIO_VALIDATION_CACHE_KEY, false);
         await logout();
@@ -400,7 +377,6 @@
       }
 
       writeValidationCache(MODIO_VALIDATION_CACHE_KEY, true);
-      tokenStore.set(true);
       await refresh();
       closeTokenSetupModal();
       toastStore.success("Token validated and saved.");
@@ -445,7 +421,6 @@
     const trimmed = nexusKeyInput.trim();
     nexusKeyModalError = "";
 
-    // If removing the key, just save and return
     if (!trimmed) {
       try {
         await updateConfig({ nexus_api_key: "" });
@@ -461,23 +436,19 @@
       return;
     }
 
-    // Validate the key before saving
     validatingNexusKey = true;
     try {
-      const isValid = await verifyNexusApiKey(trimmed);
+      const ok = await validateAndSaveNexusApiKey(trimmed);
 
-      if (!isValid) {
+      if (!ok) {
         writeValidationCache(NEXUS_VALIDATION_CACHE_KEY, false);
         nexusKeyValid = false;
         nexusKeyModalError =
           "Invalid Nexus API key. Please check and try again.";
         toastStore.error("Invalid Nexus API key. Please check and try again.");
-        validatingNexusKey = false;
         return;
       }
 
-      // Key is valid, save it
-      await updateConfig({ nexus_api_key: trimmed });
       writeValidationCache(NEXUS_VALIDATION_CACHE_KEY, true);
       nexusKeyValid = true;
       await refresh();

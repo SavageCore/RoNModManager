@@ -80,6 +80,7 @@ pub fn run() {
             config::get_config,
             config::update_config,
             config::verify_nexus_api_key,
+            config::verify_modio_api_key,
             config::set_theme,
             config::apply_intro_skip,
             config::undo_intro_skip,
