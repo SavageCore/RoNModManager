@@ -76,7 +76,7 @@ jobs:
             exit 1
           fi
           echo "${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}" | base64 -d | gpg --import
-      - name: Build Flatpak bundle
+      - name: Build Flatpak
         run: |
           FLATPAK_GPG_KEY=$(gpg --list-keys --keyid-format=long --with-colons | awk -F: '/^fpr/{print $10; exit}')
           flatpak-builder --force-clean --user --install-deps-from=flathub \
@@ -86,8 +86,16 @@ jobs:
             --gpg-sign=$FLATPAK_GPG_KEY \
             --gpg-keys=packaging/flatpak/ronmodmanager-flatpak.gpg \
             flatpak-repo ronmodmanager.flatpak uk.savagecore.ronmodmanager master
-      - name: Upload Flatpak to GitHub Release
+          cp packaging/flatpak/ronmodmanager-flatpak.gpg flatpak-repo/
+          touch flatpak-repo/.nojekyll
+      - name: Upload Flatpak bundle to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           files: ronmodmanager.flatpak
+      - name: Deploy OSTree repo to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: flatpak-repo
+          clean: true

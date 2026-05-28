@@ -150,6 +150,7 @@ pub fn run() {
             profiles::apply_profile,
             updater::check_for_update,
             updater::install_update,
+            updater::is_flatpak,
             sharing::share_modpack_via_code,
             sharing::import_from_code,
             sharing::push_modpack_update,

@@ -249,6 +249,7 @@ export const getWindowState = () => invoke<WindowState>("get_window_state");
 
 export const checkForUpdate = () => invoke<UpdateInfo>("check_for_update");
 export const installUpdate = () => invoke<UpdateInfo>("install_update");
+export const isRunningInFlatpak = () => invoke<boolean>("is_flatpak");
 
 export const getAddonMap = () =>
   invoke<Record<string, string[]>>("get_addon_map");

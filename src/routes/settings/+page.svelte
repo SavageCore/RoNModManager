@@ -8,6 +8,7 @@
     getAuthStatus,
     getConfig,
     installUpdate,
+    isRunningInFlatpak,
     isIntroSkipApplied,
     logout,
     setGamePath,
@@ -100,6 +101,7 @@
   let introSkipApplied = false;
   let applyingIntroSkip = false;
   let undoingIntroSkip = false;
+  let runningInFlatpak = false;
   let updateCheckInProgress = false;
   let updateInstallInProgress = false;
   let updateVersion: string | null = null;
@@ -657,7 +659,8 @@
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
+    runningInFlatpak = await isRunningInFlatpak();
     void refresh();
   });
 </script>
@@ -1120,38 +1123,46 @@
         <h3 style="color: var(--clr-text);" class="font-semibold">
           App Updates
         </h3>
-        <p style="color: var(--clr-text-secondary);" class="text-sm">
-          {#if updateVersion}
-            Update ready: {updateVersion}
-          {:else}
-            Check for updates
-          {/if}
-        </p>
-        <!-- Muted last checked text -->
-        {#if updateLastChecked}
-          <p style="color: var(--clr-text-secondary);" class="text-xs">
-            Last checked: {updateLastChecked.toLocaleString()}
+        {#if runningInFlatpak}
+          <p style="color: var(--clr-text-secondary);" class="text-sm">
+            Updates are managed by Flatpak. Run <code>flatpak update</code> in a terminal
+            to update.
           </p>
+        {:else}
+          <p style="color: var(--clr-text-secondary);" class="text-sm">
+            {#if updateVersion}
+              Update ready: {updateVersion}
+            {:else}
+              Check for updates
+            {/if}
+          </p>
+          {#if updateLastChecked}
+            <p style="color: var(--clr-text-secondary);" class="text-xs">
+              Last checked: {updateLastChecked.toLocaleString()}
+            </p>
+          {/if}
         {/if}
       </div>
-      <div class="flex gap-2">
-        <button
-          class="btn btn-sm primary"
-          class:disabled={updateCheckInProgress || updateInstallInProgress}
-          disabled={updateCheckInProgress || updateInstallInProgress}
-          on:click={updateVersion ? installAvailableUpdate : checkUpdates}
-        >
-          {#if updateCheckInProgress}
-            Checking...
-          {:else if updateInstallInProgress}
-            Installing...
-          {:else if updateVersion}
-            Install Update
-          {:else}
-            Check for Updates
-          {/if}
-        </button>
-      </div>
+      {#if !runningInFlatpak}
+        <div class="flex gap-2">
+          <button
+            class="btn btn-sm primary"
+            class:disabled={updateCheckInProgress || updateInstallInProgress}
+            disabled={updateCheckInProgress || updateInstallInProgress}
+            on:click={updateVersion ? installAvailableUpdate : checkUpdates}
+          >
+            {#if updateCheckInProgress}
+              Checking...
+            {:else if updateInstallInProgress}
+              Installing...
+            {:else if updateVersion}
+              Install Update
+            {:else}
+              Check for Updates
+            {/if}
+          </button>
+        </div>
+      {/if}
     </div>
   </div>
 </section>

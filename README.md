@@ -62,14 +62,44 @@ npm run tauri signer generate -w ~/.tauri/ronmodmanager.key
 
 Without the correct public key and signing secrets, update checks/install will fail verification.
 
+## Installing on Linux (Flatpak)
+
+### Via Flatpak remote (recommended)
+
+The app is distributed via a self-hosted Flatpak remote on GitHub Pages. This gives you automatic updates through GNOME Software, Flatpost, or `flatpak update`.
+
+```bash
+# Import the signing key and add the remote (once)
+curl -sL https://savagecore.github.io/RoNModManager/ronmodmanager-flatpak.gpg | \
+  flatpak remote-add --user --gpg-import=/dev/stdin ronmodmanager \
+  https://savagecore.github.io/RoNModManager/
+
+# Install
+flatpak install ronmodmanager uk.savagecore.ronmodmanager
+
+# Update (or use GNOME Software / Flatpost)
+flatpak update uk.savagecore.ronmodmanager
+```
+
+### Via bundle (alternative)
+
+Download `ronmodmanager.flatpak` from the [latest release](https://github.com/SavageCore/RoNModManager/releases/latest):
+
+```bash
+flatpak install --user --bundle ronmodmanager.flatpak
+```
+
 ## Flatpak Packaging
 
 Flatpak support is defined in:
 
 - `packaging/flatpak/uk.savagecore.ronmodmanager.yml`
 - `packaging/flatpak/uk.savagecore.ronmodmanager.desktop`
+- `packaging/flatpak/ronmodmanager-flatpak.gpg` — public signing key
 
-CI and release workflows build a `.flatpak` bundle and publish it as an artifact (and release asset on tags).
+CI release builds publish the OSTree repo to [GitHub Pages](https://savagecore.github.io/RoNModManager/) and upload a `.flatpak` bundle as a release asset.
+
+> **Note:** GitHub Pages must be enabled in the repository settings (Settings → Pages → Source: Deploy from branch `gh-pages`).
 
 Local Flatpak build:
 
@@ -78,7 +108,7 @@ make flatpak-deps    # install runtimes once
 make flatpak         # vendor → build → bundle → install
 ```
 
-Run local bundle:
+Run the installed Flatpak:
 
 ```bash
 make flatpak-run
