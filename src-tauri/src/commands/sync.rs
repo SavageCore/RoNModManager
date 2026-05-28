@@ -147,9 +147,9 @@ pub async fn sync_modpack_to_remote(
             let local_full = export_dir.join(rel_path.as_str());
             let remote_full = format!("{remote_path}/{rel_path}");
 
-            let data = tokio::fs::read(&local_full)
+            let mut local_file = tokio::fs::File::open(&local_full)
                 .await
-                .map_err(|e| AppError::Validation(format!("Failed to read {local_full:?}: {e}")))?;
+                .map_err(|e| AppError::Validation(format!("Failed to open {local_full:?}: {e}")))?;
 
             let mut remote_file = sftp.create(&remote_full).await.map_err(|e| {
                 AppError::Validation(format!("Failed to create remote file {remote_full}: {e}"))
@@ -157,12 +157,20 @@ pub async fn sync_modpack_to_remote(
 
             let upload_start = std::time::Instant::now();
             let mut bytes_written: u64 = 0;
+            let mut buf = vec![0u8; 256 * 1024];
 
-            for chunk in data.chunks(256 * 1024) {
-                remote_file.write_all(chunk).await.map_err(|e| {
+            loop {
+                use tokio::io::AsyncReadExt;
+                let n = local_file.read(&mut buf).await.map_err(|e| {
+                    AppError::Validation(format!("Failed to read {local_full:?}: {e}"))
+                })?;
+                if n == 0 {
+                    break;
+                }
+                remote_file.write_all(&buf[..n]).await.map_err(|e| {
                     AppError::Validation(format!("Failed to write {remote_full}: {e}"))
                 })?;
-                bytes_written += chunk.len() as u64;
+                bytes_written += n as u64;
 
                 let elapsed = upload_start.elapsed().as_secs_f64();
                 let speed_str = if elapsed > 0.001 {
