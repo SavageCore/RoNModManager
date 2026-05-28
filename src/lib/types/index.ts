@@ -24,6 +24,7 @@ export interface AppConfig {
   close_action: CloseAction;
   minimize_target: MinimizeTarget;
   asked_close_preference: boolean;
+  setup_wizard_complete: boolean;
 }
 
 export interface Collection {

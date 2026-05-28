@@ -22,6 +22,7 @@ pub struct ConfigUpdate {
     pub close_action: Option<CloseAction>,
     pub minimize_target: Option<MinimizeTarget>,
     pub asked_close_preference: Option<bool>,
+    pub setup_wizard_complete: Option<bool>,
 }
 
 #[tauri::command]
@@ -82,6 +83,9 @@ pub async fn update_config(state: State<'_, AppState>, updates: ConfigUpdate) ->
         if let Some(v) = updates.asked_close_preference {
             config.asked_close_preference = v;
         }
+        if let Some(v) = updates.setup_wizard_complete {
+            config.setup_wizard_complete = v;
+        }
     })?;
 
     // If a new modio_api_key was set, look up and save the game ID for 'readyornot'
@@ -117,6 +121,22 @@ pub async fn verify_nexus_api_key(
     let service = nexus_api::NexusApiService::new(state.client.clone());
     match service.get_mod_info(&apiKey, 981).await {
         // Use a known mod ID to verify
+        Ok(_) => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
+#[tauri::command]
+pub async fn verify_modio_api_key(
+    state: State<'_, AppState>,
+    #[allow(non_snake_case)] apiKey: String,
+) -> Result<bool> {
+    let config = state.get_config()?;
+    let service = crate::services::modio_api::ModioApiService::new(
+        state.client.clone(),
+        config.modio_game_id,
+    );
+    match service.lookup_game_id(&apiKey, "readyornot").await {
         Ok(_) => Ok(true),
         Err(_) => Ok(false),
     }
