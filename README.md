@@ -70,9 +70,11 @@ The app is distributed via a self-hosted Flatpak remote on GitHub Pages. This gi
 
 ```bash
 # Import the signing key and add the remote (once)
-curl -sL https://savagecore.github.io/RoNModManager/ronmodmanager-flatpak.gpg | \
-  flatpak remote-add --user --gpg-import=/dev/stdin ronmodmanager \
-  https://savagecore.github.io/RoNModManager/
+curl -sL https://savagecore.github.io/RoNModManager/ronmodmanager-flatpak.gpg \
+  -o /tmp/ronmodmanager-flatpak.gpg
+flatpak remote-add --user \
+  --gpg-import=/tmp/ronmodmanager-flatpak.gpg \
+  ronmodmanager https://savagecore.github.io/RoNModManager/
 
 # Install
 flatpak install ronmodmanager uk.savagecore.ronmodmanager
