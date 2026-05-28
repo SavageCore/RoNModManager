@@ -212,7 +212,11 @@
           }
 
           modAddQueueStore.markRunning(entry.queueId, "Installing...");
-          await installLocalMod(result.archivePath, selectedPaks ?? undefined);
+          await installLocalMod(
+            result.archivePath,
+            selectedPaks ?? undefined,
+            result.contentHash,
+          );
           await updateModDisplayName(result.archiveName, result.name).catch(
             () => {},
           );

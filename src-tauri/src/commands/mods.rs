@@ -186,6 +186,7 @@ pub struct AddModioResult {
     pub archive_name: String,
     pub source_url: String,
     pub archive_path: String,
+    pub content_hash: Option<String>,
 }
 
 fn parse_modio_input_to_slug_or_id(input: &str) -> Result<(Option<u64>, Option<String>)> {
@@ -470,7 +471,7 @@ async fn nexus_download_by_filename(
     mod_id: u64,
     archive_name: &str,
     dest: &Path,
-) -> Result<()> {
+) -> Result<String> {
     let files = nexus_service.list_mod_files(api_key, mod_id).await?;
     let matched = files
         .iter()
@@ -601,7 +602,7 @@ pub async fn install_mods(
         },
     );
 
-    let mut downloaded_files: Vec<PathBuf> = Vec::with_capacity(total);
+    let mut downloaded_files: Vec<(PathBuf, Option<String>)> = Vec::with_capacity(total);
 
     for (idx, entry) in filtered_manifest.files.iter().enumerate() {
         let local_path = download_root.join(&entry.path);
@@ -615,7 +616,7 @@ pub async fn install_mods(
         if local_path.exists() {
             let actual_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
             if entry.size == 0 || actual_size == entry.size {
-                downloaded_files.push(local_path);
+                downloaded_files.push((local_path, None));
                 continue;
             }
         }
@@ -634,7 +635,7 @@ pub async fn install_mods(
         );
 
         // Prefer Nexus CDN for premium users when a source URL is recorded.
-        let mut downloaded_from_nexus = false;
+        let mut download_hash: Option<String> = None;
         if let Some((ref svc, ref api_key)) = nexus_premium_ctx {
             if let Some(nexus_url) = nexus_source_map.get(&archive_name) {
                 if let Ok(mod_id) = nexus_api::parse_nexus_url_to_mod_id(nexus_url) {
@@ -648,7 +649,7 @@ pub async fn install_mods(
                     )
                     .await
                     {
-                        Ok(()) => downloaded_from_nexus = true,
+                        Ok(hash) => download_hash = Some(hash),
                         Err(e) => log::warn!(
                             "Nexus download failed for {archive_name}, \
                              falling back to self-hosted: {e}"
@@ -658,9 +659,10 @@ pub async fn install_mods(
             }
         }
 
-        if !downloaded_from_nexus {
+        if download_hash.is_none() {
             let remote = format!("{}/mods/{}", modpack_url.trim_end_matches('/'), entry.path);
-            downloader::download_file(&state.client, &remote, &local_path).await?;
+            download_hash =
+                Some(downloader::download_file(&state.client, &remote, &local_path).await?);
         }
 
         if entry.size > 0 {
@@ -673,7 +675,7 @@ pub async fn install_mods(
             }
         }
 
-        downloaded_files.push(local_path);
+        downloaded_files.push((local_path, download_hash));
     }
 
     let _ = app.emit(
@@ -695,7 +697,7 @@ pub async fn install_mods(
         backup_path,
     };
 
-    for (index, file) in downloaded_files.iter().enumerate() {
+    for (index, (file, download_hash)) in downloaded_files.iter().enumerate() {
         let file_name = file
             .file_name()
             .and_then(|n| n.to_str())
@@ -706,7 +708,14 @@ pub async fn install_mods(
             "install_progress",
             &ProgressEvent::new_install(&file_name, progress_pct),
         );
-        install_downloaded_file(file, &install_context, &app, &download_root, None)?;
+        install_downloaded_file(
+            file,
+            &install_context,
+            &app,
+            &download_root,
+            None,
+            download_hash.clone(),
+        )?;
     }
 
     let _ = app.emit("install_progress", &ProgressEvent::new_complete());
@@ -869,7 +878,7 @@ pub async fn add_modio_mod(
     let mod_name_for_progress = mod_details.name.clone();
     let download_started = Instant::now();
 
-    downloader::download_file_with_progress(
+    let content_hash = downloader::download_file_with_progress(
         &state.client,
         &mod_details.download_url,
         &archive_path,
@@ -899,12 +908,22 @@ pub async fn add_modio_mod(
     )
     .await?;
 
+    if let Some(remote_md5) = &mod_details.remote_md5 {
+        if content_hash.to_lowercase() != remote_md5.to_lowercase() {
+            return Err(AppError::Validation(format!(
+                "Hash mismatch for {}: download may be corrupt",
+                archive_name
+            )));
+        }
+    }
+
     Ok(AddModioResult {
         mod_id: mod_details.id,
         name: mod_details.name,
         archive_name,
         source_url: mod_details.profile_url,
         archive_path: archive_path.to_string_lossy().to_string(),
+        content_hash: Some(content_hash),
     })
 }
 
@@ -1105,6 +1124,7 @@ pub struct AddNexusResult {
     pub archive_path: String,
     pub file_id: u64,
     pub file_pretty_name: Option<String>,
+    pub content_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1164,7 +1184,7 @@ pub async fn add_nexus_mod(
     let source_url = format!("https://www.nexusmods.com/readyornot/mods/{}", mod_id);
     let archive_name = sanitize_filename_for_download(&expected_filename);
 
-    let install_path = if is_premium {
+    let (install_path, content_hash) = if is_premium {
         // Premium: download directly via API without opening a browser
         let links = nexus_service
             .get_download_links(&api_key, mod_id, file_id)
@@ -1194,7 +1214,7 @@ pub async fn add_nexus_mod(
         let mod_name_for_progress = mod_name.clone();
         let download_started = Instant::now();
 
-        downloader::download_file_with_progress(
+        let hash = downloader::download_file_with_progress(
             &state.client,
             &download_url,
             &archive_path,
@@ -1224,7 +1244,7 @@ pub async fn add_nexus_mod(
         )
         .await?;
 
-        archive_path
+        (archive_path, Some(hash))
     } else {
         // Non-premium: open browser to the files tab and watch ~/Downloads
         let files_url = format!("{}?tab=files", source_url);
@@ -1321,7 +1341,7 @@ pub async fn add_nexus_mod(
             }
         }
 
-        target_path
+        (target_path, None)
     };
 
     Ok(AddNexusResult {
@@ -1332,6 +1352,7 @@ pub async fn add_nexus_mod(
         archive_path: install_path.to_string_lossy().to_string(),
         file_id,
         file_pretty_name,
+        content_hash,
     })
 }
 
@@ -1826,6 +1847,7 @@ pub async fn install_local_mod(
     state: State<'_, AppState>,
     #[allow(non_snake_case)] filePath: String,
     #[allow(non_snake_case)] selectedPakFiles: Option<Vec<String>>,
+    #[allow(non_snake_case)] precomputedHash: Option<String>,
 ) -> Result<LocalModInstallResult> {
     let config = state.get_config()?;
     let game_path = config
@@ -1871,7 +1893,14 @@ pub async fn install_local_mod(
 
     let temp_root = crate::state::app_temp_root()?;
     let pak_filter_set: Option<HashSet<String>> = selectedPakFiles.map(|v| v.into_iter().collect());
-    match install_downloaded_file(&path, &context, &app, &temp_root, pak_filter_set.as_ref()) {
+    match install_downloaded_file(
+        &path,
+        &context,
+        &app,
+        &temp_root,
+        pak_filter_set.as_ref(),
+        precomputedHash,
+    ) {
         Ok(is_duplicate) => {
             if let Some(installed_mod_name) = path.file_name().and_then(|n| n.to_str()) {
                 let _ = add_mod_to_active_profile(&state, installed_mod_name);
@@ -2031,48 +2060,53 @@ fn install_downloaded_file(
     app: &AppHandle,
     temp_root: &Path,
     pak_filter: Option<&HashSet<String>>,
+    precomputed_hash: Option<String>,
 ) -> Result<bool> {
-    let hash_start = Instant::now();
-    let mut hash_last_emit = Instant::now() - Duration::from_millis(500);
+    let content_hash = if let Some(hash) = precomputed_hash {
+        hash
+    } else {
+        let hash_start = Instant::now();
+        let mut hash_last_emit = Instant::now() - Duration::from_millis(500);
 
-    let content_hash = hasher::md5_file_with_progress(path, |processed_bytes, total_bytes| {
-        let now = Instant::now();
-        let done = total_bytes > 0 && processed_bytes >= total_bytes;
-        if now.duration_since(hash_last_emit) < Duration::from_millis(120) && !done {
-            return;
-        }
-        hash_last_emit = now;
-        let elapsed = hash_start.elapsed().as_secs_f64().max(0.001);
-        let mib_per_sec = bytes_to_mib(processed_bytes) / elapsed;
-        let ratio = if total_bytes > 0 {
-            (processed_bytes as f64 / total_bytes as f64).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        let mapped_percent = (8.0 + (ratio * 30.0)) as f32;
-        let message = if total_bytes > 0 {
-            format!(
-                "Hashing archive... {:.1}/{:.1} MiB ({:.1} MiB/s)",
-                bytes_to_mib(processed_bytes),
-                bytes_to_mib(total_bytes),
-                mib_per_sec
-            )
-        } else {
-            format!("Hashing archive... {:.1} MiB/s", mib_per_sec)
-        };
-        let _ = app.emit(
-            "install_progress",
-            &ProgressEvent {
-                operation: "hash".to_string(),
-                file: path.to_string_lossy().to_string(),
-                percent: mapped_percent,
-                message,
-                total_bytes: Some(total_bytes),
-                processed_bytes: Some(processed_bytes),
-            },
-        );
-    })
-    .map_err(|e| AppError::Validation(format!("Failed to hash file: {}", e)))?;
+        hasher::md5_file_with_progress(path, |processed_bytes, total_bytes| {
+            let now = Instant::now();
+            let done = total_bytes > 0 && processed_bytes >= total_bytes;
+            if now.duration_since(hash_last_emit) < Duration::from_millis(120) && !done {
+                return;
+            }
+            hash_last_emit = now;
+            let elapsed = hash_start.elapsed().as_secs_f64().max(0.001);
+            let mib_per_sec = bytes_to_mib(processed_bytes) / elapsed;
+            let ratio = if total_bytes > 0 {
+                (processed_bytes as f64 / total_bytes as f64).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let mapped_percent = (8.0 + (ratio * 30.0)) as f32;
+            let message = if total_bytes > 0 {
+                format!(
+                    "Hashing archive... {:.1}/{:.1} MiB ({:.1} MiB/s)",
+                    bytes_to_mib(processed_bytes),
+                    bytes_to_mib(total_bytes),
+                    mib_per_sec
+                )
+            } else {
+                format!("Hashing archive... {:.1} MiB/s", mib_per_sec)
+            };
+            let _ = app.emit(
+                "install_progress",
+                &ProgressEvent {
+                    operation: "hash".to_string(),
+                    file: path.to_string_lossy().to_string(),
+                    percent: mapped_percent,
+                    message,
+                    total_bytes: Some(total_bytes),
+                    processed_bytes: Some(processed_bytes),
+                },
+            );
+        })
+        .map_err(|e| AppError::Validation(format!("Failed to hash file: {}", e)))?
+    };
 
     let _ = app.emit(
         "install_progress",

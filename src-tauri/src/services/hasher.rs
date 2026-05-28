@@ -37,15 +37,6 @@ pub fn md5_file(path: &Path) -> io::Result<String> {
     md5_file_with_progress(path, |_processed, _total| {})
 }
 
-/// Copy a file chunk-by-chunk, calling `on_progress(processed_bytes, total_bytes)` each chunk.
-pub fn copy_file_with_progress<F>(src: &Path, dst: &Path, on_progress: F) -> io::Result<u64>
-where
-    F: FnMut(u64, u64),
-{
-    let (bytes, _) = copy_file_with_hash_and_progress(src, dst, on_progress)?;
-    Ok(bytes)
-}
-
 /// Copy a file chunk-by-chunk, computing MD5 in the same pass.
 ///
 /// Returns `(bytes_written, md5_hex)`. The hash is computed over the bytes written to dst,

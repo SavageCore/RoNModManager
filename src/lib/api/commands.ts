@@ -108,10 +108,12 @@ export const installMods = (enabledCollections?: string[]) =>
 export const installLocalMod = (
   filePath: string,
   selectedPakFiles?: string[],
+  precomputedHash?: string | null,
 ) =>
   invoke<{ wasDuplicate: boolean }>("install_local_mod", {
     filePath,
     selectedPakFiles: selectedPakFiles ?? null,
+    precomputedHash: precomputedHash ?? null,
   });
 
 export interface PakFileInfo {
@@ -130,6 +132,7 @@ export interface ModAddResult {
   archivePath: string;
   fileId?: number;
   filePrettyName?: string | null;
+  contentHash?: string | null;
 }
 
 export interface NexusFileOption {

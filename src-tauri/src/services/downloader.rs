@@ -1,4 +1,6 @@
 use crate::models::Result;
+use hex;
+use md5::{Digest, Md5};
 use reqwest::Client;
 use std::path::Path;
 use tokio::fs::File;
@@ -7,18 +9,18 @@ use tokio::io::AsyncWriteExt;
 /// Progress callback type for download progress updates
 pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send + Sync>;
 
-/// Download a file from a URL to a destination path
-pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()> {
+/// Download a file from a URL to a destination path, returning its MD5 hash.
+pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<String> {
     download_file_with_progress(client, url, dest, None).await
 }
 
-/// Download a file with progress reporting
+/// Download a file with progress reporting, returning its MD5 hash.
 pub async fn download_file_with_progress(
     client: &Client,
     url: &str,
     dest: &Path,
     progress_callback: Option<ProgressCallback>,
-) -> Result<()> {
+) -> Result<String> {
     let response = client.get(url).send().await?;
 
     if !response.status().is_success() {
@@ -35,6 +37,7 @@ pub async fn download_file_with_progress(
     }
 
     let mut file = File::create(dest).await?;
+    let mut hasher = Md5::new();
     let mut downloaded: u64 = 0;
     let mut stream = response.bytes_stream();
 
@@ -43,6 +46,7 @@ pub async fn download_file_with_progress(
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
         file.write_all(&chunk).await?;
+        hasher.update(&chunk);
         downloaded += chunk.len() as u64;
 
         if let Some(ref callback) = progress_callback {
@@ -51,7 +55,7 @@ pub async fn download_file_with_progress(
     }
 
     file.flush().await?;
-    Ok(())
+    Ok(hex::encode(hasher.finalize()))
 }
 
 #[cfg(test)]

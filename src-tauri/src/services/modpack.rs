@@ -84,7 +84,7 @@ pub async fn download_manifest_files(
             // Size mismatch: re-download the file
         }
 
-        downloader::download_file(client, &remote, &local_path).await?;
+        let _ = downloader::download_file(client, &remote, &local_path).await?;
 
         if entry.size > 0 {
             let actual_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);

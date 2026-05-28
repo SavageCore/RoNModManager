@@ -18,7 +18,7 @@ pub async fn download_mod_archive(
     let filename_for_progress = filename.clone();
     let download_started = Instant::now();
 
-    crate::services::downloader::download_file_with_progress(
+    let _ = crate::services::downloader::download_file_with_progress(
         client,
         &url,
         &dest,

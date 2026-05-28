@@ -147,6 +147,7 @@
               await installLocalMod(
                 result.archivePath,
                 modInfo.selected_pak_files ?? undefined,
+                result.contentHash,
               );
               log.push(`Installed '${result.name}' from mod.io.`);
               log = log;
@@ -452,6 +453,7 @@
               await installLocalMod(
                 result.archivePath,
                 pending.modInfo.selected_pak_files ?? undefined,
+                result.contentHash,
               );
               await updateModSourceUrl(
                 result.archiveName,
