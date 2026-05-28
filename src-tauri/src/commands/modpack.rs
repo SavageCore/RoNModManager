@@ -185,6 +185,71 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
 }
 
 #[tauri::command]
+pub async fn apply_modpack_profile_metadata(
+    state: State<'_, AppState>,
+    modpack: ModPack,
+) -> Result<()> {
+    let config = state.get_config()?;
+    let Some(profile_name) = config.active_profile else {
+        return Ok(());
+    };
+    let Some(mut profile) = profiles::get_profile(&profile_name)? else {
+        return Ok(());
+    };
+
+    for (tag_name, archives) in &modpack.tags {
+        let entry = profile.tags.entry(tag_name.clone()).or_default();
+        for archive in archives {
+            if !entry.contains(archive) {
+                entry.push(archive.clone());
+            }
+        }
+    }
+
+    for (col_name, col) in &modpack.collections {
+        let entry = profile.collections.entry(col_name.clone()).or_default();
+        for mod_name in &col.mods {
+            if !entry.contains(mod_name) {
+                entry.push(mod_name.clone());
+            }
+        }
+        if col.default_enabled && !profile.enabled_collections.contains(col_name) {
+            profile.enabled_collections.push(col_name.clone());
+        }
+    }
+
+    for (archive, note) in &modpack.broken {
+        profile
+            .broken_mods
+            .entry(archive.clone())
+            .or_insert_with(|| note.clone());
+    }
+
+    for archive in &modpack.no_world_gen {
+        if !profile.no_world_gen.contains(archive) {
+            profile.no_world_gen.push(archive.clone());
+        }
+    }
+
+    profiles::save_profile(&profile)?;
+
+    if !modpack.addons.is_empty() {
+        let mut local_map = addon_map::read_addon_map().unwrap_or_default();
+        for (parent, addon_archives) in &modpack.addons {
+            let entry = local_map.entry(parent.clone()).or_default();
+            for a in addon_archives {
+                if !entry.contains(a) {
+                    entry.push(a.clone());
+                }
+            }
+        }
+        let _ = addon_map::write_addon_map(&local_map);
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn export_modpack_to_file(
     app: AppHandle,
     modpack: ModPack,

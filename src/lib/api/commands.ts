@@ -254,3 +254,6 @@ export const getAddonMap = () =>
   invoke<Record<string, string[]>>("get_addon_map");
 export const setAddonMap = (map: Record<string, string[]>) =>
   invoke<void>("set_addon_map", { map });
+
+export const applyModpackProfileMetadata = (modpack: any) =>
+  invoke<void>("apply_modpack_profile_metadata", { modpack });

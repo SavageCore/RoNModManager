@@ -95,6 +95,7 @@ pub fn run() {
             modpack::get_modpack_collections,
             modpack::build_modpack_from_installed,
             modpack::export_modpack_to_file,
+            modpack::apply_modpack_profile_metadata,
             sync::sync_modpack_to_remote,
             collections::get_collections,
             collections::get_collection_mods,

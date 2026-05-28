@@ -17,6 +17,7 @@
   import {
     addModIoMod,
     addNexusMod,
+    applyModpackProfileMetadata,
     checkNexusPremium,
     downloadModArchive,
     fetchModpackJson,
@@ -142,6 +143,11 @@
               log.push(`Already up-to-date, skipping download.`);
               log = log;
               await tick();
+              if (!manifest?.source_url && src) {
+                await updateModSourceUrl(remoteInfo.archive_name, src).catch(
+                  () => {},
+                );
+              }
             } else {
               const result = await addModIoMod(src);
               await installLocalMod(
@@ -149,6 +155,10 @@
                 modInfo.selected_pak_files ?? undefined,
                 result.contentHash,
               );
+              await updateModSourceUrl(
+                result.archiveName,
+                result.sourceUrl,
+              ).catch(() => {});
               log.push(`Installed '${result.name}' from mod.io.`);
               log = log;
               await tick();
@@ -366,6 +376,9 @@
               log.push(`Already installed and up-to-date, skipping.`);
               log = log;
               await tick();
+              if (!manifest?.source_url && src) {
+                await updateModSourceUrl(modFile, src).catch(() => {});
+              }
               manifestHashMatched = true;
             } else {
               log.push(
@@ -482,6 +495,8 @@
           unlistenWaiting();
         }
       }
+      await applyModpackProfileMetadata(data).catch(() => {});
+
       if (modCount > 0) {
         log.push("---");
         log = log;
