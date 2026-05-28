@@ -1,3 +1,4 @@
+import { execSync } from "child_process";
 import { readFileSync, writeFileSync } from "fs";
 
 const version = JSON.parse(readFileSync("package.json", "utf8")).version;
@@ -15,4 +16,11 @@ writeFileSync(
   cargo.replace(/^version = ".*"/m, `version = "${version}"`),
 );
 
-console.log(`Synced version ${version} → tauri.conf.json, Cargo.toml`);
+execSync(
+  "cargo metadata --format-version 1 --manifest-path src-tauri/Cargo.toml",
+  { stdio: "ignore" },
+);
+
+console.log(
+  `Synced version ${version} → tauri.conf.json, Cargo.toml, Cargo.lock`,
+);
