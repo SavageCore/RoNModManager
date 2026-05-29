@@ -1251,45 +1251,10 @@ pub async fn add_nexus_mod(
 
         (archive_path, Some(hash))
     } else {
-        // Non-premium: open browser to the files tab and watch ~/Downloads
+        // Non-premium: watch ~/Downloads, only open browser if the file isn't already there
         let files_url = format!("{}?tab=files", source_url);
-        let _ = app.emit(
-            "install_progress",
-            &ProgressEvent {
-                operation: "download".to_string(),
-                file: expected_filename.clone(),
-                percent: 5.0,
-                message: format!("Opening Nexus download page for {}...", mod_name),
-                total_bytes: None,
-                processed_bytes: None,
-            },
-        );
-
-        let _ = tauri_plugin_opener::OpenerExt::opener(&app).open_url(&files_url, None::<String>);
-
         let downloads_dir = dirs::download_dir()
             .ok_or_else(|| AppError::Validation("Cannot locate Downloads directory".to_string()))?;
-
-        let _ = app.emit(
-            "nexus_free_download_waiting",
-            &NexusFreeDownloadWaitingPayload {
-                pretty_name: file_pretty_name.clone(),
-                file_name: expected_filename.clone(),
-                mod_url: files_url.clone(),
-            },
-        );
-
-        let _ = app.emit(
-            "install_progress",
-            &ProgressEvent {
-                operation: "download".to_string(),
-                file: expected_filename.clone(),
-                percent: 10.0,
-                message: format!("Waiting for {} in ~/Downloads...", expected_filename),
-                total_bytes: None,
-                processed_bytes: None,
-            },
-        );
 
         let target_path = downloads_dir.join(&expected_filename);
         let partial_extensions = [".part", ".crdownload", ".tmp"];
@@ -1297,54 +1262,115 @@ pub async fn add_nexus_mod(
         let poll_interval = std::time::Duration::from_secs(2);
         let started = std::time::Instant::now();
 
-        loop {
-            if state.nexus_cancel.load(std::sync::atomic::Ordering::SeqCst) {
+        let mut found = false;
+
+        let any_partial_pre = partial_extensions.iter().any(|ext| {
+            downloads_dir
+                .join(format!("{}{}", expected_filename, ext))
+                .exists()
+        });
+
+        if target_path.exists() && !any_partial_pre {
+            let s1 = fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0);
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            let s2 = fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0);
+            if s1 > 0 && s1 == s2 {
                 let _ = app.emit(
-                    "install_progress",
-                    &ProgressEvent {
-                        operation: "error".to_string(),
-                        file: expected_filename.clone(),
-                        percent: 0.0,
-                        message: "Download cancelled.".to_string(),
-                        total_bytes: None,
-                        processed_bytes: None,
+                    "nexus_free_download_complete",
+                    &NexusFreeDownloadCompletePayload {
+                        file_name: expected_filename.clone(),
                     },
                 );
-                return Err(AppError::Validation(
-                    "CANCELLED: Download cancelled by user".to_string(),
-                ));
+                found = true;
             }
+        }
 
-            if started.elapsed() >= timeout {
-                return Err(AppError::Validation(format!(
+        if !found {
+            let _ = app.emit(
+                "install_progress",
+                &ProgressEvent {
+                    operation: "download".to_string(),
+                    file: expected_filename.clone(),
+                    percent: 5.0,
+                    message: format!("Opening Nexus download page for {}...", mod_name),
+                    total_bytes: None,
+                    processed_bytes: None,
+                },
+            );
+
+            let _ =
+                tauri_plugin_opener::OpenerExt::opener(&app).open_url(&files_url, None::<String>);
+
+            let _ = app.emit(
+                "nexus_free_download_waiting",
+                &NexusFreeDownloadWaitingPayload {
+                    pretty_name: file_pretty_name.clone(),
+                    file_name: expected_filename.clone(),
+                    mod_url: files_url.clone(),
+                },
+            );
+
+            let _ = app.emit(
+                "install_progress",
+                &ProgressEvent {
+                    operation: "download".to_string(),
+                    file: expected_filename.clone(),
+                    percent: 10.0,
+                    message: format!("Waiting for {} in ~/Downloads...", expected_filename),
+                    total_bytes: None,
+                    processed_bytes: None,
+                },
+            );
+
+            loop {
+                if state.nexus_cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                    let _ = app.emit(
+                        "install_progress",
+                        &ProgressEvent {
+                            operation: "error".to_string(),
+                            file: expected_filename.clone(),
+                            percent: 0.0,
+                            message: "Download cancelled.".to_string(),
+                            total_bytes: None,
+                            processed_bytes: None,
+                        },
+                    );
+                    return Err(AppError::Validation(
+                        "CANCELLED: Download cancelled by user".to_string(),
+                    ));
+                }
+
+                if started.elapsed() >= timeout {
+                    return Err(AppError::Validation(format!(
                     "Timed out waiting for {} in Downloads. Download the file manually and use 'Local File' to install it.",
                     expected_filename
                 )));
-            }
-
-            let any_partial = partial_extensions.iter().any(|ext| {
-                downloads_dir
-                    .join(format!("{}{}", expected_filename, ext))
-                    .exists()
-            });
-
-            if target_path.exists() && !any_partial {
-                let size_first = fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0);
-                tokio::time::sleep(poll_interval).await;
-                let size_second = fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0);
-                if size_first > 0 && size_first == size_second {
-                    let _ = app.emit(
-                        "nexus_free_download_complete",
-                        &NexusFreeDownloadCompletePayload {
-                            file_name: expected_filename.clone(),
-                        },
-                    );
-                    break;
                 }
-            } else {
-                tokio::time::sleep(poll_interval).await;
+
+                let any_partial = partial_extensions.iter().any(|ext| {
+                    downloads_dir
+                        .join(format!("{}{}", expected_filename, ext))
+                        .exists()
+                });
+
+                if target_path.exists() && !any_partial {
+                    let size_first = fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0);
+                    tokio::time::sleep(poll_interval).await;
+                    let size_second = fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0);
+                    if size_first > 0 && size_first == size_second {
+                        let _ = app.emit(
+                            "nexus_free_download_complete",
+                            &NexusFreeDownloadCompletePayload {
+                                file_name: expected_filename.clone(),
+                            },
+                        );
+                        break;
+                    }
+                } else {
+                    tokio::time::sleep(poll_interval).await;
+                }
             }
-        }
+        } // if !found
 
         (target_path, None)
     };
