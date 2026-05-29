@@ -17,10 +17,14 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install git-cliff
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           tmp=$(mktemp -d)
-          curl -sSfL https://github.com/orhun/git-cliff/releases/latest/download/git-cliff-x86_64-unknown-linux-musl.tar.gz \
-            | tar xz -C "$tmp"
+          gh release download --repo orhun/git-cliff \
+            --pattern 'git-cliff-*-x86_64-unknown-linux-musl.tar.gz' \
+            --dir "$tmp"
+          tar xz -C "$tmp" -f "$tmp"/git-cliff-*-x86_64-unknown-linux-musl.tar.gz
           sudo install -m 755 "$(find "$tmp" -name git-cliff -type f)" /usr/local/bin/git-cliff
       - name: Generate release notes
         id: cliff
