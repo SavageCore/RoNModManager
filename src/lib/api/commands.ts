@@ -258,6 +258,8 @@ export const saveWindowState = (
 export const getWindowState = () => invoke<WindowState>("get_window_state");
 export const manageWindowGeometry = () =>
   invoke<boolean>("manage_window_geometry");
+export const isScreenshotMode = () => invoke<boolean>("is_screenshot_mode");
+export const screenshotTheme = () => invoke<string | null>("screenshot_theme");
 
 export const checkForUpdate = () => invoke<UpdateInfo>("check_for_update");
 export const installUpdate = () => invoke<UpdateInfo>("install_update");

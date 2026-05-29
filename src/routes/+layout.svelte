@@ -8,6 +8,8 @@
     getConfig,
     launchGameWithGroups,
     listProfiles,
+    isScreenshotMode,
+    screenshotTheme,
     manageWindowGeometry,
     refreshModMetadata,
     saveWindowState,
@@ -28,6 +30,7 @@
     ModProgressEvent,
     OnGameLaunchAction,
     Profile,
+    ThemeMode,
   } from "$lib/types";
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import { listen } from "@tauri-apps/api/event";
@@ -56,7 +59,7 @@
   import SetupWizard from "$lib/components/SetupWizard.svelte";
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import { infoLogStore } from "$lib/stores/infoLogStore";
-  import { incognitoMode } from "$lib/stores/incognitoMode";
+  import { incognitoMode, screenshotMode } from "$lib/stores/incognitoMode";
 
   const APP_NAME = "RoN Mod Manager";
 
@@ -253,7 +256,26 @@
     // sizes windows sensibly and forbids apps setting an absolute position. We
     // leave it entirely alone there and only persist/restore size and position
     // on X11/XWayland, where we can reliably control them.
-    const manageGeometry = manageWindowGeometry().catch(() => false);
+    // In screenshot mode we also skip geometry management so the window starts
+    // at the default size defined in tauri.conf.json every time.
+    const screenshotModePromise = isScreenshotMode().catch(() => false);
+    const manageGeometry = screenshotModePromise.then((sm) =>
+      sm ? false : manageWindowGeometry().catch(() => false),
+    );
+
+    // In screenshot mode: auto-activate incognito and wire up number-key
+    // page navigation (1=Mods 2=Collections 3=Profiles 4=Settings) so the
+    // script can drive the app without relying on coordinate-based clicks.
+    void screenshotModePromise.then((isScreenshot) => {
+      if (!isScreenshot) return;
+      screenshotMode.set(true);
+      incognitoMode.set(true);
+      const ssPages = ["/mods", "/collections", "/profiles", "/settings"];
+      window.addEventListener("keydown", (e) => {
+        const idx = Number(e.key) - 1;
+        if (idx >= 0 && idx < ssPages.length) void goto(ssPages[idx]);
+      });
+    });
 
     const persistCurrentWindowState = async () => {
       if (!(await manageGeometry)) {
@@ -310,7 +332,10 @@
         hasGamePath = config.game_path != null;
         hasSavedToken = Boolean(config.oauth_token?.trim());
 
-        cleanup = initTheme(config.theme);
+        const themeOverride = await screenshotModePromise.then((sm) =>
+          sm ? screenshotTheme().catch(() => null) : null,
+        );
+        cleanup = initTheme((themeOverride as ThemeMode) ?? config.theme);
 
         // Modpack update check
         if (config.modpack_url && config.modpack_version) {
@@ -437,7 +462,7 @@
         minimizeTarget = config.minimize_target ?? "taskbar";
         askedClosePreference = config.asked_close_preference ?? false;
 
-        if (!config.setup_wizard_complete) {
+        if (!config.setup_wizard_complete && !(await screenshotModePromise)) {
           const hasAnyKey =
             Boolean(config.modio_api_key?.trim()) ||
             Boolean(config.oauth_token?.trim()) ||

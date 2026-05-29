@@ -40,6 +40,7 @@
   import { toastStore } from "$lib/stores/toast";
   import { tokenStore } from "$lib/stores/token";
   import { updateCheckStore } from "$lib/stores/updateCheck";
+  import { screenshotMode } from "$lib/stores/incognitoMode";
   import { applyThemeClass } from "$lib/theme";
   import { downloadDir } from "@tauri-apps/api/path";
   import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -211,7 +212,7 @@
     introSkipApplied = await isIntroSkipApplied().catch(() => false);
     gamePath = config.game_path ?? "";
     theme = config.theme;
-    applyThemeClass(theme);
+    if (!$screenshotMode) applyThemeClass(theme);
     syncRemoteHost = config.sync_remote_host ?? "";
     syncRemotePath = config.sync_remote_path ?? "";
     onGameLaunch = config.on_game_launch ?? "nothing";

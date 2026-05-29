@@ -15,17 +15,37 @@
   } from "$lib/api/commands";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import EditCollectionModal from "$lib/components/EditCollectionModal.svelte";
+  import {
+    incognitoMode,
+    DUMMY_COLLECTIONS,
+    DUMMY_COLLECTION_COLORS,
+    DUMMY_MOD_GROUPS,
+  } from "$lib/stores/incognitoMode";
   import { toastStore } from "$lib/stores/toast";
   import { X } from "lucide-svelte";
   import { onMount } from "svelte";
 
-  let collectionMods: Record<string, string[]> = {};
-  let collections: Record<string, boolean> = {};
-  let collectionColors: Record<string, string> = {};
+  let rawCollectionMods: Record<string, string[]> = {};
+  let rawCollections: Record<string, boolean> = {};
+  let rawCollectionColors: Record<string, string> = {};
+  let rawModDisplayNames: Record<string, string> = {};
+
+  $: collectionMods = $incognitoMode ? DUMMY_COLLECTIONS : rawCollectionMods;
+  $: collections = $incognitoMode
+    ? Object.fromEntries(Object.keys(DUMMY_COLLECTIONS).map((k) => [k, true]))
+    : rawCollections;
+  $: collectionColors = $incognitoMode
+    ? DUMMY_COLLECTION_COLORS
+    : rawCollectionColors;
+  $: modDisplayNames = $incognitoMode
+    ? Object.fromEntries(
+        DUMMY_MOD_GROUPS.map((g) => [g.name, g.displayName?.trim() || g.name]),
+      )
+    : rawModDisplayNames;
+
   let activeProfileName: string | null = null;
   let activeProfileEnabledCount = 0;
   let newCollectionName = "";
-  let modDisplayNames: Record<string, string> = {};
   let loading = false;
   let hasLoadedOnce = false;
   let editModal: {
@@ -93,10 +113,10 @@
         getCollectionColors(),
       ]);
 
-      collectionMods = profileCollectionMods;
-      collectionColors = colors;
+      rawCollectionMods = profileCollectionMods;
+      rawCollectionColors = colors;
       activeProfileName = config.active_profile;
-      modDisplayNames = Object.fromEntries(
+      rawModDisplayNames = Object.fromEntries(
         installedGroups.map((group) => [
           group.name,
           group.displayName?.trim() || group.name,
@@ -110,7 +130,7 @@
         // A collection whose mods are all individually enabled should appear enabled
         // even if it was never toggled through the collection UI.
         const enabledSet = new Set(profile?.installed_mod_names ?? []);
-        collections = Object.fromEntries(
+        rawCollections = Object.fromEntries(
           Object.entries(collectionState).map(([name, enabled]) => {
             const mods = profileCollectionMods[name] ?? [];
             const effectivelyEnabled =
@@ -121,7 +141,7 @@
         );
       } else {
         activeProfileEnabledCount = 0;
-        collections = collectionState;
+        rawCollections = collectionState;
       }
     } catch (error) {
       toastStore.error(`Failed to load collections: ${String(error)}`);

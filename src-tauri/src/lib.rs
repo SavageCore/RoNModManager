@@ -32,8 +32,10 @@ pub fn run() {
     let builder = tauri::Builder::default().setup(|app| {
         #[cfg(debug_assertions)]
         {
-            let window = app.get_webview_window("main").unwrap();
-            window.open_devtools();
+            if std::env::var("SCREENSHOT_MODE").is_err() {
+                let window = app.get_webview_window("main").unwrap();
+                window.open_devtools();
+            }
         }
 
         use tauri::menu::{Menu, MenuItem};
@@ -159,6 +161,8 @@ pub fn run() {
             window::save_window_state,
             window::get_window_state,
             window::manage_window_geometry,
+            window::is_screenshot_mode,
+            window::screenshot_theme,
             commands::fetch::fetch_modpack_json,
             commands::fetch_archive::download_mod_archive,
             commands::fs::file_exists,

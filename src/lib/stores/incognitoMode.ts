@@ -2,6 +2,7 @@ import { writable } from "svelte/store";
 import type { InstalledModGroup } from "$lib/types";
 
 export const incognitoMode = writable<boolean>(false);
+export const screenshotMode = writable<boolean>(false);
 
 export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
   {

@@ -12,6 +12,16 @@ pub struct WindowState {
     pub y: Option<f64>,
 }
 
+#[tauri::command]
+pub fn is_screenshot_mode() -> bool {
+    std::env::var("SCREENSHOT_MODE").is_ok()
+}
+
+#[tauri::command]
+pub fn screenshot_theme() -> Option<String> {
+    std::env::var("SCREENSHOT_THEME").ok()
+}
+
 /// Whether the app should manage (persist + restore) its own window geometry.
 ///
 /// Native Wayland clients cannot set an absolute position and the compositor

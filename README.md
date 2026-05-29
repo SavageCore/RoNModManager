@@ -2,7 +2,14 @@
 
 Cross-platform (Linux + Windows) GUI mod manager for Ready or Not.
 
-![Preview](https://github.com/user-attachments/assets/53cda2a4-28bc-47a3-8d08-0dda8254fac4)
+<table>
+  <tr>
+    <td><img src="docs/screenshots/light/mods.png" alt="Light mode" /></td>
+    <td><img src="docs/screenshots/dark/mods.png" alt="Dark mode" /></td>
+  </tr>
+</table>
+
+[More screenshots →](docs/screenshots/)
 
 ## Stack
 
@@ -37,6 +44,31 @@ make lint-frontend   # Prettier check + svelte-check
 make lint-backend    # cargo fmt --check + clippy
 make test            # vitest + cargo test
 ```
+
+## Screenshots
+
+To regenerate the screenshots in `docs/screenshots/`, install the prerequisites once:
+
+```bash
+sudo dnf install xdotool imagemagick   # Fedora / Nobara
+sudo apt install xdotool imagemagick   # Debian / Ubuntu
+```
+
+The script runs the app in XWayland mode (`GDK_BACKEND=x11`) so xdotool can control the window. XWayland starts automatically on KDE Plasma.
+
+Build the debug binary once (or after any Rust changes):
+
+```bash
+make screenshots-build
+```
+
+Then retake screenshots any time — frontend changes are picked up automatically without a rebuild:
+
+```bash
+make screenshots
+```
+
+The script starts the Vite dev server, launches the debug binary (which connects to it), and runs twice — once for light mode and once for dark — saving to `docs/screenshots/light/` and `docs/screenshots/dark/`. The app launches with `SCREENSHOT_MODE=1` (incognito auto-activated, no setup wizard, no geometry restore) and each sidebar page is navigated and captured via xdotool + ImageMagick.
 
 ## Keyboard Shortcuts
 

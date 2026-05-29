@@ -7,6 +7,7 @@ CARGO_MANIFEST   := src-tauri/Cargo.toml
 .PHONY: help install dev dev-xwayland build build-frontend release \
         lint format check lint-frontend lint-backend fmt-backend clippy lint-all \
         test-frontend test-backend test \
+        screenshots screenshots-build \
         flatpak-deps flatpak-vendor flatpak-build flatpak-bundle flatpak-install flatpak-run flatpak \
         clean
 
@@ -73,6 +74,17 @@ test-backend: ## Run Rust tests with cargo test
 	cargo test --manifest-path $(CARGO_MANIFEST)
 
 test: test-frontend test-backend ## Run all tests (frontend + backend)
+
+# ── Screenshots ───────────────────────────────────────────────────────────────
+
+screenshots: ## Take light + dark screenshots (rebuild with make screenshots-build if Rust changed)
+	SCREENSHOT_THEME=light node scripts/take-screenshots.mjs
+	SCREENSHOT_THEME=dark  node scripts/take-screenshots.mjs
+
+screenshots-build: ## Build debug binary then take screenshots (run after Rust changes)
+	cargo build --manifest-path $(CARGO_MANIFEST)
+	SCREENSHOT_THEME=light node scripts/take-screenshots.mjs
+	SCREENSHOT_THEME=dark  node scripts/take-screenshots.mjs
 
 # ── Flatpak ───────────────────────────────────────────────────────────────────
 
