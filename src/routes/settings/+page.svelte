@@ -42,6 +42,7 @@
   import { updateCheckStore } from "$lib/stores/updateCheck";
   import { screenshotMode } from "$lib/stores/incognitoMode";
   import { applyThemeClass } from "$lib/theme";
+  import { getVersion } from "@tauri-apps/api/app";
   import { downloadDir } from "@tauri-apps/api/path";
   import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
   import { onDestroy, onMount } from "svelte";
@@ -103,6 +104,7 @@
   let applyingIntroSkip = false;
   let undoingIntroSkip = false;
   let runningInFlatpak = false;
+  let currentVersion = "";
   let updateCheckInProgress = false;
   let updateInstallInProgress = false;
   let updateVersion: string | null = null;
@@ -628,6 +630,7 @@
 
   onMount(async () => {
     runningInFlatpak = await isRunningInFlatpak();
+    currentVersion = await getVersion();
     void refresh();
   });
 </script>
@@ -1118,6 +1121,11 @@
         <h3 style="color: var(--clr-text);" class="font-semibold">
           App Updates
         </h3>
+        {#if currentVersion}
+          <p style="color: var(--clr-text-secondary);" class="text-xs">
+            Version {currentVersion}
+          </p>
+        {/if}
         {#if runningInFlatpak}
           <p style="color: var(--clr-text-secondary);" class="text-sm">
             Updates are managed by Flatpak. Run <code>flatpak update</code> in a terminal
