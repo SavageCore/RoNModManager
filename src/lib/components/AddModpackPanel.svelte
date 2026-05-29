@@ -46,6 +46,9 @@
       try {
         const config = await getConfig();
         existingUrl = config.modpack_url || null;
+        if (existingUrl && $addModpackPanelStore.mode === "add") {
+          url = existingUrl;
+        }
       } catch {
         // ignore
       }
@@ -584,7 +587,7 @@
   }}
 >
   <div slot="controls" class="px-3 pt-3 pb-2 shrink-0">
-    {#if existingUrl && $addModpackPanelStore.mode === "add"}
+    {#if existingUrl && url !== existingUrl && $addModpackPanelStore.mode === "add"}
       <p class="text-xs mb-2" style="color: var(--clr-text-secondary);">
         A modpack URL is already configured. Adding a new modpack will append
         mods to the existing installation.
@@ -606,7 +609,11 @@
           on:click={handleSave}
           disabled={isLoading || !url}
         >
-          {isLoading ? "Working..." : "Start"}
+          {isLoading
+            ? "Working..."
+            : url === existingUrl && existingUrl
+              ? "Update"
+              : "Start"}
         </button>
       </div>
     {:else}
