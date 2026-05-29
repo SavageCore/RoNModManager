@@ -175,13 +175,11 @@ export const DUMMY_PROFILE_MODS: string[] = DUMMY_MOD_GROUPS.map((g) => g.name);
 
 export const DUMMY_COLLECTIONS: Record<string, string[]> = {
   Favourites: ["CQB_Tactics_Pack", "Tactical_HUD", "NightVision_Overhaul"],
-  Maps: ["Breach_And_Clear_Maps", "Mission_Pack_Vol1"],
   "AI & Gameplay": ["Suspect_AI_Overhaul", "Modular_Gear_Pack"],
 };
 
 export const DUMMY_COLLECTION_COLORS: Record<string, string> = {
   Favourites: "#f59e0b",
-  Maps: "#10b981",
   "AI & Gameplay": "#8b5cf6",
 };
 
