@@ -770,25 +770,40 @@ pub async fn install_mods(
             None,
             download_hash.clone(),
         )?;
+
+        if let Some(ref pack_data) = pack {
+            if !pack_data.addons.is_empty() {
+                let is_parent = pack_data.addons.contains_key(&file_name);
+                let is_addon =
+                    !is_parent && pack_data.addons.values().any(|v| v.contains(&file_name));
+                if is_parent || is_addon {
+                    let mut local_map = addon_map::read_addon_map().unwrap_or_default();
+                    if is_parent {
+                        if let Some(addon_archives) = pack_data.addons.get(&file_name) {
+                            let entry = local_map.entry(file_name.clone()).or_default();
+                            for a in addon_archives {
+                                if !entry.contains(a) {
+                                    entry.push(a.clone());
+                                }
+                            }
+                        }
+                    } else {
+                        for (parent, addons) in &pack_data.addons {
+                            if addons.contains(&file_name) {
+                                let entry = local_map.entry(parent.clone()).or_default();
+                                if !entry.contains(&file_name) {
+                                    entry.push(file_name.clone());
+                                }
+                            }
+                        }
+                    }
+                    let _ = addon_map::write_addon_map(&local_map);
+                }
+            }
+        }
     }
 
     let _ = app.emit("install_progress", &ProgressEvent::new_complete());
-
-    // Merge addon relationships from the modpack into the local addon_map.
-    if let Some(ref pack_data) = pack {
-        if !pack_data.addons.is_empty() {
-            let mut local_map = addon_map::read_addon_map().unwrap_or_default();
-            for (parent, addon_archives) in &pack_data.addons {
-                let entry = local_map.entry(parent.clone()).or_default();
-                for a in addon_archives {
-                    if !entry.contains(a) {
-                        entry.push(a.clone());
-                    }
-                }
-            }
-            let _ = addon_map::write_addon_map(&local_map);
-        }
-    }
 
     // Merge broken-mod flags from the modpack into the active profile.
     // Existing local notes are preserved (don't overwrite).
