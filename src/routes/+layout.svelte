@@ -8,6 +8,7 @@
     getConfig,
     launchGameWithGroups,
     listProfiles,
+    manageWindowGeometry,
     refreshModMetadata,
     saveWindowState,
     setGamePath,
@@ -33,7 +34,10 @@
   import {
     LogicalPosition,
     LogicalSize,
+    availableMonitors,
+    currentMonitor,
     getCurrentWindow,
+    primaryMonitor,
   } from "@tauri-apps/api/window";
   import {
     Layers,
@@ -244,21 +248,25 @@
     let resizeDebounce: ReturnType<typeof setTimeout> | null = null;
     let moveDebounce: ReturnType<typeof setTimeout> | null = null;
 
+    // On native Wayland the compositor owns window geometry - it centres and
+    // sizes windows sensibly and forbids apps setting an absolute position. We
+    // leave it entirely alone there and only persist/restore size and position
+    // on X11/XWayland, where we can reliably control them.
+    const manageGeometry = manageWindowGeometry().catch(() => false);
+
     const persistCurrentWindowState = async () => {
+      if (!(await manageGeometry)) {
+        return;
+      }
       try {
-        const size = await appWindow.innerSize();
-        let x: number | undefined;
-        let y: number | undefined;
-
-        try {
-          const position = await appWindow.outerPosition();
-          x = position.x;
-          y = position.y;
-        } catch {
-          // Wayland may not expose reliable window position.
-        }
-
-        await saveWindowState(size.width, size.height, x, y);
+        // innerSize()/outerPosition() return physical pixels, but we restore
+        // via LogicalSize/LogicalPosition. Convert to logical here so the saved
+        // values match the units used on restore - otherwise the window grows
+        // by the scale factor on every launch under fractional scaling.
+        const scale = await appWindow.scaleFactor();
+        const size = (await appWindow.innerSize()).toLogical(scale);
+        const position = (await appWindow.outerPosition()).toLogical(scale);
+        await saveWindowState(size.width, size.height, position.x, position.y);
       } catch {
         // Non-fatal; window state persistence should never block app usage.
       }
@@ -332,22 +340,86 @@
           }
         }
 
-        if (config.window_width && config.window_height) {
+        if (await manageGeometry) {
           try {
-            await appWindow.setSize(
-              new LogicalSize(config.window_width, config.window_height),
-            );
+            // Clamp restored geometry so a stale or oversized saved value can
+            // never leave the window larger than the usable screen.
+            // minWidth/minHeight mirror tauri.conf.json.
+            const MIN_WIDTH = 1024;
+            const MIN_HEIGHT = 720;
+            const MARGIN = 16; // breathing room / padding
+            // Reserve for an edge panel the compositor doesn't report in workArea
+            // (e.g. KWin on Wayland hands back the full screen as the work area).
+            const PANEL_RESERVE = 56;
+
+            // currentMonitor() returns null on native Wayland, so fall back to
+            // the primary monitor and finally any available monitor.
+            const monitor =
+              (await currentMonitor()) ??
+              (await primaryMonitor()) ??
+              (await availableMonitors())[0] ??
+              null;
+
+            let maxWidth = Infinity;
+            let maxHeight = Infinity;
+            if (monitor) {
+              const sf = monitor.scaleFactor;
+              // setSize sets the *inner* size, but the window's on-screen
+              // footprint is the outer size (title bar + borders). Subtract that
+              // delta or the visible window overflows the screen.
+              const inner = (await appWindow.innerSize()).toLogical(sf);
+              const outer = (await appWindow.outerSize()).toLogical(sf);
+              const decoW = Math.max(0, outer.width - inner.width);
+              const decoH = Math.max(0, outer.height - inner.height);
+
+              const fullW = monitor.size.width / sf;
+              const fullH = monitor.size.height / sf;
+              let availW = monitor.workArea.size.width / sf;
+              let availH = monitor.workArea.size.height / sf;
+              // If workArea wasn't shrunk versus the full resolution, the
+              // compositor isn't subtracting panels - reserve the space ourselves.
+              if (availH >= fullH) availH -= PANEL_RESERVE;
+
+              maxWidth = availW - decoW - MARGIN;
+              maxHeight = availH - decoH - MARGIN;
+            }
+
+            if (config.window_width && config.window_height) {
+              const width = Math.max(
+                MIN_WIDTH,
+                Math.min(config.window_width, maxWidth),
+              );
+              const height = Math.max(
+                MIN_HEIGHT,
+                Math.min(config.window_height, maxHeight),
+              );
+              try {
+                await appWindow.setSize(new LogicalSize(width, height));
+              } catch {
+                // Ignore if current platform rejects programmatic resize.
+              }
+
+              if (config.window_x != null && config.window_y != null) {
+                const x =
+                  maxWidth === Infinity
+                    ? config.window_x
+                    : Math.max(0, Math.min(config.window_x, maxWidth - width));
+                const y =
+                  maxHeight === Infinity
+                    ? config.window_y
+                    : Math.max(
+                        0,
+                        Math.min(config.window_y, maxHeight - height),
+                      );
+                try {
+                  await appWindow.setPosition(new LogicalPosition(x, y));
+                } catch {
+                  // Position APIs can still fail; non-fatal.
+                }
+              }
+            }
           } catch {
-            // Ignore if current platform rejects programmatic resize.
-          }
-        }
-        if (config.window_x != null && config.window_y != null) {
-          try {
-            await appWindow.setPosition(
-              new LogicalPosition(config.window_x, config.window_y),
-            );
-          } catch {
-            // Wayland often rejects or virtualizes window position APIs.
+            // Monitor query failed; leave the window at its default geometry.
           }
         }
 

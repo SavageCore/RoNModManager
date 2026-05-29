@@ -12,6 +12,24 @@ pub struct WindowState {
     pub y: Option<f64>,
 }
 
+/// Whether the app should manage (persist + restore) its own window geometry.
+///
+/// Native Wayland clients cannot set an absolute position and the compositor
+/// already centres and sizes windows sensibly, so we leave geometry entirely to
+/// it there. Forcing XWayland via `GDK_BACKEND=x11`, or running a real X11
+/// session, lets us reliably control size and position, so we manage it then.
+#[tauri::command]
+pub fn manage_window_geometry() -> bool {
+    let on_wayland = std::env::var("WAYLAND_DISPLAY")
+        .map(|value| !value.is_empty())
+        .unwrap_or(false);
+    let forced_x11 = std::env::var("GDK_BACKEND")
+        .map(|value| value == "x11")
+        .unwrap_or(false);
+
+    !on_wayland || forced_x11
+}
+
 #[tauri::command]
 pub fn set_window_title(app: AppHandle, title: String) -> Result<(), String> {
     let window = app

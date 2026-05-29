@@ -158,6 +158,7 @@ pub fn run() {
             window::set_window_title,
             window::save_window_state,
             window::get_window_state,
+            window::manage_window_geometry,
             commands::fetch::fetch_modpack_json,
             commands::fetch_archive::download_mod_archive,
             commands::fs::file_exists,
