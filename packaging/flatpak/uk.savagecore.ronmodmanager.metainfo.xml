@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>uk.savagecore.ronmodmanager</id>
+  <name>RoN Mod Manager</name>
+  <summary>Mod manager for Ready or Not</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>RoN Mod Manager lets you browse, install, and manage mods for the tactical shooter Ready or Not, with support for Nexus Mods and mod.io modpacks.</p>
+  </description>
+  <url type="homepage">https://github.com/SavageCore/RoNModManager</url>
+  <url type="bugtracker">https://github.com/SavageCore/RoNModManager/issues</url>
+  <launchable type="desktop-id">uk.savagecore.ronmodmanager.desktop</launchable>
+  <icon type="stock">uk.savagecore.ronmodmanager</icon>
+  <categories>
+    <category>Game</category>
+    <category>Utility</category>
+  </categories>
+  <releases>
+    <release version="0.0.7" date="2026-05-28"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>
