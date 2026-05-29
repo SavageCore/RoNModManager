@@ -56,6 +56,7 @@
   import SetupWizard from "$lib/components/SetupWizard.svelte";
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import { infoLogStore } from "$lib/stores/infoLogStore";
+  import { incognitoMode } from "$lib/stores/incognitoMode";
 
   const APP_NAME = "RoN Mod Manager";
 
@@ -291,10 +292,18 @@
       closingFromLaunch = true;
     };
 
+    const handleIncognitoKeybind = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "i") {
+        e.preventDefault();
+        incognitoMode.update((v) => !v);
+      }
+    };
+
     window.addEventListener("focus", handleAppFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("ron:profile-changed", handleProfileChanged);
     window.addEventListener("ron:launch-close", handleLaunchClose);
+    window.addEventListener("keydown", handleIncognitoKeybind);
 
     void Promise.all([
       getConfig().then(async (config) => {
@@ -526,6 +535,7 @@
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("ron:profile-changed", handleProfileChanged);
       window.removeEventListener("ron:launch-close", handleLaunchClose);
+      window.removeEventListener("keydown", handleIncognitoKeybind);
     };
   });
 </script>

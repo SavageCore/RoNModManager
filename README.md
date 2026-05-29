@@ -38,6 +38,12 @@ make lint-backend    # cargo fmt --check + clippy
 make test            # vitest + cargo test
 ```
 
+## Keyboard Shortcuts
+
+| Shortcut | Action                                                                    |
+| -------- | ------------------------------------------------------------------------- |
+| `Ctrl+I` | Toggle incognito mode (replaces mod list with dummy data for screenshots) |
+
 ## Auto-Update Setup (GitHub Releases)
 
 This project is configured for Tauri updater using:

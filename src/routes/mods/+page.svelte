@@ -159,6 +159,14 @@
   import { modSortOrder } from "$lib/stores/modSortOrder";
   import { showBroken } from "$lib/stores/showBroken";
   import { toastStore } from "$lib/stores/toast";
+  import {
+    incognitoMode,
+    DUMMY_MOD_GROUPS,
+    DUMMY_PROFILE_MODS,
+    DUMMY_COLLECTIONS,
+    DUMMY_COLLECTION_COLORS,
+    DUMMY_TAGS,
+  } from "$lib/stores/incognitoMode";
   import { formatDistanceToNow } from "date-fns";
   import type {
     InstalledModGroup,
@@ -309,7 +317,25 @@
   // Filtering logic for modGroups
   // Filter out add-on files that are tracked as standalone mods
 
-  $: filteredModGroups = modGroups
+  $: effectiveModGroups = $incognitoMode ? DUMMY_MOD_GROUPS : modGroups;
+  $: effectiveProfileMods = $incognitoMode
+    ? DUMMY_PROFILE_MODS
+    : modsForActiveProfile;
+  $: effectiveCollections = $incognitoMode
+    ? DUMMY_COLLECTIONS
+    : activeProfileCollections;
+  $: effectiveTags = $incognitoMode ? DUMMY_TAGS : activeProfileTags;
+  $: effectiveCollectionNames = $incognitoMode
+    ? Object.keys(DUMMY_COLLECTIONS)
+    : activeCollectionNames;
+  $: effectiveTagNames = $incognitoMode
+    ? Object.keys(DUMMY_TAGS).sort((a, b) => a.localeCompare(b))
+    : allTagNames;
+  $: effectiveCollectionColors = $incognitoMode
+    ? DUMMY_COLLECTION_COLORS
+    : activeProfileCollectionColors;
+
+  $: filteredModGroups = effectiveModGroups
     .filter((group) => {
       const search = modSearch.trim().toLowerCase();
       const name = group.name.toLowerCase();
@@ -370,7 +396,7 @@
       }
     });
 
-  $: modToCollectionsMap = Object.entries(activeProfileCollections).reduce(
+  $: modToCollectionsMap = Object.entries(effectiveCollections).reduce(
     (acc, [colName, mods]) => {
       for (const mod of mods) {
         (acc[mod] ??= []).push(colName);
@@ -380,7 +406,7 @@
     {} as Record<string, string[]>,
   );
 
-  $: modToTagsMap = Object.entries(activeProfileTags).reduce(
+  $: modToTagsMap = Object.entries(effectiveTags).reduce(
     (acc, [tagName, mods]) => {
       for (const mod of mods) {
         (acc[mod] ??= []).push(tagName);
@@ -391,7 +417,7 @@
   );
 
   $: missingSavMapMods = new Set(
-    modGroups
+    effectiveModGroups
       .filter((group) => {
         if (noWorldGenSet.has(group.name)) return false;
         const tags = modToTagsMap[group.name] ?? [];
@@ -402,32 +428,30 @@
       .map((g) => g.name),
   );
 
-  $: bulkCurrentCollections = activeCollectionNames.filter(
+  $: bulkCurrentCollections = effectiveCollectionNames.filter(
     (col) =>
       selectedMods.size > 0 &&
       [...selectedMods].every((m) =>
-        (activeProfileCollections[col] ?? []).includes(m),
+        (effectiveCollections[col] ?? []).includes(m),
       ),
   );
 
-  $: bulkPartialCollections = activeCollectionNames.filter((col) => {
-    const mods = activeProfileCollections[col] ?? [];
+  $: bulkPartialCollections = effectiveCollectionNames.filter((col) => {
+    const mods = effectiveCollections[col] ?? [];
     return (
       [...selectedMods].some((m) => mods.includes(m)) &&
       !bulkCurrentCollections.includes(col)
     );
   });
 
-  $: bulkCurrentTags = allTagNames.filter(
+  $: bulkCurrentTags = effectiveTagNames.filter(
     (tag) =>
       selectedMods.size > 0 &&
-      [...selectedMods].every((m) =>
-        (activeProfileTags[tag] ?? []).includes(m),
-      ),
+      [...selectedMods].every((m) => (effectiveTags[tag] ?? []).includes(m)),
   );
 
-  $: bulkPartialTags = allTagNames.filter((tag) => {
-    const mods = activeProfileTags[tag] ?? [];
+  $: bulkPartialTags = effectiveTagNames.filter((tag) => {
+    const mods = effectiveTags[tag] ?? [];
     return (
       [...selectedMods].some((m) => mods.includes(m)) &&
       !bulkCurrentTags.includes(tag)
@@ -1365,7 +1389,7 @@
 <ItemPickerModal
   isVisible={showCollectionPickerModal}
   modLabel={collectionPickerModLabel || collectionPickerModName}
-  allItems={activeCollectionNames}
+  allItems={effectiveCollectionNames}
   currentItems={modToCollectionsMap[collectionPickerModName] ?? []}
   title="Collections"
   ItemIcon={Library}
@@ -1386,7 +1410,7 @@
 <ItemPickerModal
   isVisible={showTagPickerModal}
   modLabel={tagPickerModLabel || tagPickerModName}
-  allItems={allTagNames}
+  allItems={effectiveTagNames}
   currentItems={modToTagsMap[tagPickerModName] ?? []}
   title="Tags"
   ItemIcon={Tag}
@@ -1410,7 +1434,7 @@
     ? ''
     : 's'} selected"
   modLabel=""
-  allItems={activeCollectionNames}
+  allItems={effectiveCollectionNames}
   currentItems={bulkCurrentCollections}
   partialItems={bulkPartialCollections}
   title="Collections"
@@ -1433,7 +1457,7 @@
     ? ''
     : 's'} selected"
   modLabel=""
-  allItems={allTagNames}
+  allItems={effectiveTagNames}
   currentItems={bulkCurrentTags}
   partialItems={bulkPartialTags}
   title="Tags"
@@ -1538,7 +1562,7 @@
   </button>
 </div>
 
-{#if allTagNames.length > 0}
+{#if effectiveTagNames.length > 0}
   <div class="flex flex-wrap items-center gap-1.5 mb-3">
     <span
       style="color: var(--clr-text-secondary);"
@@ -1547,7 +1571,7 @@
       <Tag size={12} />
       Filter by tag:
     </span>
-    {#each allTagNames as tagName (tagName)}
+    {#each effectiveTagNames as tagName (tagName)}
       <button
         on:click={() => {
           if (activeTagFilters.has(tagName)) {
@@ -1580,7 +1604,7 @@
   </div>
 {/if}
 
-{#if activeCollectionNames.length > 0}
+{#if effectiveCollectionNames.length > 0}
   <div class="flex flex-wrap items-center gap-1.5 mb-3">
     <span
       style="color: var(--clr-text-secondary);"
@@ -1589,9 +1613,9 @@
       <Layers size={12} />
       Filter by collection:
     </span>
-    {#each activeCollectionNames as col (col)}
+    {#each effectiveCollectionNames as col (col)}
       {@const colColor =
-        activeProfileCollectionColors[col] ?? "var(--clr-accent-300)"}
+        effectiveCollectionColors[col] ?? "var(--clr-accent-300)"}
       <button
         on:click={() => {
           if (activeCollectionFilters.has(col)) {
@@ -1684,12 +1708,16 @@
       <label class="gale-switch" title="Toggle all mods on/off">
         <input
           type="checkbox"
-          checked={modGroups.length > 0 &&
-            modGroups.every((g) => modsForActiveProfile.includes(g.name))}
+          checked={effectiveModGroups.length > 0 &&
+            effectiveModGroups.every((g) =>
+              effectiveProfileMods.includes(g.name),
+            )}
           on:change={() => {
             void handleToggleAll();
           }}
-          disabled={modGroups.length === 0 || !activeProfileName}
+          disabled={effectiveModGroups.length === 0 ||
+            !activeProfileName ||
+            $incognitoMode}
         />
         <span class="gale-switch-track"></span>
       </label>
@@ -1942,8 +1970,7 @@
               {#if (modToCollectionsMap[group.name] ?? []).length > 0 || (modToTagsMap[group.name] ?? []).length > 0}
                 <div class="flex items-center gap-1 flex-wrap">
                   {#each modToCollectionsMap[group.name] ?? [] as col (col)}
-                    {@const colColor =
-                      activeProfileCollectionColors[col] ?? null}
+                    {@const colColor = effectiveCollectionColors[col] ?? null}
                     {@const isColActive = activeCollectionFilters.has(col)}
                     <button
                       on:click|stopPropagation={() => {
@@ -1994,13 +2021,15 @@
                 class:opacity-50={!!brokenModsMap[group.name]}
                 title={brokenModsMap[group.name] !== undefined
                   ? `Broken: ${brokenModsMap[group.name] || "no note"}`
-                  : `${modsForActiveProfile.includes(group.name) ? "Disable" : "Enable"} ${group.displayName ?? group.name}`}
+                  : `${effectiveProfileMods.includes(group.name) ? "Disable" : "Enable"} ${group.displayName ?? group.name}`}
               >
                 <input
                   type="checkbox"
-                  checked={modsForActiveProfile.includes(group.name)}
+                  checked={effectiveProfileMods.includes(group.name)}
                   on:change={() => toggleGroupState(group.name)}
-                  disabled={!activeProfileName || !!brokenModsMap[group.name]}
+                  disabled={!activeProfileName ||
+                    !!brokenModsMap[group.name] ||
+                    $incognitoMode}
                 />
                 <span class="gale-switch-track"></span>
               </label>
