@@ -10,6 +10,7 @@
     updateModSourceUrl,
     updateNexusFileId,
   } from "$lib/api/commands";
+  import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import { alertStore } from "$lib/stores/alert";
   import { importLogStore } from "$lib/stores/importLogStore";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
@@ -229,6 +230,7 @@
             );
           }
           modAddQueueStore.markDone(entry.queueId, `Installed ${result.name}`);
+          addModpackPanelStore.notifyModInstalled();
         } catch (error) {
           const msg = String(error);
           if (msg.includes("CANCELLED:")) {
@@ -260,6 +262,7 @@
         );
       } else {
         modAddQueueStore.markDone(queueId, `Installed ${fileName}`);
+        addModpackPanelStore.notifyModInstalled();
         dispatch("modAdded");
       }
     } catch (error) {

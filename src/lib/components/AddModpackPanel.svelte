@@ -159,6 +159,7 @@
                 result.archiveName,
                 result.sourceUrl,
               ).catch(() => {});
+              addModpackPanelStore.notifyModInstalled();
               log.push(`Installed '${result.name}' from mod.io.`);
               log = log;
               await tick();
@@ -283,10 +284,11 @@
                   archivePath,
                   modInfo.selected_pak_files ?? undefined,
                 );
+                await updateModSourceUrl(modFile, src).catch(() => {});
+                addModpackPanelStore.notifyModInstalled();
                 log.push(`Installed '${modFile}'.`);
                 log = log;
                 await tick();
-                await updateModSourceUrl(modFile, src).catch(() => {});
               } catch (installErr: any) {
                 log.push(
                   `Error installing archive: ${installErr.message || String(installErr)}`,
@@ -411,9 +413,6 @@
                 archivePath,
                 modInfo.selected_pak_files ?? undefined,
               );
-              log.push(`Installed '${modFile}'.`);
-              log = log;
-              await tick();
               try {
                 await updateModSourceUrl(modFile, src);
               } catch (setUrlErr: any) {
@@ -423,6 +422,10 @@
                 log = log;
                 await tick();
               }
+              addModpackPanelStore.notifyModInstalled();
+              log.push(`Installed '${modFile}'.`);
+              log = log;
+              await tick();
             } catch (installErr: any) {
               log.push(
                 `Error installing archive: ${installErr.message || String(installErr)}`,
@@ -478,6 +481,7 @@
                   result.fileId,
                 ).catch(() => {});
               }
+              addModpackPanelStore.notifyModInstalled();
               log.push(`Installed '${result.name}' from Nexus.`);
               log = log;
               await tick();

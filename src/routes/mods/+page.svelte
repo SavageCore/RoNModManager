@@ -217,6 +217,13 @@
     prevDoneCounter = $addModpackPanelStore.doneCounter;
     void refresh();
   }
+  let prevModInstalledCounter = $addModpackPanelStore.modInstalledCounter;
+  $: if (
+    $addModpackPanelStore.modInstalledCounter !== prevModInstalledCounter
+  ) {
+    prevModInstalledCounter = $addModpackPanelStore.modInstalledCounter;
+    void refreshModList();
+  }
   let nexusFreeDownloads: Array<{
     prettyName: string | null;
     fileName: string;
@@ -513,6 +520,22 @@
       const bName = (b.displayName || b.name).toLowerCase();
       return aName.localeCompare(bName);
     });
+  }
+
+  async function refreshModList() {
+    try {
+      const groups = await getInstalledModGroups();
+      allInstalledGroupNames = new Set(groups.map((g) => g.name));
+      modGroups = sortModGroups(groups);
+      expandedGroups = Object.fromEntries(
+        modGroups.map((group) => [
+          group.name,
+          expandedGroups[group.name] ?? false,
+        ]),
+      );
+    } catch {
+      // silently fail - full refresh() at end will catch it
+    }
   }
 
   async function refresh() {
@@ -1196,6 +1219,7 @@
             `Installed ${entry.fileName}`,
           );
           toastStore.success(`Successfully installed: ${entry.fileName}`);
+          addModpackPanelStore.notifyModInstalled();
           console.log("Installation successful:", entry.fileName);
         } catch (error) {
           const message = `Failed to install ${entry.fileName}: ${String(error)}`;
@@ -1304,6 +1328,7 @@
       if (unlistenDragDrop) {
         unlistenDragDrop();
       }
+
       if (unlistenFreeDownload) {
         unlistenFreeDownload();
       }

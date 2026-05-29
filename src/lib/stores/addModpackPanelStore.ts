@@ -7,6 +7,7 @@ interface AddModpackPanelState {
   currentVersion: string | null;
   newVersion: string | null;
   doneCounter: number;
+  modInstalledCounter: number;
 }
 
 function createAddModpackPanelStore() {
@@ -17,6 +18,7 @@ function createAddModpackPanelStore() {
     currentVersion: null,
     newVersion: null,
     doneCounter: 0,
+    modInstalledCounter: 0,
   });
 
   return {
@@ -37,6 +39,8 @@ function createAddModpackPanelStore() {
     setActivity: (hasActivity: boolean) =>
       update((s) => ({ ...s, hasActivity })),
     notifyDone: () => update((s) => ({ ...s, doneCounter: s.doneCounter + 1 })),
+    notifyModInstalled: () =>
+      update((s) => ({ ...s, modInstalledCounter: s.modInstalledCounter + 1 })),
   };
 }
 
