@@ -13,11 +13,27 @@
   const dispatch = createEventDispatcher<{ close: void; clear: void }>();
 
   function autoScroll(node: HTMLElement) {
+    const THRESHOLD = 8;
+    let pinned = true;
+
+    function onScroll() {
+      pinned =
+        node.scrollHeight - node.scrollTop - node.clientHeight <= THRESHOLD;
+    }
+
     const observer = new MutationObserver(() => {
-      node.scrollTop = node.scrollHeight;
+      if (pinned) node.scrollTop = node.scrollHeight;
     });
+
+    node.addEventListener("scroll", onScroll, { passive: true });
     observer.observe(node, { childList: true, subtree: true });
-    return { destroy: () => observer.disconnect() };
+
+    return {
+      destroy() {
+        node.removeEventListener("scroll", onScroll);
+        observer.disconnect();
+      },
+    };
   }
 
   function copyLog() {
