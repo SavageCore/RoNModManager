@@ -6,7 +6,31 @@ on:
       - "v*"
 
 jobs:
+  create-release:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      release-id: ${{ steps.create.outputs.id }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Generate release notes
+        id: cliff
+        uses: orhun/git-cliff-action@v2
+        with:
+          args: --latest --strip all
+      - name: Create GitHub Release
+        id: create
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.cliff.outputs.content }}
+
   release:
+    needs: create-release
     strategy:
       matrix:
         include:
@@ -35,12 +59,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: ${{ github.ref_name }}
-          releaseBody: See CHANGELOG.md for details.
+          releaseId: ${{ needs.create-release.outputs.release-id }}
           tauriScript: npm run tauri
 
   flatpak:
+    needs: create-release
     runs-on: ubuntu-22.04
     permissions:
       contents: write
