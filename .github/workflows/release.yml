@@ -16,11 +16,20 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Install git-cliff
+        run: |
+          tmp=$(mktemp -d)
+          curl -sSfL https://github.com/orhun/git-cliff/releases/latest/download/git-cliff-x86_64-unknown-linux-musl.tar.gz \
+            | tar xz -C "$tmp"
+          sudo install -m 755 "$(find "$tmp" -name git-cliff -type f)" /usr/local/bin/git-cliff
       - name: Generate release notes
         id: cliff
-        uses: orhun/git-cliff-action@v2
-        with:
-          args: --latest --strip all
+        run: |
+          {
+            echo "content<<EOF"
+            git cliff --latest --strip all
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
       - name: Create GitHub Release
         id: create
         uses: softprops/action-gh-release@v3
