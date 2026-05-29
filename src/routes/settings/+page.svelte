@@ -303,40 +303,6 @@
     }
   }
 
-  async function save() {
-    const errors: string[] = [];
-
-    try {
-      await setTheme(theme);
-      applyThemeClass(theme);
-    } catch (error) {
-      errors.push(`Theme: ${String(error)}`);
-    }
-
-    try {
-      await setGamePath(gamePath.trim());
-    } catch (error) {
-      errors.push(`Game path: ${String(error)}`);
-    }
-
-    try {
-      await updateConfig({
-        sync_remote_host: syncRemoteHost.trim(),
-        sync_remote_path: syncRemotePath.trim(),
-      });
-    } catch (error) {
-      errors.push(`Sync settings: ${String(error)}`);
-    }
-
-    if (errors.length === 0) {
-      toastStore.success("Settings saved.");
-    } else {
-      toastStore.error(`Some settings failed: ${errors.join(" | ")}`);
-    }
-
-    await refresh();
-  }
-
   function openTokenSetupModal() {
     tokenInput = "";
     tokenModalError = "";
@@ -675,7 +641,17 @@
       <span style="color: var(--clr-text-secondary);" class="mb-1 block"
         >Game Path</span
       >
-      <input class="input w-full" bind:value={gamePath} />
+      <input
+        class="input w-full"
+        bind:value={gamePath}
+        on:blur={async () => {
+          try {
+            await setGamePath(gamePath.trim());
+          } catch (error) {
+            toastStore.error(`Game path: ${String(error)}`);
+          }
+        }}
+      />
       <button class="btn btn-sm mt-2" on:click={autodetect}>Auto Detect</button>
     </label>
   </div>
@@ -1029,8 +1005,6 @@
     </div>
   </div>
 
-  <button class="btn primary mt-5" on:click={save}>Save All Settings</button>
-
   <div class="card mt-6">
     <div class="flex items-center justify-between">
       <div>
@@ -1067,11 +1041,31 @@
         class="input w-full"
         placeholder="user@host (e.g. root@seedbox.example.com)"
         bind:value={syncRemoteHost}
+        on:blur={async () => {
+          try {
+            await updateConfig({
+              sync_remote_host: syncRemoteHost.trim(),
+              sync_remote_path: syncRemotePath.trim(),
+            });
+          } catch (error) {
+            toastStore.error(`Sync settings: ${String(error)}`);
+          }
+        }}
       />
       <input
         class="input w-full"
         placeholder="/remote/path"
         bind:value={syncRemotePath}
+        on:blur={async () => {
+          try {
+            await updateConfig({
+              sync_remote_host: syncRemoteHost.trim(),
+              sync_remote_path: syncRemotePath.trim(),
+            });
+          } catch (error) {
+            toastStore.error(`Sync settings: ${String(error)}`);
+          }
+        }}
       />
     </div>
     <div class="flex items-center justify-between mt-3">
