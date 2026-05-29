@@ -1,9 +1,19 @@
 // Read manifest for a given archive name (calls Tauri backend)
 export const readManifestForArchive = (archiveName: string) =>
   invoke<any>("read_manifest_for_archive", { archiveName: archiveName });
-// Download a mod archive from a URL to the local archives folder
-export const downloadModArchive = (url: string, filename: string) =>
-  invoke<void>("download_mod_archive", { url, filename });
+// Download a mod archive from a URL to the local archives folder.
+// If a matching file (validated by expectedHash) is already in ~/Downloads, it is reused.
+// Returns the archive's MD5 (so callers can pass it to installLocalMod and avoid
+// re-hashing) and whether a local Downloads copy was used instead of the server.
+export const downloadModArchive = (
+  url: string,
+  filename: string,
+  expectedHash?: string,
+) =>
+  invoke<{ contentHash: string | null; reusedLocal: boolean }>(
+    "download_mod_archive",
+    { url, filename, expectedHash },
+  );
 // Fetch modpack JSON via Tauri backend to avoid CORS
 export const fetchModpackJson = (url: string) =>
   invoke<any>("fetch_modpack_json", { url });

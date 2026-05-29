@@ -621,7 +621,61 @@ pub async fn install_mods(
             }
         }
 
+        // Re-use a matching file the user has already downloaded, validated by MD5
+        // (from the modpack entry) where available, otherwise by byte size.
+        let expected_md5 = pack
+            .as_ref()
+            .and_then(|p| p.mods.get(&archive_name))
+            .and_then(|m| m.content_hash.as_deref());
         let pct = 10.0 + (idx as f32 / total as f32) * 38.0;
+        let hash_started = Instant::now();
+        if let Some(found) = downloader::find_in_downloads(
+            &archive_name,
+            Some(entry.size),
+            expected_md5,
+            |processed, total_bytes| {
+                let elapsed = hash_started.elapsed().as_secs_f64().max(0.001);
+                let mib_per_sec = bytes_to_mib(processed) / elapsed;
+                let _ = app.emit(
+                    "install_progress",
+                    &ProgressEvent {
+                        operation: "hash".to_string(),
+                        file: archive_name.clone(),
+                        percent: pct,
+                        message: format!(
+                            "Hashing {} from Downloads... {:.1} MiB/s",
+                            archive_name, mib_per_sec
+                        ),
+                        total_bytes: if total_bytes > 0 {
+                            Some(total_bytes)
+                        } else {
+                            None
+                        },
+                        processed_bytes: Some(processed),
+                    },
+                );
+            },
+        ) {
+            if let Some(parent) = local_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(&found, &local_path)?;
+            let _ = app.emit(
+                "install_progress",
+                &ProgressEvent {
+                    operation: "download".to_string(),
+                    file: archive_name.clone(),
+                    percent: pct,
+                    message: format!("Found {} in Downloads, using local copy", archive_name),
+                    total_bytes: None,
+                    processed_bytes: None,
+                },
+            );
+            // Pass the validated MD5 through so install does not re-hash.
+            downloaded_files.push((local_path, expected_md5.map(|h| h.to_string())));
+            continue;
+        }
+
         let _ = app.emit(
             "install_progress",
             &ProgressEvent {

@@ -2,12 +2,55 @@ use crate::models::Result;
 use hex;
 use md5::{Digest, Md5};
 use reqwest::Client;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
 /// Progress callback type for download progress updates
 pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send + Sync>;
+
+/// Look for a file the user has already downloaded in their Downloads folder that
+/// matches what we were about to fetch. When an MD5 is provided the candidate is
+/// validated by hash (reporting progress via `on_progress`, since hashing a large
+/// archive is slow); otherwise it falls back to a non-zero byte-size match. Returns
+/// the path only on a positive validation - a name match alone is never enough.
+pub fn find_in_downloads<F>(
+    filename: &str,
+    expected_size: Option<u64>,
+    expected_md5: Option<&str>,
+    on_progress: F,
+) -> Option<PathBuf>
+where
+    F: FnMut(u64, u64),
+{
+    use crate::services::hasher;
+
+    let candidate = dirs::download_dir()?.join(filename);
+    if !candidate.is_file() {
+        return None;
+    }
+
+    if let Some(md5) = expected_md5 {
+        // Cheap reject before hashing when we already know the expected size differs.
+        if let Some(size) = expected_size {
+            if size > 0 && std::fs::metadata(&candidate).map(|m| m.len()).ok() != Some(size) {
+                return None;
+            }
+        }
+        return match hasher::md5_file_with_progress(&candidate, on_progress) {
+            Ok(actual) if actual.eq_ignore_ascii_case(md5) => Some(candidate),
+            _ => None,
+        };
+    }
+
+    if let Some(size) = expected_size {
+        if size > 0 && std::fs::metadata(&candidate).map(|m| m.len()).ok() == Some(size) {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
 
 /// Download a file from a URL to a destination path, returning its MD5 hash.
 pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<String> {

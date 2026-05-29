@@ -265,10 +265,20 @@
           if (!manifestHashMatched) {
             const downloadUrl = `${baseUrl}/mods/${encodeURIComponent(modFile)}`;
             let selfHosted = false;
+            let downloadedHash: string | null = null;
             try {
-              await downloadModArchive(downloadUrl, modFile);
+              const result = await downloadModArchive(
+                downloadUrl,
+                modFile,
+                modInfo.content_hash,
+              );
+              downloadedHash = result.contentHash;
               selfHosted = true;
-              log.push(`Downloaded '${modFile}' from server.`);
+              log.push(
+                result.reusedLocal
+                  ? `Used local copy of '${modFile}' from Downloads.`
+                  : `Downloaded '${modFile}' from server.`,
+              );
               log = log;
               await tick();
             } catch {
@@ -283,6 +293,7 @@
                 await installLocalMod(
                   archivePath,
                   modInfo.selected_pak_files ?? undefined,
+                  downloadedHash ?? undefined,
                 );
                 await updateModSourceUrl(modFile, src).catch(() => {});
                 addModpackPanelStore.notifyModInstalled();
@@ -403,8 +414,17 @@
           log = log;
           await tick();
           try {
-            await downloadModArchive(downloadUrl, modFile);
-            log.push(`Downloaded '${modFile}'.`);
+            const result = await downloadModArchive(
+              downloadUrl,
+              modFile,
+              modInfo.content_hash,
+            );
+            const downloadedHash = result.contentHash;
+            log.push(
+              result.reusedLocal
+                ? `Used local copy of '${modFile}' from Downloads.`
+                : `Downloaded '${modFile}'.`,
+            );
             log = log;
             await tick();
             const archivePath = `${archiveRootPath}/${modFile}`;
@@ -412,6 +432,7 @@
               await installLocalMod(
                 archivePath,
                 modInfo.selected_pak_files ?? undefined,
+                downloadedHash ?? undefined,
               );
               try {
                 await updateModSourceUrl(modFile, src);
