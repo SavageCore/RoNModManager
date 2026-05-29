@@ -8,7 +8,7 @@ CARGO_MANIFEST   := src-tauri/Cargo.toml
         lint format check lint-frontend lint-backend fmt-backend clippy lint-all \
         test-frontend test-backend test \
         screenshots screenshots-build \
-        flatpak-deps flatpak-vendor flatpak-build flatpak-bundle flatpak-install flatpak-run flatpak \
+        vendor flatpak-deps flatpak-build flatpak-bundle flatpak-install flatpak-run flatpak \
         clean
 
 help: ## Show available targets
@@ -19,17 +19,23 @@ help: ## Show available targets
 install: ## Install npm dependencies
 	npm install
 
+src-tauri/vendor/.cargo-lock-stamp: src-tauri/Cargo.lock
+	cd src-tauri && cargo vendor vendor
+	@touch $@
+
+vendor: src-tauri/vendor/.cargo-lock-stamp ## Vendor Cargo dependencies (auto-skipped if Cargo.lock unchanged)
+
 # ── Development ───────────────────────────────────────────────────────────────
 
-dev: ## Run Tauri dev (Wayland-compatible, software rendering)
+dev: vendor ## Run Tauri dev (Wayland-compatible, software rendering)
 	WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 npm run tauri dev
 
-dev-xwayland: ## Run Tauri dev via XWayland (full window state persistence)
+dev-xwayland: vendor ## Run Tauri dev via XWayland (full window state persistence)
 	GDK_BACKEND=x11 npm run tauri dev
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
-build: ## Build the full Tauri application
+build: vendor ## Build the full Tauri application
 	npm run tauri build
 
 build-frontend: ## Build only the Svelte frontend with Vite
@@ -51,14 +57,14 @@ check: ## Run svelte-check for TypeScript/Svelte type checking
 
 lint-frontend: lint check ## Run all frontend lint checks (Prettier + svelte-check)
 
-lint-backend: ## Run cargo fmt check + clippy on the Rust backend
+lint-backend: vendor ## Run cargo fmt check + clippy on the Rust backend
 	cargo fmt --manifest-path $(CARGO_MANIFEST) -- --check
 	cargo clippy --manifest-path $(CARGO_MANIFEST) --all-targets --all-features -- -D warnings
 
 fmt-backend: ## Auto-format the Rust backend with cargo fmt
 	cargo fmt --manifest-path $(CARGO_MANIFEST)
 
-clippy: ## Run cargo clippy on the Rust backend
+clippy: vendor ## Run cargo clippy on the Rust backend
 	cargo clippy --manifest-path $(CARGO_MANIFEST) --all-targets --all-features -- -D warnings
 
 lint-all: lint-frontend lint-backend ## Run all linters (frontend + backend)
@@ -70,7 +76,7 @@ format-all: format fmt-backend ## Auto-format all code (frontend + backend)
 test-frontend: ## Run Vitest unit tests
 	npm run test:unit
 
-test-backend: ## Run Rust tests with cargo test
+test-backend: vendor ## Run Rust tests with cargo test
 	cargo test --manifest-path $(CARGO_MANIFEST)
 
 test: test-frontend test-backend ## Run all tests (frontend + backend)
@@ -81,7 +87,7 @@ screenshots: ## Take light + dark screenshots (rebuild with make screenshots-bui
 	SCREENSHOT_THEME=light node scripts/take-screenshots.mjs
 	SCREENSHOT_THEME=dark  node scripts/take-screenshots.mjs
 
-screenshots-build: ## Build debug binary then take screenshots (run after Rust changes)
+screenshots-build: vendor ## Build debug binary then take screenshots (run after Rust changes)
 	cargo build --manifest-path $(CARGO_MANIFEST)
 	SCREENSHOT_THEME=light node scripts/take-screenshots.mjs
 	SCREENSHOT_THEME=dark  node scripts/take-screenshots.mjs
@@ -96,10 +102,7 @@ flatpak-deps: ## Install Flatpak runtimes and SDK extensions (run once)
 		org.freedesktop.Sdk.Extension.node24//25.08 \
 		org.freedesktop.Sdk.Extension.rust-stable//25.08
 
-flatpak-vendor: ## Vendor Cargo dependencies for offline Flatpak build
-	cd src-tauri && cargo vendor vendor
-
-flatpak-build: ## Build Flatpak from local repo (run flatpak-vendor first)
+flatpak-build: ## Build Flatpak from local repo (run vendor first)
 	flatpak-builder --force-clean --user --install-deps-from=flathub \
 		--gpg-sign=$(FLATPAK_GPG_KEY) \
 		--repo=flatpak-repo build-dir $(FLATPAK_MANIFEST)
@@ -118,7 +121,7 @@ flatpak-install: ## Install the local .flatpak bundle for the current user
 flatpak-run: ## Run the installed Flatpak
 	flatpak run $(FLATPAK_ID)
 
-flatpak: flatpak-vendor flatpak-build flatpak-bundle flatpak-install ## Full local Flatpak pipeline (vendor → build → bundle)
+flatpak: vendor flatpak-build flatpak-bundle flatpak-install ## Full local Flatpak pipeline (vendor → build → bundle)
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
 
