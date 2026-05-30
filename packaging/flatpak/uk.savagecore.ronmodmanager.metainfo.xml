@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>uk.savagecore.ronmodmanager</id>
+  <name>RoN Mod Manager</name>
+  <summary>Mod manager for Ready or Not</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>RoN Mod Manager lets you browse, install, and manage mods for the tactical shooter Ready or Not, with support for Nexus Mods and mod.io modpacks.</p>
+  </description>
+  <url type="homepage">https://github.com/SavageCore/RoNModManager</url>
+  <url type="bugtracker">https://github.com/SavageCore/RoNModManager/issues</url>
+  <launchable type="desktop-id">uk.savagecore.ronmodmanager.desktop</launchable>
+  <icon type="stock">uk.savagecore.ronmodmanager</icon>
+  <categories>
+    <category>Game</category>
+    <category>Utility</category>
+  </categories>
+  <releases>
+
+
+    <release version="0.0.8" date="2026-05-30">
+      <description>
+        <ul>
+          <li>Add deep-link support and userscript to add download buttons to nexus and modio</li>
+        </ul>
+      </description>
+    </release>
+
+    <release version="0.0.7" date="2026-05-29">
+      <description>
+        <ul>
+          <li>Add Ctrl+I incognito mode for screenshot-safe dummy mod list</li>
+          <li>Remove redundant Maps collection from incognito dummy data</li>
+          <li>Automated screenshots</li>
+          <li>Auto-vendor before dev/build when Cargo.lock changes</li>
+          <li>Show current app version in settings App Updates card</li>
+          <li>Assign modpack addon relationships immediately as each file installs</li>
+          <li>Pre-fill modpack URL and show Update button when revisiting Add Modpack</li>
+          <li>Auto-generate release notes from conventional commits</li>
+          <li>Install git-cliff binary directly to avoid EOL Debian Buster image</li>
+          <li>Use gh CLI to download git-cliff to handle versioned asset filename</li>
+        </ul>
+      </description>
+    </release>
+
+    <release version="0.0.6" date="2026-05-29">
+      <description>
+        <ul>
+          <li>Autosave settings, remove Save All Settings button</li>
+          <li>Skip browser open if Nexus download file already exists</li>
+          <li>Refresh mod list progressively as each mod installs</li>
+          <li>Reuse matching ~/Downloads files when adding self-hosted modpack mods</li>
+          <li>Don't persist window geometry on native Wayland</li>
+          <li>Pause auto-scroll when user scrolls up in log panel, resume on scroll to bottom</li>
+        </ul>
+      </description>
+    </release>
+
+    <release version="0.0.5" date="2026-05-28">
+      <description>
+        <ul>
+          <li>Fix flatpak remote-add command to use temp file instead of /dev/stdin</li>
+        </ul>
+      </description>
+    </release>
+
+    <release version="0.0.4" date="2026-05-28">
+      <description>
+        <ul>
+          <li>Distribute Flatpak via GitHub Pages OSTree remote</li>
+        </ul>
+      </description>
+    </release>
+
+    <release version="0.0.3" date="2026-05-28">
+      <description>
+        <ul>
+          <li>Regenerate Cargo.lock as part of npm version hook</li>
+          <li>Surface missing FLATPAK_GPG_PRIVATE_KEY secret with clear error</li>
+        </ul>
+      </description>
+    </release>
+
+    <release version="0.0.2" date="2026-05-28">
+      <description>
+        <ul>
+          <li>Sign Flatpak bundles with dedicated GPG key to fix update signature mismatch</li>
+          <li>Tolerate flatpak segfault after successful bundle install</li>
+        </ul>
+      </description>
+    </release>
+
+    <release version="0.0.1" date="2026-05-28">
+      <description>
+        <ul>
+          <li>Baseline repository snapshot</li>
+          <li>Implement modpack and config state services</li>
+          <li>Add config and game IPC handlers</li>
+          <li>Add modpack and collections IPC commands</li>
+          <li>Add auth, mods, and sharing handlers</li>
+          <li>Add typed tauri command wrappers</li>
+          <li>Wire dashboard to tauri commands</li>
+          <li>Add multi-page app shell and navigation</li>
+          <li>Implement manifest-based mod installation flow</li>
+          <li>Add progress event system for mod installation</li>
+          <li>Add progress modal and install button with event listening</li>
+          <li>Format progress event emissions</li>
+          <li>Connect Install Mods button to progress modal with event listeners</li>
+          <li>Add changelog and multi-platform bundle configuration</li>
+          <li>Add HTML directory fallback for manifest discovery</li>
+          <li>Format modpack service and commands code</li>
+          <li>Add collection-based installation filtering and modpack export</li>
+          <li>Implement profile system and game launcher</li>
+          <li>Add github-based auto-updater and installer-style icon concept</li>
+          <li>Add flatpak packaging and switch updater endpoint to savagecore.uk</li>
+          <li>Standardize app identifier to uk.savagecore and keep github updater</li>
+          <li>Apply theme correctly and improve Linux Wayland startup</li>
+          <li>Bump actions/upload-artifact from 4 to 7</li>
+          <li>Bump actions/setup-node from 4 to 6</li>
+          <li>Bump actions/checkout from 4 to 6</li>
+          <li>Fix lint</li>
+          <li>Group dependabot updates by ecosystem</li>
+          <li>Install system dependencies for lint-backend job</li>
+          <li>Allow building of esbuild and wc_toolkit</li>
+          <li>Align header controls and optimize pnpm workspace discovery</li>
+          <li>Feature additions and dependency updates</li>
+          <li>Replace FAB with inline add mod button in mods filter bar</li>
+          <li>Add success color variants and update button hover state</li>
+          <li>Overhaul mods page buttons and add confirmation modal</li>
+          <li>Ignore src-tauri/target in .gitignore</li>
+          <li>Fix sources dropdown height to match search input</li>
+          <li>Fix flatpak and windows build failures</li>
+          <li>Improve add mod modal UX</li>
+          <li>Resolve CI build failures</li>
+          <li>Correct batch install progress bar behavior</li>
+          <li>Ignore generated flatpak rust-analyzer script</li>
+          <li>Streamline mod add flow and remove debug logging</li>
+          <li>Add profile collections workflow</li>
+          <li>Bump gh actions</li>
+          <li>(updates): Prevent spamming update check</li>
+          <li>Switch from pnpm to npm for flatpak builds</li>
+          <li>Bump the cargo-dependencies group across 1 directory with 4 updates</li>
+          <li>Bump the npm-dependencies group across 1 directory with 6 updates</li>
+          <li>Bump the cargo-dependencies group across 1 directory with 4 updates</li>
+          <li>Modpack export working</li>
+          <li>Import working</li>
+          <li>Re-add source_url to nexus mod</li>
+          <li>Sub-mod or add-on attached to a mod, like world gen files for maps</li>
+          <li>Status stuck when exporting modpack + add verification of copy</li>
+          <li>Add support for `.bank` files</li>
+          <li>Add context menu when right clicking a mod, right now it has add to collection only</li>
+          <li>Fix ci</li>
+          <li>Make local linting match ci</li>
+          <li>Fix local flatpak build</li>
+          <li>Script to move dev "database" to production</li>
+          <li>7z archive support</li>
+          <li>Speed up local prettier check</li>
+          <li>Improve collection management UX</li>
+          <li>Mod tagging support for filtering list</li>
+          <li>Warn when adding to an existing modpack</li>
+          <li>Correct collection enabled state</li>
+          <li>Unify collection and mod management modals</li>
+          <li>Tag persistance</li>
+          <li>Ability to rename collections</li>
+          <li>Allow setting a collection colour to differentiate the pills</li>
+          <li>Bubble newly added mods to the top</li>
+          <li>Unify archive install progress message to "Installing archive: {filename}"</li>
+          <li>Serialize file drop installs through a single worker queue</li>
+          <li>Add Nexus Mods download support with browser fallback for non-premium</li>
+          <li>Remove empty style block causing Tailwind v4 to misparse JS imports as CSS</li>
+          <li>Guard against Tailwind v4 misparsing Svelte virtual CSS modules as JS</li>
+          <li>Serialize mod link installs through a single worker queue</li>
+          <li>Always pick latest active Nexus file and add cancel for non-premium wait</li>
+          <li>Add Manage Add-ons and Edit/Add Link to mod context menu</li>
+          <li>Add multi selection to mods for managing collections and tags</li>
+          <li>Use xdg-open on Linux for launch game command so Flatpak works</li>
+          <li>Bump the cargo-dependencies group across 1 directory with 4 updates</li>
+          <li>Bump the npm-dependencies group across 1 directory with 8 updates</li>
+          <li>Do not update `prettier-plugin-svelte` to `4.0.0` it's broken</li>
+          <li>Speed up modpack export/import</li>
+          <li>Show installed date and add sort options</li>
+          <li>Prefer Nexus CDN download during modpack import for premium users</li>
+          <li>Support ReadyOrNot-rooted override mods (e.g. intro movie replacements)</li>
+          <li>Replace INI-based intro skip with movie file removal</li>
+          <li>Warn on Map mods missing world gen data and add sort option</li>
+          <li>Mark mod as broken with optional note</li>
+          <li>Store intro skip preference in config and enforce on launch</li>
+          <li>Remove mod.io subscription system</li>
+          <li>Route temp extraction/downloads to disk to avoid Flatpak tmpfs exhaustion</li>
+          <li>Fix uninstall all and add bulk uninstall for multiselect</li>
+          <li>Skip download and install on modpack import when hash matches</li>
+          <li>Use modpack.json URL instead of ronmod.pack when fetching modpacks</li>
+          <li>Clean up mod membership from tags/collections on uninstall</li>
+          <li>Restore download progress on modpack import</li>
+          <li>Show pak file selection modal for multi-pak archives</li>
+          <li>Persist pak file selection in modpack format</li>
+          <li>In-app SFTP sync to remote server</li>
+          <li>Show shield icon on mods that contain game file overrides</li>
+          <li>Make collection and tag pills clickable to filter mod list</li>
+          <li>Window behaviour settings — minimise/quit on launch and close-to-tray</li>
+          <li>Bundle libayatana-appindicator3 in Flatpak to fix crash on launch</li>
+          <li>Force CMAKE_INSTALL_LIBDIR=lib for Ayatana Flatpak modules</li>
+          <li>Resolve Flatpak bundle pipeline failures and warnings</li>
+          <li>Remove emdash slop</li>
+          <li>Reduce sync log verbosity and sort file listing</li>
+          <li>Add no-world-gen flag to suppress missing world gen warning for maps</li>
+          <li>Add sort by installed file count</li>
+          <li>Add import log panel and footer progress toggle</li>
+          <li>Replace modpack modal backdrop with floating panel</li>
+          <li>Extract shared LogPanel component</li>
+          <li>AddModpackModal -&gt; AddModpackPanel</li>
+          <li>Add separator before modpack summary lines</li>
+          <li>Add separator between modpack preamble and first mod</li>
+          <li>Replace SyncProgressModal with SyncPanel, add upload speed</li>
+          <li>Clear import log pill when cancelling Nexus free download</li>
+          <li>Show file variant selection modal for mods with multiple MAIN files</li>
+          <li>Persist Nexus file variant choice, add free-download modal, fix modpack import</li>
+          <li>Backup and restore of .ini mods</li>
+          <li>Background Nexus free downloads during modpack import</li>
+          <li>Log waiting status when manual Nexus download modal is shown</li>
+          <li>Prefer self-hosted download for non-premium Nexus mods during modpack import</li>
+          <li>Minimisable log panels with footer pills</li>
+          <li>Bump the npm-dependencies group with 4 updates</li>
+          <li>Bump the cargo-dependencies group</li>
+          <li>Nexus API key Remove button now clears the key</li>
+          <li>Replace metadata refresh pop-in bar with InfoPanel</li>
+          <li>Install system dependencies in release CI for Linux</li>
+          <li>Fall back to hard link or copy when symlinks lack privilege on Windows</li>
+          <li>Remove invalid --allow=network flag from release Flatpak CI</li>
+          <li>Use Steam URI to launch game on Windows</li>
+          <li>Sync game folder before deleting manifests in uninstall all</li>
+          <li>Add first time wizard to guide users through api key setup</li>
+          <li>Compute hash when downloading</li>
+          <li>Populate source_url, tags, collections and addons on modpack import</li>
+          <li>Disable broken/disabled mods correctly on modpack import</li>
+          <li>Close dismisses and clears log panels, Minimise hides only</li>
+          <li>Stream SFTP uploads instead of buffering entire file in memory</li>
+          <li>Full app name in title bar, one command to build and install flatpak</li>
+          <li>Preserve and correctly import broken mod notes from modpack</li>
+          <li>Sync version across all three manifests via npm version hook</li>
+          <li>Skip git commit/tag on npm version, drop redundant git add</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+  <screenshots>
+    <screenshot type="default">
+      <image type="source">https://raw.githubusercontent.com/SavageCore/RoNModManager/main/docs/screenshots/light/mods.png</image>
+      <caption>Mod list</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://raw.githubusercontent.com/SavageCore/RoNModManager/main/docs/screenshots/light/collections.png</image>
+      <caption>Collections</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://raw.githubusercontent.com/SavageCore/RoNModManager/main/docs/screenshots/light/profiles.png</image>
+      <caption>Profiles</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://raw.githubusercontent.com/SavageCore/RoNModManager/main/docs/screenshots/light/settings.png</image>
+      <caption>Settings</caption>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+</component>
