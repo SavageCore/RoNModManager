@@ -261,6 +261,22 @@
       <image type="source">https://raw.githubusercontent.com/SavageCore/RoNModManager/main/docs/screenshots/light/settings.png</image>
       <caption>Settings</caption>
     </screenshot>
+    <screenshot environment="dark">
+      <image type="source">https://raw.githubusercontent.com/SavageCore/RoNModManager/main/docs/screenshots/dark/mods.png</image>
+      <caption>Mod list</caption>
+    </screenshot>
+    <screenshot environment="dark">
+      <image type="source">https://raw.githubusercontent.com/SavageCore/RoNModManager/main/docs/screenshots/dark/collections.png</image>
+      <caption>Collections</caption>
+    </screenshot>
+    <screenshot environment="dark">
+      <image type="source">https://raw.githubusercontent.com/SavageCore/RoNModManager/main/docs/screenshots/dark/profiles.png</image>
+      <caption>Profiles</caption>
+    </screenshot>
+    <screenshot environment="dark">
+      <image type="source">https://raw.githubusercontent.com/SavageCore/RoNModManager/main/docs/screenshots/dark/settings.png</image>
+      <caption>Settings</caption>
+    </screenshot>
   </screenshots>
   <content_rating type="oars-1.1"/>
 </component>
