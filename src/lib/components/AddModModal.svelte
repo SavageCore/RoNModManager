@@ -21,6 +21,12 @@
   import { createEventDispatcher, onDestroy, onMount } from "svelte";
 
   export let isVisible = false;
+  export let autoSubmitUrl: string = "";
+
+  $: if (isVisible && autoSubmitUrl) {
+    modioInput = autoSubmitUrl;
+    void handleAddViaLink();
+  }
 
   const dispatch = createEventDispatcher();
 

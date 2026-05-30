@@ -22,6 +22,8 @@
   import SyncPanel from "$lib/components/SyncPanel.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
+  import { pendingInstallUrl } from "$lib/stores/pendingInstall";
+  import { toastStore } from "$lib/stores/toast";
   import { tokenStore } from "$lib/stores/token";
   import { initTheme } from "$lib/theme";
   import type {
@@ -34,6 +36,7 @@
   } from "$lib/types";
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import { listen } from "@tauri-apps/api/event";
+  import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
   import {
     LogicalPosition,
     LogicalSize,
@@ -298,6 +301,29 @@
     const handleAppFocus = () => {
       void refreshShellConfigState();
     };
+
+    void onOpenUrl((urls) => {
+      for (const url of urls) {
+        if (url.startsWith("ronmm://install/nexus/")) {
+          const id = url
+            .replace("ronmm://install/nexus/", "")
+            .replace(/\/$/, "");
+          pendingInstallUrl.set(
+            `https://www.nexusmods.com/readyornot/mods/${id}`,
+          );
+          void goto("/mods");
+        } else if (url.startsWith("ronmm://install/modio/")) {
+          const id = url
+            .replace("ronmm://install/modio/", "")
+            .replace(/\/$/, "");
+          pendingInstallUrl.set(id);
+          void goto("/mods");
+        } else if (url.startsWith("ronmm://modpack/")) {
+          const urlStr = url.replace("ronmm://modpack/", "");
+          addModpackPanelStore.open("add", { url: urlStr });
+        }
+      }
+    });
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {

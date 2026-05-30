@@ -36,6 +36,11 @@
     ]
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["ronmm"]
+      }
+    },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFDQjczODFDNUI0RDJFNDEKUldSQkxrMWJIRGkzSExNWmRxZ04xQ3lyd3NHQXF0SGxja0E0S0xGQUNoQnV0VHpkd1FpSGJSRGMK",
       "endpoints": [

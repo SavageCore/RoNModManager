@@ -135,3 +135,14 @@ jobs:
           branch: gh-pages
           folder: flatpak-repo
           clean: true
+      - name: Build userscript
+        run: |
+          cd userscript
+          npm ci
+          npm run build
+          cd ..
+      - name: Upload userscript to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: userscript/dist/*.user.js
