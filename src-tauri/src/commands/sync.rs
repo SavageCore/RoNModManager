@@ -84,7 +84,11 @@ pub async fn sync_modpack_to_remote(
 
     emit_progress("Connecting...", 0.0);
 
-    let config_arc = Arc::new(client::Config::default());
+    let config_arc = Arc::new(client::Config {
+        window_size: 16 * 1024 * 1024,
+        maximum_packet_size: 64 * 1024,
+        ..client::Config::default()
+    });
     let mut session = client::connect(config_arc, (hostname.as_str(), 22u16), SshClientHandler)
         .await
         .map_err(|e| AppError::Validation(format!("SSH connect failed: {e}")))?;
@@ -157,7 +161,7 @@ pub async fn sync_modpack_to_remote(
 
             let upload_start = std::time::Instant::now();
             let mut bytes_written: u64 = 0;
-            let mut buf = vec![0u8; 256 * 1024];
+            let mut buf = vec![0u8; 1024 * 1024];
 
             loop {
                 use tokio::io::AsyncReadExt;
@@ -193,11 +197,6 @@ pub async fn sync_modpack_to_remote(
                     },
                 );
             }
-
-            remote_file
-                .flush()
-                .await
-                .map_err(|e| AppError::Validation(format!("Failed to flush {remote_full}: {e}")))?;
 
             let elapsed = upload_start.elapsed().as_secs_f64();
             let speed_str = if elapsed > 0.001 {
