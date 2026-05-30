@@ -6,7 +6,7 @@
     "tests/*"
   ],
   "name": "ronmodmanager",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Cross-platform Ready or Not mod manager built with Tauri and Svelte",
   "type": "module",
   "scripts": {
