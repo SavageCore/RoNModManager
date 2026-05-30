@@ -1,4 +1,4 @@
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 pub mod commands;
 pub mod models;
 pub mod services;
@@ -38,6 +38,14 @@ pub fn run() {
             }
         }
 
+        {
+            use tauri_plugin_deep_link::DeepLinkExt;
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            if let Err(e) = app.deep_link().register_all() {
+                log::warn!("Failed to register deep-link handlers: {e}");
+            }
+        }
+
         use tauri::menu::{Menu, MenuItem};
         use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 
@@ -74,6 +82,20 @@ pub fn run() {
         Ok(())
     });
     builder
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+            let urls: Vec<String> = argv
+                .into_iter()
+                .filter(|a| a.starts_with("ronmm://"))
+                .collect();
+            if !urls.is_empty() {
+                let _ = app.emit("deep-link://new-url", urls);
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())

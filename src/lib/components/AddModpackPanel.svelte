@@ -2,6 +2,7 @@
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import type { ModInfo } from "$lib/types/modpack";
 
+  import { get } from "svelte/store";
   let url = "";
   let log: string[] = [];
   let isLoading = false;
@@ -46,8 +47,9 @@
       try {
         const config = await getConfig();
         existingUrl = config.modpack_url || null;
-        if (existingUrl && $addModpackPanelStore.mode === "add") {
-          url = existingUrl;
+        if ($addModpackPanelStore.mode === "add") {
+          // Prefer url from store (deeplink), fallback to config
+          url = get(addModpackPanelStore).url || existingUrl || "";
         }
       } catch {
         // ignore

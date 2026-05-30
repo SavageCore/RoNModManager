@@ -174,3 +174,22 @@ MIT
 ## Modpack Export & Hosting
 
 See [docs/HOSTING_MODPACKS.md](docs/HOSTING_MODPACKS.md) for instructions on exporting, self-hosting, and sharing modpacks.
+
+## Userscript
+
+A userscript is available to add a one-click "Install via RoN Mod Manager" button to mod pages on Nexus Mods and mod.io, making browser-based mod installs seamless.
+
+- Source: `userscript/src/main.ts`
+- Built script: `userscript/dist/ron-mod-manager-userscript.user.js`
+
+### How to install
+
+1. Install a userscript manager such as [Violentmonkey](https://violentmonkey.github.io/).
+2. [**Install Userscript**](https://github.com/SavageCore/RoNModManager/releases/latest/download/ron-mod-manager-userscript.user.js)
+
+### Building & Release
+
+- To build locally for testing, run `npm run build` in the `userscript/` directory. The output will be in `userscript/dist/`.
+- For releases, simply create a new release or tag as usual. The main release workflow will automatically build the userscript and attach the `.user.js` file to the release.
+
+> **Note:** The userscript will auto-update when installed from the official GitHub Releases link, thanks to the included `@updateURL` metadata.

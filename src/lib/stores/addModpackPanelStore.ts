@@ -1,6 +1,7 @@
 import { writable } from "svelte/store";
 
 interface AddModpackPanelState {
+  url: string | undefined;
   isOpen: boolean;
   hasActivity: boolean;
   mode: "add" | "update";
@@ -19,13 +20,18 @@ function createAddModpackPanelStore() {
     newVersion: null,
     doneCounter: 0,
     modInstalledCounter: 0,
+    url: undefined,
   });
 
   return {
     subscribe,
     open: (
       mode: "add" | "update",
-      opts?: { currentVersion?: string | null; newVersion?: string | null },
+      opts?: {
+        currentVersion?: string | null;
+        newVersion?: string | null;
+        url?: string;
+      },
     ) =>
       update((s) => ({
         ...s,
@@ -33,6 +39,7 @@ function createAddModpackPanelStore() {
         mode,
         currentVersion: opts?.currentVersion ?? null,
         newVersion: opts?.newVersion ?? null,
+        url: opts?.url ?? s.url,
       })),
     close: () => update((s) => ({ ...s, isOpen: false })),
     toggle: () => update((s) => ({ ...s, isOpen: !s.isOpen })),

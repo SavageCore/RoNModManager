@@ -32,6 +32,7 @@
   } from "$lib/api/commands";
   import AddModModal from "$lib/components/AddModModal.svelte";
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
+  import { pendingInstallUrl } from "$lib/stores/pendingInstall";
   import PakFileSelectionModal from "$lib/components/PakFileSelectionModal.svelte";
   import {
     pakSelectionStore,
@@ -220,6 +221,7 @@
   let modSourceFilter: "all" | "nexus" | "modio" = "all";
   let modsForActiveProfile: string[] = [];
   let showAddModModal = false;
+  let autoSubmitUrl = "";
   let prevDoneCounter = $addModpackPanelStore.doneCounter;
   $: if ($addModpackPanelStore.doneCounter !== prevDoneCounter) {
     prevDoneCounter = $addModpackPanelStore.doneCounter;
@@ -1269,6 +1271,14 @@
     console.log("Mods page mounted, setting up event listeners");
     void refresh();
 
+    const unsubPending = pendingInstallUrl.subscribe((url) => {
+      if (url) {
+        pendingInstallUrl.set(null);
+        autoSubmitUrl = url;
+        showAddModModal = true;
+      }
+    });
+
     const handleAppFocus = () => {
       void refresh();
     };
@@ -1343,6 +1353,7 @@
 
     return () => {
       console.log("Cleaning up mods page listeners");
+      unsubPending();
       window.removeEventListener("focus", handleAppFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener(
@@ -1371,8 +1382,10 @@
 
 <AddModModal
   isVisible={showAddModModal}
+  {autoSubmitUrl}
   on:close={() => {
     showAddModModal = false;
+    autoSubmitUrl = "";
   }}
   on:modAdded={handleModAdded}
 />
