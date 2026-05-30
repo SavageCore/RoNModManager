@@ -1,14 +1,15 @@
-FLATPAK_ID       := uk.savagecore.ronmodmanager
-FLATPAK_MANIFEST := packaging/flatpak/$(FLATPAK_ID).yml
-FLATPAK_GPG_KEY  := 65A3B75AC7807CC569F4730F26970A50720B91A6
-FLATPAK_GPG_PUB  := packaging/flatpak/ronmodmanager-flatpak.gpg
+FLATPAK_ID           := uk.savagecore.ronmodmanager
+FLATPAK_MANIFEST     := packaging/flatpak/$(FLATPAK_ID).yml
+FLATPAK_GPG_KEY      := 65A3B75AC7807CC569F4730F26970A50720B91A6
+FLATPAK_GPG_PUB      := packaging/flatpak/ronmodmanager-flatpak.gpg
+FLATPAK_LOCAL_REMOTE := ronmodmanager-local
 CARGO_MANIFEST   := src-tauri/Cargo.toml
 
 .PHONY: help install dev dev-xwayland build build-frontend release \
         lint format check lint-frontend lint-backend fmt-backend clippy lint-all \
         test-frontend test-backend test \
         screenshots screenshots-build \
-        vendor flatpak-deps flatpak-build flatpak-bundle flatpak-install flatpak-run flatpak \
+        vendor flatpak-deps update-appstream flatpak-build flatpak-bundle flatpak-install flatpak-run flatpak \
         clean
 
 help: ## Show available targets
@@ -94,6 +95,14 @@ screenshots-build: vendor ## Build debug binary then take screenshots (run after
 
 # ── Flatpak ───────────────────────────────────────────────────────────────────
 
+update-appstream: ## Update AppStream releases in metainfo from git history (requires git-cliff)
+	git cliff --config packaging/flatpak/cliff-appstream.toml > /tmp/appstream-releases.xml
+	python3 -c "\
+import re; \
+content = open('packaging/flatpak/$(FLATPAK_ID).metainfo.xml').read(); \
+releases = open('/tmp/appstream-releases.xml').read().rstrip(); \
+open('packaging/flatpak/$(FLATPAK_ID).metainfo.xml', 'w').write(re.sub(r'  <releases>.*?  </releases>', releases, content, flags=re.DOTALL))"
+
 flatpak-deps: ## Install Flatpak runtimes and SDK extensions (run once)
 	flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 	flatpak install -y flathub \
@@ -113,15 +122,18 @@ flatpak-bundle: ## Export a .flatpak bundle from the local repo
 		--gpg-keys=$(FLATPAK_GPG_PUB) \
 		flatpak-repo ronmodmanager.flatpak $(FLATPAK_ID) master
 
-flatpak-install: ## Install the local .flatpak bundle for the current user
-	-flatpak uninstall --user -y $(FLATPAK_ID) 2>/dev/null || true
-	flatpak install --user --bundle --gpg-file=$(FLATPAK_GPG_PUB) -y ronmodmanager.flatpak || \
-		flatpak info --user $(FLATPAK_ID) > /dev/null
+flatpak-install: ## Install the locally built Flatpak via a local OSTree remote
+	flatpak remote-add --user --if-not-exists --no-gpg-verify \
+		$(FLATPAK_LOCAL_REMOTE) "file://$(CURDIR)/flatpak-repo"
+	flatpak remote-modify --user --no-gpg-verify \
+		--url="file://$(CURDIR)/flatpak-repo" \
+		$(FLATPAK_LOCAL_REMOTE)
+	flatpak install --user --reinstall -y $(FLATPAK_LOCAL_REMOTE) $(FLATPAK_ID)
 
 flatpak-run: ## Run the installed Flatpak
 	flatpak run $(FLATPAK_ID)
 
-flatpak: vendor flatpak-build flatpak-bundle flatpak-install ## Full local Flatpak pipeline (vendor → build → bundle)
+flatpak: vendor flatpak-build flatpak-install ## Full local Flatpak pipeline (vendor → build → install)
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
 

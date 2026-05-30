@@ -82,6 +82,31 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Install git-cliff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tmp=$(mktemp -d)
+          gh release download --repo orhun/git-cliff \
+            --pattern 'git-cliff-*-x86_64-unknown-linux-musl.tar.gz' \
+            --dir "$tmp"
+          tar xz -C "$tmp" -f "$tmp"/git-cliff-*-x86_64-unknown-linux-musl.tar.gz
+          sudo install -m 755 "$(find "$tmp" -name git-cliff -type f)" /usr/local/bin/git-cliff
+      - name: Update AppStream releases
+        run: |
+          git cliff --config packaging/flatpak/cliff-appstream.toml > /tmp/appstream-releases.xml
+          python3 << 'EOF'
+          import re
+          with open('packaging/flatpak/uk.savagecore.ronmodmanager.metainfo.xml') as f:
+              content = f.read()
+          with open('/tmp/appstream-releases.xml') as f:
+              releases = f.read().rstrip()
+          new_content = re.sub(r'  <releases>.*?  </releases>', releases, content, flags=re.DOTALL)
+          with open('packaging/flatpak/uk.savagecore.ronmodmanager.metainfo.xml', 'w') as f:
+              f.write(new_content)
+          EOF
       - uses: actions/setup-node@v6
         with:
           node-version: 22

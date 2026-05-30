@@ -1,0 +1,33 @@
+[changelog]
+header = "  <releases>\n"
+body = """
+{%- if version %}
+    <release version="{{ version | trim_start_matches(pat="v") }}" date="{{ timestamp | date(format="%Y-%m-%d") }}">
+{%- if commits %}
+      <description>
+        <ul>
+{%- for commit in commits %}
+          <li>{{ commit.message | upper_first | replace(from="&", to="&amp;") | replace(from="<", to="&lt;") | replace(from=">", to="&gt;") }}</li>
+{%- endfor %}
+        </ul>
+      </description>
+{%- endif %}
+    </release>
+{%- endif %}
+"""
+footer = "  </releases>"
+trim = false
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+commit_parsers = [
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^refactor", group = "Changed" },
+  { message = "^perf", group = "Performance" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^chore", group = "Maintenance" },
+]
+tag_pattern = "v[0-9]*"
+sort_commits = "oldest"
