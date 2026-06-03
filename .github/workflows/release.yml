@@ -29,9 +29,24 @@ jobs:
       - name: Generate release notes
         id: cliff
         run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          BASE="https://github.com/SavageCore/RoNModManager/releases/download/${TAG}"
           {
             echo "content<<EOF"
             git cliff --latest --strip all
+            echo ""
+            echo "## Downloads"
+            echo ""
+            echo "| Platform | Download |"
+            echo "|----------|----------|"
+            echo "| Windows | [Setup (.exe)](${BASE}/RoN.Mod.Manager_${VERSION}_x64-setup.exe) |"
+            echo "| Linux - AppImage | [AppImage](${BASE}/RoN.Mod.Manager_${VERSION}_amd64.AppImage) |"
+            echo "| Linux - Debian/Ubuntu | [.deb package](${BASE}/RoN.Mod.Manager_${VERSION}_amd64.deb) |"
+            echo "| Linux - Fedora/openSUSE | [.rpm package](${BASE}/RoN.Mod.Manager-${VERSION}-1.x86_64.rpm) |"
+            echo "| Linux - Flatpak | [Flatpak bundle](${BASE}/ronmodmanager.flatpak) |"
+            echo ""
+            echo "> **Not sure which to pick?** Windows: grab the Setup .exe. Linux: use your distro's native package (.deb or .rpm), AppImage for anything else, or Flatpak for a sandboxed install."
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
       - name: Create GitHub Release
