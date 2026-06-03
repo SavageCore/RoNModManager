@@ -55,11 +55,8 @@ Exec=env GDK_BACKEND=x11 ronmodmanager %U
 Two dev commands are available:
 
 ```bash
-# Native Wayland (window position won't persist)
-npm run dev:linux
-
-# XWayland mode (full window state persistence)
-npm run dev:xwayland
+make dev          # Wayland-compatible (window position won't persist)
+make dev-xwayland # XWayland mode (full window state persistence)
 ```
 
 ### Flatpak Permissions

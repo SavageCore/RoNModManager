@@ -198,7 +198,7 @@
           <li>In-app SFTP sync to remote server</li>
           <li>Show shield icon on mods that contain game file overrides</li>
           <li>Make collection and tag pills clickable to filter mod list</li>
-          <li>Window behaviour settings — minimise/quit on launch and close-to-tray</li>
+          <li>Window behaviour settings - minimise/quit on launch and close-to-tray</li>
           <li>Bundle libayatana-appindicator3 in Flatpak to fix crash on launch</li>
           <li>Force CMAKE_INSTALL_LIBDIR=lib for Ayatana Flatpak modules</li>
           <li>Resolve Flatpak bundle pipeline failures and warnings</li>

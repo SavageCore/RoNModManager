@@ -4,7 +4,7 @@
  * Requires: xdotool, imagemagick
  *
  * Starts the Vite dev server (localhost:1420) then launches the debug binary
- * so the latest frontend code is always used — no Tauri rebuild needed after
+ * so the latest frontend code is always used - no Tauri rebuild needed after
  * frontend-only changes. Rebuild the debug binary with `make screenshots-build`
  * when Rust code changes.
  *
@@ -96,7 +96,7 @@ if (!viteReady) {
 }
 console.log("Vite ready.");
 
-// Launch the debug binary — it connects to localhost:1420.
+// Launch the debug binary - it connects to localhost:1420.
 // SCREENSHOT_MODE suppresses devtools and activates incognito + number-key nav.
 const app = spawn(appBinary, [], {
   env: {

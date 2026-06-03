@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from "svelte";
+  import { openUrl } from "@tauri-apps/plugin-opener";
 
   export let isVisible = false;
   export let initialName = "";
@@ -43,9 +44,19 @@
     <div
       class="w-[420px] max-w-[92vw] rounded-lg border p-6 shadow-2xl bg-[var(--clr-surface)] border-[var(--adw-border-color)]"
     >
-      <h2 class="text-lg font-semibold mb-4" style="color: var(--clr-text);">
-        Export Modpack
-      </h2>
+      <div class="flex items-baseline justify-between mb-4">
+        <h2 class="text-lg font-semibold" style="color: var(--clr-text);">
+          Export Modpack
+        </h2>
+        <button
+          class="text-xs underline opacity-60 hover:opacity-100"
+          style="color: var(--clr-text);"
+          on:click={() =>
+            openUrl(
+              "https://github.com/SavageCore/RoNModManager/blob/main/docs/HOSTING_MODPACKS.md",
+            )}>Hosting guide</button
+        >
+      </div>
       <div class="space-y-3">
         <div>
           <label
