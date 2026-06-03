@@ -3,6 +3,7 @@
   import { page } from "$app/stores";
   import {
     applyProfile,
+    checkForUpdate,
     detectGamePath,
     fetchModpackJson,
     getConfig,
@@ -25,6 +26,7 @@
   import { pendingInstallUrl } from "$lib/stores/pendingInstall";
   import { toastStore } from "$lib/stores/toast";
   import { tokenStore } from "$lib/stores/token";
+  import { updateCheckStore } from "$lib/stores/updateCheck";
   import { initTheme } from "$lib/theme";
   import type {
     CloseAction,
@@ -65,6 +67,7 @@
   import { incognitoMode, screenshotMode } from "$lib/stores/incognitoMode";
 
   const APP_NAME = "RoN Mod Manager";
+  const UPDATE_AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
   const nav = [
     { href: "/mods", label: "Mods", icon: Package },
@@ -504,6 +507,24 @@
     ]).catch(() => {
       cleanup = initTheme("system");
     });
+
+    void (async () => {
+      const lastCheckedAt = $updateCheckStore;
+      if (
+        lastCheckedAt &&
+        Date.now() - lastCheckedAt < UPDATE_AUTO_CHECK_INTERVAL_MS
+      )
+        return;
+      try {
+        const info = await checkForUpdate();
+        updateCheckStore.markChecked();
+        if (info.available) {
+          toastStore.success(`App update available: v${info.version}`);
+        }
+      } catch {
+        // Non-fatal: silently skip if update check fails on startup
+      }
+    })();
 
     void appWindow
       .onResized(() => {
