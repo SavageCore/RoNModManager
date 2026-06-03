@@ -42,6 +42,7 @@ function createImportLogStore() {
           lastOperation = "";
           update((s) => ({
             ...s,
+            isOpen: true,
             mods: [
               ...s.mods,
               { id: item.id, input: item.input, lines: [], status: "running" },
