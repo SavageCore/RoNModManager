@@ -1,6 +1,9 @@
 <script lang="ts">
   import { importLogStore } from "$lib/stores/importLogStore";
   import CheckCircle from "lucide-svelte/icons/check-circle";
+  import ChevronRight from "lucide-svelte/icons/chevron-right";
+  import Clock from "lucide-svelte/icons/clock";
+  import HelpCircle from "lucide-svelte/icons/help-circle";
   import LoaderCircle from "lucide-svelte/icons/loader-circle";
   import XCircle from "lucide-svelte/icons/x-circle";
   import LogPanel from "./LogPanel.svelte";
@@ -43,7 +46,16 @@
           style="border-top: 1px solid var(--adw-border-color);"
         ></div>
       {/if}
-      <div class="flex items-center gap-1.5 mb-0.5">
+      <button
+        class="flex items-center gap-1.5 mb-0.5 w-full text-left"
+        on:click={() => importLogStore.toggleExpanded(mod.id)}
+      >
+        <ChevronRight
+          size={10}
+          style="color: var(--clr-text-secondary); flex-shrink: 0; transition: transform 0.15s; transform: rotate({mod.expanded
+            ? '90deg'
+            : '0deg'});"
+        />
         {#if mod.status === "done"}
           <CheckCircle
             size={12}
@@ -54,25 +66,37 @@
             size={12}
             style="color: var(--clr-danger-300); flex-shrink: 0;"
           />
-        {:else}
+        {:else if mod.awaitingInput}
+          <HelpCircle
+            size={12}
+            style="color: var(--clr-text-secondary); flex-shrink: 0;"
+          />
+        {:else if mod.isActive}
           <LoaderCircle
             size={12}
             style="color: var(--clr-primary-300); flex-shrink: 0;"
             class="is-spinning"
           />
+        {:else}
+          <Clock
+            size={12}
+            style="color: var(--clr-text-secondary); flex-shrink: 0;"
+          />
         {/if}
         <span class="font-semibold truncate" style="color: var(--clr-text);"
           >{mod.input}</span
         >
-      </div>
-      {#each mod.lines as line}
-        <div
-          class="pl-5 leading-relaxed"
-          style="color: var(--clr-text-secondary);"
-        >
-          {line}
-        </div>
-      {/each}
+      </button>
+      {#if mod.expanded}
+        {#each mod.lines as line}
+          <div
+            class="pl-5 leading-relaxed"
+            style="color: var(--clr-text-secondary);"
+          >
+            {line}
+          </div>
+        {/each}
+      {/if}
     {/each}
   {/if}
 </LogPanel>

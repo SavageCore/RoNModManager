@@ -7,6 +7,9 @@ export interface ImportLogMod {
   input: string;
   lines: string[];
   status: "running" | "done" | "error";
+  isActive: boolean;
+  expanded: boolean;
+  awaitingInput: boolean;
 }
 
 interface ImportLogState {
@@ -30,7 +33,7 @@ function createImportLogStore() {
   });
 
   let currentModId: string | null = null;
-  let lastOperation = "";
+  const seenOperations = new Set<string>();
   const prevStatuses = new Map<string, QueueStatus>();
 
   modAddQueueStore.subscribe((state) => {
@@ -39,19 +42,27 @@ function createImportLogStore() {
       if (prev !== item.status) {
         if (item.status === "running") {
           currentModId = item.id;
-          lastOperation = "";
+          seenOperations.clear();
           update((s) => ({
             ...s,
             isOpen: true,
             mods: [
-              ...s.mods,
-              { id: item.id, input: item.input, lines: [], status: "running" },
+              ...s.mods.map((m) => ({ ...m, isActive: false })),
+              {
+                id: item.id,
+                input: item.input,
+                lines: [],
+                status: "running",
+                isActive: true,
+                expanded: true,
+                awaitingInput: false,
+              },
             ],
           }));
         } else if (item.status === "done" || item.status === "error") {
           if (currentModId === item.id) {
             currentModId = null;
-            lastOperation = "";
+            seenOperations.clear();
           }
           update((s) => ({
             ...s,
@@ -60,7 +71,12 @@ function createImportLogStore() {
                 ? {
                     ...m,
                     status: item.status as "done" | "error",
-                    lines: [...m.lines, item.message],
+                    isActive: false,
+                    awaitingInput: false,
+                    lines:
+                      item.status === "done"
+                        ? [item.message]
+                        : [...m.lines, item.message],
                   }
                 : m,
             ),
@@ -78,15 +94,15 @@ function createImportLogStore() {
 
   operationStatusStore.subscribe((state) => {
     if (!state.visible || !state.operation || !currentModId) {
-      if (!state.visible) lastOperation = "";
+      if (!state.visible) seenOperations.clear();
       return;
     }
     if (
-      state.operation !== lastOperation &&
+      !seenOperations.has(state.operation) &&
       state.operation !== "complete" &&
       state.operation !== "error"
     ) {
-      lastOperation = state.operation;
+      seenOperations.add(state.operation);
       const label = phaseLabel(state.operation);
       update((s) => ({
         ...s,
@@ -102,7 +118,47 @@ function createImportLogStore() {
     toggle: () => update((s) => ({ ...s, isOpen: !s.isOpen })),
     open: () => update((s) => ({ ...s, isOpen: true })),
     close: () => update((s) => ({ ...s, isOpen: false })),
-    clear: () => update((s) => ({ ...s, mods: [] })),
+    clear: () => {
+      currentModId = null;
+      seenOperations.clear();
+      update((s) => ({ ...s, mods: [] }));
+    },
+    setCurrentMod: (id: string) => {
+      currentModId = id;
+      seenOperations.clear();
+      update((s) => ({
+        ...s,
+        mods: s.mods.map((m) =>
+          m.id === id
+            ? { ...m, isActive: true, expanded: true }
+            : { ...m, isActive: false },
+        ),
+      }));
+    },
+    toggleExpanded: (id: string) => {
+      update((s) => ({
+        ...s,
+        mods: s.mods.map((m) =>
+          m.id === id ? { ...m, expanded: !m.expanded } : m,
+        ),
+      }));
+    },
+    setWaitingForInput: (id: string) => {
+      update((s) => ({
+        ...s,
+        mods: s.mods.map((m) =>
+          m.id === id ? { ...m, awaitingInput: true } : m,
+        ),
+      }));
+    },
+    clearWaitingForInput: (id: string) => {
+      update((s) => ({
+        ...s,
+        mods: s.mods.map((m) =>
+          m.id === id ? { ...m, awaitingInput: false } : m,
+        ),
+      }));
+    },
   };
 }
 

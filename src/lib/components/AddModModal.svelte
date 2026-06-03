@@ -199,10 +199,12 @@
                 plan.entry.queueId,
                 "Select file variant...",
               );
+              importLogStore.setWaitingForInput(plan.entry.queueId);
               const chosen = await requestNexusFileSelection(
                 nexusPreviewName || plan.entry.input,
                 fileOptions,
               );
+              importLogStore.clearWaitingForInput(plan.entry.queueId);
               if (chosen === null) {
                 modAddQueueStore.markError(plan.entry.queueId, "Cancelled");
                 plan.failed = true;
@@ -269,6 +271,7 @@
         for (const plan of plans) {
           if (plan.failed || !plan.downloadResult) continue;
           const result = plan.downloadResult;
+          importLogStore.setCurrentMod(plan.entry.queueId);
           modAddQueueStore.markRunning(plan.entry.queueId, "Installing...");
           try {
             await installLocalMod(
@@ -344,8 +347,11 @@
       if (paks.length <= 1) return undefined;
       if (queueId) {
         modAddQueueStore.markRunning(queueId, "Select PAK files to install...");
+        importLogStore.setWaitingForInput(queueId);
       }
-      return await requestPakSelection(archiveName, paks);
+      const result = await requestPakSelection(archiveName, paks);
+      if (queueId) importLogStore.clearWaitingForInput(queueId);
+      return result;
     } catch {
       return undefined;
     }

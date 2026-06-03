@@ -156,6 +156,7 @@
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
+  import { importLogStore } from "$lib/stores/importLogStore";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { modSortOrder } from "$lib/stores/modSortOrder";
   import { showBroken } from "$lib/stores/showBroken";
@@ -1221,10 +1222,12 @@
                   entry.queueId,
                   "Select PAK files to install...",
                 );
+                importLogStore.setWaitingForInput(entry.queueId);
                 const selected = await requestPakSelection(
                   entry.fileName,
                   paks,
                 );
+                importLogStore.clearWaitingForInput(entry.queueId);
                 if (selected === null) {
                   modAddQueueStore.markError(entry.queueId, "Cancelled");
                   continue;
