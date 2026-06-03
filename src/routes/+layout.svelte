@@ -692,7 +692,9 @@
         on:click={() => {
           void launchWithProfile();
         }}
-        disabled={!hasGamePath || isLaunching}
+        disabled={!hasGamePath ||
+          isLaunching ||
+          $importLogStore.mods.some((m) => m.status === "running")}
         title="Launch Ready or Not with selected profile"
       >
         <Play size={16} class="inline mr-1" />
