@@ -44,9 +44,10 @@ jobs:
             echo "| Linux - AppImage | [AppImage](${BASE}/RoN.Mod.Manager_${VERSION}_amd64.AppImage) |"
             echo "| Linux - Debian/Ubuntu | [.deb package](${BASE}/RoN.Mod.Manager_${VERSION}_amd64.deb) |"
             echo "| Linux - Fedora/openSUSE | [.rpm package](${BASE}/RoN.Mod.Manager-${VERSION}-1.x86_64.rpm) |"
+            echo "| Linux - Arch (AUR) | [ronmodmanager-bin](https://aur.archlinux.org/packages/ronmodmanager-bin) |"
             echo "| Linux - Flatpak | [Flatpak bundle](${BASE}/ronmodmanager.flatpak) |"
             echo ""
-            echo "> **Not sure which to pick?** Windows: grab the Setup .exe. Linux: use your distro's native package (.deb or .rpm), AppImage for anything else, or Flatpak for a sandboxed install."
+            echo "> **Not sure which to pick?** Windows: grab the Setup .exe. Linux: use your distro's native package (.deb, .rpm, or AUR), AppImage for anything else, or Flatpak for a sandboxed install."
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
       - name: Create GitHub Release
@@ -186,3 +187,30 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: userscript/dist/*.user.js
+
+  aur-publish:
+    needs: release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v6
+      - name: Compute checksums and update PKGBUILD
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          APPIMAGE_SHA=$(curl -sL "https://github.com/SavageCore/RoNModManager/releases/download/${GITHUB_REF_NAME}/RoN.Mod.Manager_${VERSION}_amd64.AppImage" | sha256sum | cut -d' ' -f1)
+          ICON_SHA=$(curl -sL "https://github.com/SavageCore/RoNModManager/raw/${GITHUB_REF_NAME}/src-tauri/icons/icon.png" | sha256sum | cut -d' ' -f1)
+          DESKTOP_SHA=$(curl -sL "https://github.com/SavageCore/RoNModManager/raw/${GITHUB_REF_NAME}/packaging/aur/uk.savagecore.ronmodmanager.desktop" | sha256sum | cut -d' ' -f1)
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" packaging/aur/PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" packaging/aur/PKGBUILD
+          sed -i "s/APPIMAGE_SHA256/${APPIMAGE_SHA}/" packaging/aur/PKGBUILD
+          sed -i "s/ICON_SHA256/${ICON_SHA}/" packaging/aur/PKGBUILD
+          sed -i "s/DESKTOP_SHA256/${DESKTOP_SHA}/" packaging/aur/PKGBUILD
+      - name: Push to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: ronmodmanager-bin
+          pkgbuild: ./packaging/aur/PKGBUILD
+          commit_username: SavageCore
+          commit_email: talk@savagecore.uk
+          ssh_private_key: ${{ secrets.AUR_SSH_KEY }}
+          commit_message: "Update to ${{ github.ref_name }}"
