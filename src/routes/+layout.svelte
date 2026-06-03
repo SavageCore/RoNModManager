@@ -60,9 +60,11 @@
   import "../app.css";
 
   import AddModpackPanel from "$lib/components/AddModpackPanel.svelte";
+  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import InfoPanel from "$lib/components/InfoPanel.svelte";
   import SetupWizard from "$lib/components/SetupWizard.svelte";
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
+  import { importLogStore } from "$lib/stores/importLogStore";
   import { infoLogStore } from "$lib/stores/infoLogStore";
   import { incognitoMode, screenshotMode } from "$lib/stores/incognitoMode";
 
@@ -91,8 +93,10 @@
   let minimizeTarget: MinimizeTarget = "taskbar";
   let askedClosePreference = false;
   let showClosePreferenceDialog = false;
+  let showCloseWhileRunningDialog = false;
   let showSetupWizard = false;
   let closingFromLaunch = false;
+  let forceClose = false;
 
   function resolveSelectedProfile(
     activeProfile: string | null | undefined,
@@ -238,6 +242,11 @@
     } else {
       await getCurrentWindow().close();
     }
+  }
+
+  async function handleForceClose() {
+    forceClose = true;
+    await getCurrentWindow().close();
   }
 
   afterNavigate(() => {
@@ -554,8 +563,14 @@
 
     void appWindow
       .onCloseRequested(async (event) => {
-        if (closingFromLaunch) {
+        if (closingFromLaunch || forceClose) {
           closingFromLaunch = false;
+          forceClose = false;
+          return;
+        }
+        if ($importLogStore.mods.some((m) => m.status === "running")) {
+          event.preventDefault();
+          showCloseWhileRunningDialog = true;
           return;
         }
         if (!askedClosePreference) {
@@ -760,6 +775,17 @@
   {#if showSetupWizard}
     <SetupWizard onDismiss={handleWizardDismiss} />
   {/if}
+
+  <ConfirmModal
+    isVisible={showCloseWhileRunningDialog}
+    title="Installation in progress"
+    message="Mods are still being installed. Closing now may leave them in a broken state."
+    confirmLabel="Close anyway"
+    onConfirm={() => void handleForceClose()}
+    onCancel={() => {
+      showCloseWhileRunningDialog = false;
+    }}
+  />
 
   {#if showClosePreferenceDialog}
     <div

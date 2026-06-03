@@ -10,19 +10,25 @@
     m.input,
     ...m.lines,
   ]);
+  $: isRunning = $importLogStore.mods.some((m) => m.status === "running");
 </script>
 
 <LogPanel
   title="Import Log"
   isVisible={$importLogStore.isOpen}
+  isLoading={isRunning}
   log={flatLog}
   logFilename="import-log"
   on:close={() => importLogStore.close()}
+  on:clear={() => {
+    importLogStore.clear();
+    importLogStore.close();
+  }}
 >
   <svelte:fragment slot="extra-actions">
     <button
       class="btn btn-sm"
-      disabled={$importLogStore.mods.length === 0}
+      disabled={$importLogStore.mods.length === 0 || isRunning}
       on:click={() => importLogStore.clear()}>Clear</button
     >
   </svelte:fragment>
