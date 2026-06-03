@@ -1,6 +1,6 @@
 [package]
 name = "ronmodmanager"
-version = "0.0.9"
+version = "0.0.10"
 description = "RoN Mod Manager"
 authors = ["SavageCore"]
 edition = "2021"
