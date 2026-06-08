@@ -112,7 +112,7 @@ flatpak-deps: ## Install Flatpak runtimes and SDK extensions (run once)
 		org.freedesktop.Sdk.Extension.rust-stable//25.08
 
 flatpak-build: ## Build Flatpak from local repo (run vendor first)
-	flatpak-builder --force-clean --user --install-deps-from=flathub \
+	flatpak-builder --force-clean --delete-build-dirs --user --install-deps-from=flathub \
 		--gpg-sign=$(FLATPAK_GPG_KEY) \
 		--repo=flatpak-repo build-dir $(FLATPAK_MANIFEST)
 
@@ -138,7 +138,7 @@ flatpak: vendor flatpak-build flatpak-install ## Full local Flatpak pipeline (ve
 # ── Clean ─────────────────────────────────────────────────────────────────────
 
 clean: ## Remove build artifacts
-	rm -rf build .svelte-kit build-dir flatpak-repo ronmodmanager.flatpak
+	rm -rf build .svelte-kit build-dir flatpak-repo ronmodmanager.flatpak .flatpak-builder/build/
 	cargo clean --manifest-path $(CARGO_MANIFEST)
 
 dev-to-prod: # Copy dev config and mods to production

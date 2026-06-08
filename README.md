@@ -88,6 +88,16 @@ make dev
 
 See [docs/LINUX_WINDOW_PERSISTENCE.md](docs/LINUX_WINDOW_PERSISTENCE.md) for details on window state persistence on Linux/Wayland.
 
+### Disk usage
+
+`src-tauri/target/` (Rust build cache) and `.flatpak-builder/build/` (Flatpak build snapshots) can grow to hundreds of GB over time. To reclaim space:
+
+```bash
+make clean
+```
+
+`.flatpak-builder/cache/` is kept by both commands - it caches downloaded sources and speeds up subsequent Flatpak builds.
+
 ## Quality Checks
 
 ```bash
