@@ -10,7 +10,7 @@ CARGO_MANIFEST   := src-tauri/Cargo.toml
         test-frontend test-backend test \
         screenshots screenshots-build \
         vendor flatpak-deps update-appstream flatpak-build flatpak-bundle flatpak-install flatpak-run flatpak \
-        clean
+        clean watch
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -33,6 +33,8 @@ dev: vendor ## Run Tauri dev (Wayland-compatible, software rendering)
 
 dev-xwayland: vendor ## Run Tauri dev via XWayland (full window state persistence)
 	GDK_BACKEND=x11 npm run tauri dev
+
+watch: dev ## Watch for changes and rebuild Tauri application
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
