@@ -28,7 +28,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@dotenvx/dotenvx": "^1.71.0",
+    "@dotenvx/dotenvx": "^1.71.3",
     "@tauri-apps/api": "^2.10.0",
     "@tauri-apps/plugin-dialog": "2.7.1",
     "@tauri-apps/plugin-opener": "2.5.4",
@@ -37,13 +37,13 @@
     "adwaveui": "^0.3.0",
     "date-fns": "^4.4.0",
     "lucide-svelte": "^1.0.1",
-    "semver": "^7.8.2"
+    "semver": "^7.8.4"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.6",
-    "@sveltejs/kit": "^2.63.0",
+    "@sveltejs/kit": "^2.65.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
-    "@tailwindcss/vite": "^4.2.1",
+    "@tailwindcss/vite": "^4.3.1",
     "@tauri-apps/cli": "2.11.2",
     "@testing-library/svelte": "^5.3.1",
     "@types/semver": "^7.7.1",
@@ -51,9 +51,9 @@
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "lint-staged": "^17.0.7",
-    "prettier": "^3.8.1",
+    "prettier": "^3.8.4",
     "prettier-plugin-svelte": "^4.1.0",
-    "svelte": "^5.56.2",
+    "svelte": "^5.56.3",
     "svelte-check": "^4.6.0",
     "tailwindcss": "^4.2.1",
     "typescript": "~6.0.3",
