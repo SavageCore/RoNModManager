@@ -34,6 +34,7 @@ pub struct NexusModFile {
     pub category_name: Option<String>,
     pub is_primary: Option<bool>,
     pub uploaded_timestamp: Option<u64>,
+    pub size_in_bytes: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,15 +42,16 @@ struct NexusFilesResponse {
     files: Vec<NexusModFile>,
 }
 
-/// Returns the candidates a user should choose from, applying the same filtering as
-/// `pick_primary_file` but without collapsing to a single result.
+/// Returns the candidates a user should choose from.
 /// - Excludes OLD_VERSION (4), DELETED (6), ARCHIVED (7)
-/// - If any file is `is_primary`, returns only that file (unambiguous)
-/// - Otherwise returns all MAIN (category_id=1) files, or all active files if none
+/// - Returns all MAIN (category_id=1) files, or all active files if none are MAIN
+/// - Sorted: is_primary first, then newest-first by uploaded_timestamp
 ///
-/// Sorted newest-first by uploaded_timestamp.
+/// `is_primary` is a pre-selection hint, not a filter — callers that show a picker
+/// should pre-select `result[0]` but still show all options. Callers that need a
+/// single automatic choice (premium auto-download) use `pick_primary_file`.
 pub fn get_file_options(files: &[NexusModFile]) -> Vec<&NexusModFile> {
-    let mut active: Vec<&NexusModFile> = files
+    let active: Vec<&NexusModFile> = files
         .iter()
         .filter(|f| {
             f.category_id
@@ -58,22 +60,33 @@ pub fn get_file_options(files: &[NexusModFile]) -> Vec<&NexusModFile> {
         })
         .collect();
 
-    if let Some(primary) = active.iter().find(|f| f.is_primary == Some(true)) {
-        return vec![primary];
-    }
-
     let mut mains: Vec<&NexusModFile> = active
         .iter()
         .copied()
         .filter(|f| f.category_id == Some(1))
         .collect();
-    if !mains.is_empty() {
-        mains.sort_by_key(|f| Reverse(f.uploaded_timestamp.unwrap_or(0)));
-        return mains;
-    }
 
-    active.sort_by_key(|f| Reverse(f.uploaded_timestamp.unwrap_or(0)));
-    active
+    let candidates = if !mains.is_empty() {
+        &mut mains
+    } else {
+        let mut all = active;
+        // sort inline and return — can't use the same reference trick, so handle separately
+        all.sort_by_key(|f| {
+            (
+                if f.is_primary == Some(true) { 0u8 } else { 1u8 },
+                Reverse(f.uploaded_timestamp.unwrap_or(0)),
+            )
+        });
+        return all;
+    };
+
+    candidates.sort_by_key(|f| {
+        (
+            if f.is_primary == Some(true) { 0u8 } else { 1u8 },
+            Reverse(f.uploaded_timestamp.unwrap_or(0)),
+        )
+    });
+    candidates.to_vec()
 }
 
 /// Pick the best file to download from a mod's file list.

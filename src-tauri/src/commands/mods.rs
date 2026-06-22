@@ -1252,6 +1252,7 @@ pub async fn add_nexus_mod(
         })?
     };
     let expected_filename = primary_file.file_name.clone();
+    let expected_size = primary_file.size_in_bytes;
     let file_pretty_name = primary_file.name.clone();
     let file_id = primary_file.file_id;
 
@@ -1320,29 +1321,27 @@ pub async fn add_nexus_mod(
 
         (archive_path, Some(hash))
     } else {
-        // Non-premium: watch ~/Downloads, only open browser if the file isn't already there
+        // Non-premium: watch ~/Downloads, only open browser if the file isn't already there.
+        // Uses find_in_downloads for tolerant name matching (whitespace/case/browser dedup suffix).
         let files_url = format!("{}?tab=files", source_url);
+
+        // Fail fast with a meaningful error if the OS has no Downloads directory.
         let downloads_dir = dirs::download_dir()
             .ok_or_else(|| AppError::Validation("Cannot locate Downloads directory".to_string()))?;
 
-        let target_path = downloads_dir.join(&expected_filename);
-        let partial_extensions = [".part", ".crdownload", ".tmp"];
         let timeout = std::time::Duration::from_secs(1800);
         let poll_interval = std::time::Duration::from_secs(2);
         let started = std::time::Instant::now();
 
-        let mut found = false;
+        let mut found_path: Option<PathBuf> = None;
 
-        let any_partial_pre = partial_extensions.iter().any(|ext| {
-            downloads_dir
-                .join(format!("{}{}", expected_filename, ext))
-                .exists()
-        });
-
-        if target_path.exists() && !any_partial_pre {
-            let s1 = fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0);
+        // Pre-check: file may already be present from a previous attempt.
+        if let Some(path) =
+            downloader::find_in_downloads(&expected_filename, expected_size, None, |_, _| {})
+        {
+            let s1 = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            let s2 = fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0);
+            let s2 = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
             if s1 > 0 && s1 == s2 {
                 let _ = app.emit(
                     "nexus_free_download_complete",
@@ -1350,11 +1349,11 @@ pub async fn add_nexus_mod(
                         file_name: expected_filename.clone(),
                     },
                 );
-                found = true;
+                found_path = Some(path);
             }
         }
 
-        if !found {
+        if found_path.is_none() {
             let _ = app.emit(
                 "install_progress",
                 &ProgressEvent {
@@ -1385,7 +1384,11 @@ pub async fn add_nexus_mod(
                     operation: "download".to_string(),
                     file: expected_filename.clone(),
                     percent: 10.0,
-                    message: format!("Waiting for {} in ~/Downloads...", expected_filename),
+                    message: format!(
+                        "Waiting for {} in {}...",
+                        expected_filename,
+                        downloads_dir.display()
+                    ),
                     total_bytes: None,
                     processed_bytes: None,
                 },
@@ -1411,21 +1414,20 @@ pub async fn add_nexus_mod(
 
                 if started.elapsed() >= timeout {
                     return Err(AppError::Validation(format!(
-                    "Timed out waiting for {} in Downloads. Download the file manually and use 'Local File' to install it.",
-                    expected_filename
-                )));
+                        "Timed out waiting for {} in Downloads. Download the file manually and use 'Local File' to install it.",
+                        expected_filename
+                    )));
                 }
 
-                let any_partial = partial_extensions.iter().any(|ext| {
-                    downloads_dir
-                        .join(format!("{}{}", expected_filename, ext))
-                        .exists()
-                });
-
-                if target_path.exists() && !any_partial {
-                    let size_first = fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0);
+                if let Some(path) = downloader::find_in_downloads(
+                    &expected_filename,
+                    expected_size,
+                    None,
+                    |_, _| {},
+                ) {
+                    let size_first = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
                     tokio::time::sleep(poll_interval).await;
-                    let size_second = fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0);
+                    let size_second = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
                     if size_first > 0 && size_first == size_second {
                         let _ = app.emit(
                             "nexus_free_download_complete",
@@ -1433,15 +1435,18 @@ pub async fn add_nexus_mod(
                                 file_name: expected_filename.clone(),
                             },
                         );
+                        found_path = Some(path);
                         break;
                     }
                 } else {
                     tokio::time::sleep(poll_interval).await;
                 }
             }
-        } // if !found
+        }
 
-        (target_path, None)
+        let install_path = found_path
+            .ok_or_else(|| AppError::Validation("Download not found after waiting".to_string()))?;
+        (install_path, None)
     };
 
     Ok(AddNexusResult {

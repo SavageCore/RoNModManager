@@ -9,11 +9,57 @@ use tokio::io::AsyncWriteExt;
 /// Progress callback type for download progress updates
 pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send + Sync>;
 
+/// Lowercase, collapse whitespace runs to one space, strip a trailing browser
+/// dedup suffix like ` (1)` immediately before the extension, then trim.
+fn normalise_download_name(name: &str) -> String {
+    let (stem, ext) = match name.rfind('.') {
+        Some(pos) => (&name[..pos], &name[pos..]),
+        None => (name, ""),
+    };
+
+    // Strip trailing ` (N)` dedup suffix from stem
+    let stem = {
+        let trimmed = stem.trim_end();
+        if let Some(without_close) = trimmed.strip_suffix(')') {
+            if let Some(open_pos) = without_close.rfind('(') {
+                let inner = &without_close[open_pos + 1..];
+                if inner.chars().all(|c| c.is_ascii_digit())
+                    && open_pos > 0
+                    && without_close[..open_pos].ends_with(' ')
+                {
+                    without_close[..open_pos].trim_end()
+                } else {
+                    trimmed
+                }
+            } else {
+                trimmed
+            }
+        } else {
+            trimmed
+        }
+    };
+
+    format!(
+        "{} {}",
+        stem.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase(),
+        ext.to_lowercase()
+    )
+    .trim()
+    .to_string()
+}
+
 /// Look for a file the user has already downloaded in their Downloads folder that
-/// matches what we were about to fetch. When an MD5 is provided the candidate is
-/// validated by hash (reporting progress via `on_progress`, since hashing a large
-/// archive is slow); otherwise it falls back to a non-zero byte-size match. Returns
-/// the path only on a positive validation - a name match alone is never enough.
+/// matches what we were about to fetch. Tries an exact name match first, then
+/// falls back to a tolerant scan (normalised whitespace/case, browser dedup
+/// suffixes like ` (1)`) — skipping any in-progress partials.
+///
+/// When an MD5 is provided the candidate is validated by hash (reporting progress
+/// via `on_progress`, since hashing a large archive is slow); when `expected_size`
+/// is provided, validates by size; when neither is provided, accepts any non-empty
+/// candidate (caller is responsible for a stability check).
 pub fn find_in_downloads<F>(
     filename: &str,
     expected_size: Option<u64>,
@@ -25,10 +71,41 @@ where
 {
     use crate::services::hasher;
 
-    let candidate = dirs::download_dir()?.join(filename);
-    if !candidate.is_file() {
-        return None;
-    }
+    let download_dir = dirs::download_dir()?;
+    let partial_exts = ["part", "crdownload", "tmp"];
+
+    // Fast path: exact name match
+    let candidate = {
+        let exact = download_dir.join(filename);
+        if exact.is_file() {
+            exact
+        } else {
+            // Tolerant scan: normalised name match, skip in-progress files
+            let normalised_expected = normalise_download_name(filename);
+            let mut found = None;
+            for entry in std::fs::read_dir(&download_dir).ok()?.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+                if path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| partial_exts.contains(&e))
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
+                if let Some(fname) = path.file_name().and_then(|n| n.to_str()) {
+                    if normalise_download_name(fname) == normalised_expected {
+                        found = Some(path);
+                        break;
+                    }
+                }
+            }
+            found?
+        }
+    };
 
     if let Some(md5) = expected_md5 {
         // Cheap reject before hashing when we already know the expected size differs.
@@ -47,9 +124,17 @@ where
         if size > 0 && std::fs::metadata(&candidate).map(|m| m.len()).ok() == Some(size) {
             return Some(candidate);
         }
+        // Size known but doesn't match — file is still downloading or wrong file
+        return None;
     }
 
-    None
+    // No MD5 or size to validate against — accept if non-empty.
+    // ponytail: caller must run a stability check before trusting this.
+    if std::fs::metadata(&candidate).map(|m| m.len()).unwrap_or(0) > 0 {
+        Some(candidate)
+    } else {
+        None
+    }
 }
 
 /// Download a file from a URL to a destination path, returning its MD5 hash.
@@ -106,6 +191,31 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn normalise_handles_common_browser_variations() {
+        let base = normalise_download_name("Update 1.4 Suppressed Muffled Full Overhaul.zip");
+        // Double space collapses
+        assert_eq!(
+            normalise_download_name("Update 1.4  Suppressed Muffled Full Overhaul.zip"),
+            base
+        );
+        // Case difference
+        assert_eq!(
+            normalise_download_name("update 1.4 suppressed muffled full overhaul.ZIP"),
+            base
+        );
+        // Browser dedup suffix
+        assert_eq!(
+            normalise_download_name("Update 1.4 Suppressed Muffled Full Overhaul (1).zip"),
+            base
+        );
+        // Clearly different name does NOT match
+        assert_ne!(
+            normalise_download_name("Something Completely Different.zip"),
+            base
+        );
+    }
 
     #[tokio::test]
     async fn test_download_file() {
