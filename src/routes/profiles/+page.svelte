@@ -197,8 +197,7 @@
           bind:value={formDescription}
           class="textarea"
           placeholder="Profile description"
-          rows="3"
-        ></textarea>
+          rows="3"></textarea>
       </div>
 
       <div class="flex gap-2">

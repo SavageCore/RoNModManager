@@ -95,8 +95,7 @@
             class="textarea w-full"
             rows="2"
             bind:value={description}
-            placeholder="Describe this modpack"
-          ></textarea>
+            placeholder="Describe this modpack"></textarea>
         </div>
         <div>
           <label
