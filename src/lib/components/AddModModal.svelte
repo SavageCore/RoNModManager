@@ -483,8 +483,7 @@
                 class="textarea"
                 placeholder="https://mod.io/g/readyornot/m/lustful-remorse&#10;https://mod.io/g/readyornot/m/simple-mod-menu&#10;https://www.nexusmods.com/readyornot/mods/1234"
                 bind:value={modioInput}
-                on:paste={handlePaste}
-              ></textarea>
+                on:paste={handlePaste}></textarea>
               <p style="color: var(--clr-text-secondary);" class="text-xs mt-1">
                 Paste mod.io or Nexus Mods links, one per line
               </p>
