@@ -85,6 +85,7 @@ export interface InstalledModGroup {
   files: InstalledModFile[];
   addonFiles?: InstalledModFile[]; // Add-on files for this mod group
   hasOverrideFiles?: boolean;
+  installedVersion?: string;
 }
 
 export interface ModProgressEvent {

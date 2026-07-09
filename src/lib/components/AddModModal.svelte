@@ -6,6 +6,7 @@
     getArchivePakFiles,
     installLocalMod,
     listNexusFileOptions,
+    replaceModArchive,
     updateModDisplayName,
     updateModSourceUrl,
     updateNexusFileId,
@@ -22,10 +23,11 @@
 
   export let isVisible = false;
   export let autoSubmitUrl: string = "";
+  export let autoSubmitReplacing: string | null = null;
 
   $: if (isVisible && autoSubmitUrl) {
     modioInput = autoSubmitUrl;
-    void handleAddViaLink();
+    void handleAddViaLink(autoSubmitReplacing ?? undefined);
   }
 
   const dispatch = createEventDispatcher();
@@ -39,7 +41,11 @@
   let nexusLookupTimer: ReturnType<typeof setTimeout> | null = null;
   let nexusLookupToken = 0;
   let isProcessingLinks = false;
-  const pendingLinkQueue: Array<{ input: string; queueId: string }> = [];
+  const pendingLinkQueue: Array<{
+    input: string;
+    queueId: string;
+    replacingArchiveName?: string;
+  }> = [];
 
   $: activeQueueCount = $modAddQueueStore.items.filter(
     (item) => item.status === "queued" || item.status === "running",
@@ -138,7 +144,7 @@
     }
   }
 
-  async function handleAddViaLink() {
+  async function handleAddViaLink(replacingArchiveName?: string) {
     const input = modioInput.trim();
     if (!input) {
       alertStore.error("Enter mod links");
@@ -160,6 +166,7 @@
       pendingLinkQueue.push({
         input: modInput,
         queueId: modAddQueueStore.enqueue(modInput),
+        replacingArchiveName,
       });
     }
 
@@ -173,7 +180,11 @@
     try {
       while (pendingLinkQueue.length > 0) {
         type Plan = {
-          entry: { input: string; queueId: string };
+          entry: {
+            input: string;
+            queueId: string;
+            replacingArchiveName?: string;
+          };
           chosenFileId?: number;
           downloadResult?:
             | Awaited<ReturnType<typeof addNexusMod>>
@@ -285,11 +296,21 @@
             await updateModSourceUrl(
               result.archiveName,
               result.sourceUrl,
+              result.version,
             ).catch(() => {});
             if (result.fileId != null) {
               await updateNexusFileId(result.archiveName, result.fileId).catch(
                 () => {},
               );
+            }
+            if (
+              plan.entry.replacingArchiveName &&
+              plan.entry.replacingArchiveName !== result.archiveName
+            ) {
+              await replaceModArchive(
+                plan.entry.replacingArchiveName,
+                result.archiveName,
+              ).catch(() => {});
             }
             modAddQueueStore.markDone(
               plan.entry.queueId,
@@ -514,7 +535,7 @@
             <div class="flex gap-2">
               <button on:click={closeModal} class="flex-1 btn"> Cancel </button>
               <button
-                on:click={handleAddViaLink}
+                on:click={() => handleAddViaLink()}
                 disabled={!modioInput.trim()}
                 class="flex-1 btn primary"
               >

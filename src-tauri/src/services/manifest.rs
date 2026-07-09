@@ -25,6 +25,9 @@ pub struct InstallManifest {
     /// Nexus Mods file ID of the specific variant chosen at install time
     #[serde(default)]
     pub nexus_file_id: Option<u64>,
+    /// Version string of the installed release, for display only
+    #[serde(default)]
+    pub installed_version: Option<String>,
 }
 
 pub struct ManifestManager {

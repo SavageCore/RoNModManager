@@ -143,6 +143,7 @@ export interface ModAddResult {
   fileId?: number;
   filePrettyName?: string | null;
   contentHash?: string | null;
+  version?: string | null;
 }
 
 export interface NexusFileOption {
@@ -184,6 +185,16 @@ export const refreshModMetadata = () =>
     failed: number;
   }>("refresh_mod_metadata");
 
+export interface ModUpdateInfo {
+  archiveName: string;
+  source: "nexus" | "modio";
+  currentVersion: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+}
+export const checkModUpdates = () =>
+  invoke<ModUpdateInfo[]>("check_mod_updates");
+
 export const updateConfig = (updates: {
   nexus_api_key?: string | null;
   modio_api_key?: string | null;
@@ -214,8 +225,25 @@ export const updateModDisplayName = (
   archiveName: string,
   displayName: string,
 ) => invoke<void>("update_mod_display_name", { archiveName, displayName });
-export const updateModSourceUrl = (archiveName: string, sourceUrl: string) =>
-  invoke<void>("update_mod_source_url", { archiveName, sourceUrl });
+export const replaceModArchive = (
+  oldArchiveName: string,
+  newArchiveName: string,
+) =>
+  invoke<void>("replace_mod_archive", {
+    oldArchiveName,
+    newArchiveName,
+  });
+
+export const updateModSourceUrl = (
+  archiveName: string,
+  sourceUrl: string,
+  version?: string | null,
+) =>
+  invoke<void>("update_mod_source_url", {
+    archiveName,
+    sourceUrl,
+    version: version ?? null,
+  });
 
 export const listProfiles = () => invoke<Profile[]>("list_profiles");
 export const getProfile = (name: string) =>

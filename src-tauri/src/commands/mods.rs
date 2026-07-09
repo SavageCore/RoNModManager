@@ -187,6 +187,7 @@ pub struct AddModioResult {
     pub source_url: String,
     pub archive_path: String,
     pub content_hash: Option<String>,
+    pub version: Option<String>,
 }
 
 fn parse_modio_input_to_slug_or_id(input: &str) -> Result<(Option<u64>, Option<String>)> {
@@ -998,6 +999,7 @@ pub async fn add_modio_mod(
         source_url: mod_details.profile_url,
         archive_path: archive_path.to_string_lossy().to_string(),
         content_hash: Some(content_hash),
+        version: mod_details.version,
     })
 }
 
@@ -1128,6 +1130,155 @@ pub async fn refresh_mod_metadata(state: State<'_, AppState>) -> Result<RefreshM
     Ok(result)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModUpdateInfo {
+    pub archive_name: String,
+    pub source: String,
+    pub current_version: Option<String>,
+    pub latest_version: Option<String>,
+    pub update_available: bool,
+}
+
+/// Version strings are unreliable/often absent on Nexus, so compare upload
+/// timestamps instead - avoids false positives when the user deliberately
+/// installed a non-primary variant.
+fn nexus_update_available(
+    installed_file_id: Option<u64>,
+    files: &[nexus_api::NexusModFile],
+) -> bool {
+    let Some(latest_ts) = nexus_api::get_file_options(files)
+        .into_iter()
+        .next()
+        .and_then(|f| f.uploaded_timestamp)
+    else {
+        return false;
+    };
+
+    match installed_file_id {
+        Some(fid) => match files
+            .iter()
+            .find(|f| f.file_id == fid)
+            .and_then(|f| f.uploaded_timestamp)
+        {
+            Some(installed_ts) => latest_ts > installed_ts,
+            None => true, // installed variant no longer listed
+        },
+        None => false, // no recorded baseline to compare against
+    }
+}
+
+fn modio_update_available(local_hash: &Option<String>, remote_hash: &Option<String>) -> bool {
+    match (local_hash, remote_hash) {
+        (Some(local), Some(remote)) => local.to_lowercase() != remote.to_lowercase(),
+        _ => false,
+    }
+}
+
+/// Checks every installed mod with a recorded source URL against the upstream
+/// Nexus/mod.io API and reports whether a newer file is available.
+///
+/// Per-mod failures (missing API key, mod removed, network error) are skipped
+/// rather than failing the whole check - one bad entry shouldn't hide updates
+/// for the rest of the library.
+#[tauri::command]
+pub async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<ModUpdateInfo>> {
+    let config = state.get_config()?;
+    let api_key = config
+        .nexus_api_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
+    let oauth_token = config
+        .oauth_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
+
+    let staging_root = get_staging_root()?;
+    let manager = manifest::ManifestManager::new(&staging_root);
+    let manifests = manager.list_all_manifests()?;
+
+    let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
+    let modio_service = ModioApiService::new(state.client.clone(), config.modio_game_id);
+
+    let mut results = Vec::new();
+
+    for manifest_data in manifests.into_values() {
+        let source_url = manifest_data
+            .source_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty());
+        let Some(source_url) = source_url else {
+            continue;
+        };
+
+        // Small fixed spacing between upstream requests so a large library
+        // doesn't burst the API and trip rate limits.
+        // ponytail: fixed 300ms spacing, switch to header-driven pacing if a
+        // big library still trips limits.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        if source_url.contains("nexusmods.com") {
+            let Some(key) = api_key else { continue };
+            let Ok(mod_id) = nexus_api::parse_nexus_url_to_mod_id(source_url) else {
+                continue;
+            };
+            let Ok(files) = nexus_service.list_mod_files(key, mod_id).await else {
+                continue;
+            };
+            let Some(latest) = nexus_api::get_file_options(&files).into_iter().next() else {
+                continue;
+            };
+            let latest_version = latest.version.clone();
+            let update_available = nexus_update_available(manifest_data.nexus_file_id, &files);
+
+            results.push(ModUpdateInfo {
+                archive_name: manifest_data.source_archive.clone(),
+                source: "nexus".to_string(),
+                current_version: manifest_data.installed_version.clone(),
+                latest_version,
+                update_available,
+            });
+        } else if source_url.contains("mod.io") {
+            let Some(token) = oauth_token else { continue };
+            let Ok((explicit_id, slug)) = parse_modio_input_to_slug_or_id(source_url) else {
+                continue;
+            };
+            let mod_id = match explicit_id {
+                Some(id) => id,
+                None => {
+                    let Some(slug_value) = slug else { continue };
+                    let Ok(id) = modio_service
+                        .resolve_slug_to_mod_id(token, &slug_value)
+                        .await
+                    else {
+                        continue;
+                    };
+                    id
+                }
+            };
+            let Ok(mod_details) = modio_service.get_mod_download_info(token, mod_id).await else {
+                continue;
+            };
+
+            let update_available =
+                modio_update_available(&manifest_data.content_hash, &mod_details.remote_md5);
+
+            results.push(ModUpdateInfo {
+                archive_name: manifest_data.source_archive.clone(),
+                source: "modio".to_string(),
+                current_version: manifest_data.installed_version.clone(),
+                latest_version: mod_details.version,
+                update_available,
+            });
+        }
+    }
+
+    Ok(results)
+}
+
 #[tauri::command]
 pub async fn fetch_nexus_mod_info(
     state: State<'_, AppState>,
@@ -1199,6 +1350,7 @@ pub struct AddNexusResult {
     pub file_id: u64,
     pub file_pretty_name: Option<String>,
     pub content_hash: Option<String>,
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1255,6 +1407,7 @@ pub async fn add_nexus_mod(
     let expected_size = primary_file.size_in_bytes;
     let file_pretty_name = primary_file.name.clone();
     let file_id = primary_file.file_id;
+    let version = primary_file.version.clone();
 
     let source_url = format!("https://www.nexusmods.com/readyornot/mods/{}", mod_id);
     let archive_name = sanitize_filename_for_download(&expected_filename);
@@ -1458,6 +1611,7 @@ pub async fn add_nexus_mod(
         file_id,
         file_pretty_name,
         content_hash,
+        version,
     })
 }
 
@@ -1646,6 +1800,7 @@ pub async fn update_mod_source_url(
     state: State<'_, AppState>,
     archive_name: String,
     source_url: String,
+    version: Option<String>,
 ) -> Result<()> {
     let config = state.get_config()?;
     let staging_root = get_staging_root()?;
@@ -1666,6 +1821,7 @@ pub async fn update_mod_source_url(
                 .as_secs(),
             content_hash: None,
             nexus_file_id: None,
+            installed_version: None,
         },
     };
     manifest_data.source_url = if source_url.trim().is_empty() {
@@ -1679,6 +1835,9 @@ pub async fn update_mod_source_url(
             .unwrap_or(without_fragment);
         Some(clean_url.to_string())
     };
+    if let Some(v) = version {
+        manifest_data.installed_version = Some(v);
+    }
 
     let api_key = config
         .nexus_api_key
@@ -1721,6 +1880,69 @@ pub async fn update_nexus_file_id(
         manifest_data.nexus_file_id = Some(file_id);
         manager.save_manifest(&manifest_data)?;
     }
+    Ok(())
+}
+
+/// Replaces an installed mod with a freshly-downloaded update: carries the old
+/// archive's tags and collection membership over to the new archive, then
+/// deletes the old install.
+///
+/// Deleting the old archive cascade-deletes any add-ons linked to it (see
+/// `uninstall_archive`) - a mod update can shift map/addon compatibility, so
+/// add-ons are intentionally not carried over and must be re-added if still
+/// needed.
+#[tauri::command]
+pub async fn replace_mod_archive(
+    state: State<'_, AppState>,
+    old_archive_name: String,
+    new_archive_name: String,
+) -> Result<()> {
+    if old_archive_name == new_archive_name {
+        return Ok(());
+    }
+
+    let config = state.get_config()?;
+    let active_profile_name = config.active_profile.clone();
+
+    let mut tags_to_apply: Vec<String> = Vec::new();
+    let mut collections_to_apply: Vec<String> = Vec::new();
+    if let Some(ref profile_name) = active_profile_name {
+        if let Some(profile) = profiles::get_profile(profile_name)? {
+            for (tag, members) in &profile.tags {
+                if members.iter().any(|m| m == &old_archive_name) {
+                    tags_to_apply.push(tag.clone());
+                }
+            }
+            for (collection, members) in &profile.collections {
+                if members.iter().any(|m| m == &old_archive_name) {
+                    collections_to_apply.push(collection.clone());
+                }
+            }
+        }
+    }
+
+    uninstall_archive(state, old_archive_name).await?;
+
+    if let Some(profile_name) = active_profile_name {
+        if !tags_to_apply.is_empty() || !collections_to_apply.is_empty() {
+            if let Some(mut profile) = profiles::get_profile(&profile_name)? {
+                for tag in tags_to_apply {
+                    let members = profile.tags.entry(tag).or_default();
+                    if !members.contains(&new_archive_name) {
+                        members.push(new_archive_name.clone());
+                    }
+                }
+                for collection in collections_to_apply {
+                    let members = profile.collections.entry(collection).or_default();
+                    if !members.contains(&new_archive_name) {
+                        members.push(new_archive_name.clone());
+                    }
+                }
+                profiles::save_profile(&profile)?;
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -1802,6 +2024,7 @@ pub async fn get_installed_mod_groups(
             files,
             addon_files: Vec::new(),
             has_override_files,
+            installed_version: manifest_data.installed_version.clone(),
         });
     }
 
@@ -1842,6 +2065,7 @@ pub async fn get_installed_mod_groups(
                 }],
                 addon_files: Vec::new(),
                 has_override_files: false,
+                installed_version: None,
             });
         }
     }
@@ -2145,6 +2369,7 @@ fn save_install_manifest(
             .as_secs(),
         content_hash,
         nexus_file_id: None,
+        installed_version: None,
     };
 
     if let Some(file_name) = archive_path.file_name() {
@@ -2534,5 +2759,71 @@ pub async fn check_nexus_premium(state: State<'_, AppState>) -> Result<bool> {
     match svc.get_user_info(&api_key).await {
         Ok(user) => Ok(user.is_premium),
         Err(_) => Ok(false),
+    }
+}
+
+#[cfg(test)]
+mod update_check_tests {
+    use super::*;
+
+    fn nexus_file(file_id: u64, uploaded_timestamp: Option<u64>) -> nexus_api::NexusModFile {
+        nexus_api::NexusModFile {
+            file_id,
+            file_name: format!("file-{file_id}.zip"),
+            name: None,
+            version: None,
+            description: None,
+            category_id: Some(1), // MAIN
+            category_name: None,
+            is_primary: Some(false),
+            uploaded_timestamp,
+            size_in_bytes: None,
+        }
+    }
+
+    #[test]
+    fn nexus_flags_update_when_newer_file_uploaded() {
+        let files = vec![nexus_file(1, Some(100)), nexus_file(2, Some(200))];
+        assert!(nexus_update_available(Some(1), &files));
+    }
+
+    #[test]
+    fn nexus_no_update_when_installed_file_is_newest() {
+        let files = vec![nexus_file(1, Some(100)), nexus_file(2, Some(200))];
+        assert!(!nexus_update_available(Some(2), &files));
+    }
+
+    #[test]
+    fn nexus_flags_update_when_installed_file_no_longer_listed() {
+        let files = vec![nexus_file(2, Some(200))];
+        assert!(nexus_update_available(Some(1), &files));
+    }
+
+    #[test]
+    fn nexus_no_update_without_recorded_baseline() {
+        let files = vec![nexus_file(1, Some(100))];
+        assert!(!nexus_update_available(None, &files));
+    }
+
+    #[test]
+    fn modio_flags_update_on_hash_mismatch() {
+        assert!(modio_update_available(
+            &Some("abc123".to_string()),
+            &Some("DEF456".to_string())
+        ));
+    }
+
+    #[test]
+    fn modio_no_update_on_matching_hash_case_insensitive() {
+        assert!(!modio_update_available(
+            &Some("ABC123".to_string()),
+            &Some("abc123".to_string())
+        ));
+    }
+
+    #[test]
+    fn modio_no_update_when_hash_unknown() {
+        assert!(!modio_update_available(&None, &Some("abc123".to_string())));
+        assert!(!modio_update_available(&Some("abc123".to_string()), &None));
     }
 }

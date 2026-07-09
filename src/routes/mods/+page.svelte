@@ -29,6 +29,8 @@
     getNoWorldGenMods,
     setModNoWorldGen,
     clearModNoWorldGen,
+    checkModUpdates,
+    type ModUpdateInfo,
   } from "$lib/api/commands";
   import AddModModal from "$lib/components/AddModModal.svelte";
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
@@ -179,6 +181,7 @@
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import {
     AlertTriangle,
+    ArrowUpCircle,
     Calendar,
     ExternalLink,
     Globe,
@@ -215,6 +218,24 @@
   }
   let brokenModsMap: Record<string, string> = {};
   let noWorldGenSet: Set<string> = new Set();
+  let modUpdates: Record<string, ModUpdateInfo> = {};
+
+  // Nexus version strings often already include a leading "v" (e.g. "v2.2") -
+  // strip it so we don't double it up when we prepend our own "v".
+  function stripVersionPrefix(version: string): string {
+    return version.replace(/^v/i, "");
+  }
+
+  async function loadModUpdates() {
+    try {
+      const updates = await checkModUpdates();
+      modUpdates = Object.fromEntries(
+        updates.filter((u) => u.updateAvailable).map((u) => [u.archiveName, u]),
+      );
+    } catch {
+      // non-fatal - badges just won't show this pass
+    }
+  }
   let showBrokenModal = false;
   let brokenModalModName = "";
   let brokenModalModLabel = "";
@@ -223,6 +244,7 @@
   let modsForActiveProfile: string[] = [];
   let showAddModModal = false;
   let autoSubmitUrl = "";
+  let autoSubmitReplacing: string | null = null;
   let prevDoneCounter = $addModpackPanelStore.doneCounter;
   $: if ($addModpackPanelStore.doneCounter !== prevDoneCounter) {
     prevDoneCounter = $addModpackPanelStore.doneCounter;
@@ -1273,11 +1295,13 @@
   onMount(() => {
     console.log("Mods page mounted, setting up event listeners");
     void refresh();
+    void loadModUpdates();
 
     const unsubPending = pendingInstallUrl.subscribe((url) => {
       if (url) {
         pendingInstallUrl.set(null);
         autoSubmitUrl = url;
+        autoSubmitReplacing = null;
         showAddModModal = true;
       }
     });
@@ -1292,6 +1316,7 @@
     };
     const handleMetadataRefreshed = () => {
       void refresh();
+      void loadModUpdates();
     };
 
     window.addEventListener("focus", handleAppFocus);
@@ -1386,9 +1411,11 @@
 <AddModModal
   isVisible={showAddModModal}
   {autoSubmitUrl}
+  {autoSubmitReplacing}
   on:close={() => {
     showAddModModal = false;
     autoSubmitUrl = "";
+    autoSubmitReplacing = null;
   }}
   on:modAdded={handleModAdded}
 />
@@ -1935,6 +1962,31 @@
                         />
                       </span>
                     {/if}
+                    {#if modUpdates[group.name] && group.sourceUrl}
+                      <span
+                        role="button"
+                        tabindex="0"
+                        title={`Update available${modUpdates[group.name].latestVersion ? `: ${modUpdates[group.name].currentVersion ?? "?"} -> ${modUpdates[group.name].latestVersion}` : ""}`}
+                        class="flex items-center cursor-pointer"
+                        style="color: #f59e0b;"
+                        on:click|stopPropagation={() => {
+                          autoSubmitUrl = group.sourceUrl ?? "";
+                          autoSubmitReplacing = group.name;
+                          showAddModModal = true;
+                        }}
+                        on:keydown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            autoSubmitUrl = group.sourceUrl ?? "";
+                            autoSubmitReplacing = group.name;
+                            showAddModModal = true;
+                          }
+                        }}
+                      >
+                        <ArrowUpCircle size={14} style="flex-shrink: 0;" />
+                      </span>
+                    {/if}
                     <span
                       role="button"
                       tabindex="0"
@@ -1962,6 +2014,11 @@
                   1
                     ? ""
                     : "s"}
+                  {#if group.installedVersion}
+                    <span class="mx-1">·</span><span
+                      >v{stripVersionPrefix(group.installedVersion)}</span
+                    >
+                  {/if}
                   {#if group.addonFiles?.length}
                     <span style="color: var(--clr-primary-300);">
                       (+{group.addonFiles.length} add-on)</span

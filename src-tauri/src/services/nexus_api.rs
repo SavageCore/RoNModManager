@@ -1,12 +1,15 @@
 use std::cmp::Reverse;
+use std::time::Duration;
 
 use reqwest::Client;
 use serde::Deserialize;
+use tokio::time::sleep;
 
 use crate::models::{AppError, Result};
 
 const NEXUS_API_BASE: &str = "https://api.nexusmods.com/v1";
 const GAME_DOMAIN: &str = "readyornot";
+const MAX_ATTEMPTS: usize = 3;
 
 #[derive(Debug, Clone)]
 pub struct NexusApiService {
@@ -116,6 +119,53 @@ impl NexusApiService {
         Self { client }
     }
 
+    /// Sends a request, retrying on HTTP 429 (honouring `Retry-After`, falling back to
+    /// exponential backoff) and on transient network errors. Any other response status
+    /// (success or otherwise) is returned as-is for the caller to inspect.
+    async fn execute_with_retry<F>(&self, mut build_request: F) -> Result<reqwest::Response>
+    where
+        F: FnMut() -> reqwest::RequestBuilder,
+    {
+        let mut attempt = 0;
+
+        loop {
+            match build_request().send().await {
+                Ok(response) => {
+                    if response.status().as_u16() == 429 {
+                        if attempt + 1 >= MAX_ATTEMPTS {
+                            return Err(AppError::Validation(
+                                "Nexus API rate limit exceeded after retries".to_string(),
+                            ));
+                        }
+
+                        let retry_after = response
+                            .headers()
+                            .get(reqwest::header::RETRY_AFTER)
+                            .and_then(|value| value.to_str().ok())
+                            .and_then(|value| value.parse::<u64>().ok())
+                            .unwrap_or(1);
+
+                        sleep(Duration::from_secs(retry_after)).await;
+                        attempt += 1;
+                        continue;
+                    }
+
+                    return Ok(response);
+                }
+                Err(error) => {
+                    if attempt + 1 >= MAX_ATTEMPTS {
+                        return Err(AppError::Http(error));
+                    }
+
+                    // Exponential backoff: 200ms, 400ms, 800ms
+                    let backoff_ms = 200_u64 * (1_u64 << attempt);
+                    sleep(Duration::from_millis(backoff_ms)).await;
+                    attempt += 1;
+                }
+            }
+        }
+    }
+
     /// Fetch mod information from Nexus Mods API
     /// Requires a valid API key
     pub async fn get_mod_info(&self, api_key: &str, mod_id: u64) -> Result<NexusModInfo> {
@@ -125,11 +175,12 @@ impl NexusApiService {
         );
 
         let response = self
-            .client
-            .get(&url)
-            .header("apikey", api_key)
-            .header("accept", "application/json")
-            .send()
+            .execute_with_retry(|| {
+                self.client
+                    .get(&url)
+                    .header("apikey", api_key)
+                    .header("accept", "application/json")
+            })
             .await?;
 
         if !response.status().is_success() {
@@ -156,11 +207,12 @@ impl NexusApiService {
         );
 
         let response = self
-            .client
-            .get(&url)
-            .header("apikey", api_key)
-            .header("accept", "application/json")
-            .send()
+            .execute_with_retry(|| {
+                self.client
+                    .get(&url)
+                    .header("apikey", api_key)
+                    .header("accept", "application/json")
+            })
             .await?;
 
         if !response.status().is_success() {
@@ -184,11 +236,12 @@ impl NexusApiService {
         let url = format!("{}/users/validate.json", NEXUS_API_BASE);
 
         let response = self
-            .client
-            .get(&url)
-            .header("apikey", api_key)
-            .header("accept", "application/json")
-            .send()
+            .execute_with_retry(|| {
+                self.client
+                    .get(&url)
+                    .header("apikey", api_key)
+                    .header("accept", "application/json")
+            })
             .await?;
 
         if !response.status().is_success() {
@@ -219,11 +272,12 @@ impl NexusApiService {
         );
 
         let response = self
-            .client
-            .get(&url)
-            .header("apikey", api_key)
-            .header("accept", "application/json")
-            .send()
+            .execute_with_retry(|| {
+                self.client
+                    .get(&url)
+                    .header("apikey", api_key)
+                    .header("accept", "application/json")
+            })
             .await?;
 
         if response.status() == 403 {

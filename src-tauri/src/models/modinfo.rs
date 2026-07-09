@@ -50,4 +50,6 @@ pub struct InstalledModGroup {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub addon_files: Vec<InstalledModFile>,
     pub has_override_files: bool,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub installed_version: Option<String>,
 }
