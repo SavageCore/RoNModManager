@@ -219,7 +219,7 @@
 
       {#if currentItems.length > 0 || pendingNewItems.length > 0}
         <div class="mt-3 flex flex-wrap gap-1">
-          {#each [...new Set( [...currentItems, ...pendingNewItems], )] as item (item)}
+          {#each [...new Set( [...currentItems, ...pendingNewItems] )] as item (item)}
             <span
               style={`background: color-mix(in srgb, var(${accentColorVar}) 12%, transparent); border-color: var(${accentColorVar}); color: var(${accentColorVar});`}
               class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs"
