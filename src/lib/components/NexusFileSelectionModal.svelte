@@ -76,7 +76,7 @@
                   class="text-xs px-1.5 py-0.5 rounded"
                   style="color: var(--clr-primary-300); background: color-mix(in srgb, var(--clr-primary-300) 15%, transparent);"
                 >
-                  v{file.version.replace(/^v/i, "")}
+                  {file.version}
                 </span>
               {/if}
             </span>

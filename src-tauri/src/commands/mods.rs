@@ -1021,30 +1021,72 @@ pub struct RefreshModMetadataResult {
     pub failed: usize,
 }
 
-async fn resolve_display_name_from_source_url(
+struct ResolvedModMetadata {
+    display_name: Option<String>,
+    version: Option<String>,
+    /// Only set when a Nexus file could be matched and the manifest didn't
+    /// already record one - lets callers backfill it.
+    nexus_file_id: Option<u64>,
+}
+
+const NO_RESOLVED_METADATA: ResolvedModMetadata = ResolvedModMetadata {
+    display_name: None,
+    version: None,
+    nexus_file_id: None,
+};
+
+/// Fetches display name and version info for a mod from its source URL.
+///
+/// For Nexus, the exact installed file is identified by `existing_nexus_file_id`
+/// when known; otherwise it falls back to matching `archive_name` against the
+/// mod's file list (the same sanitisation applied at download time), which
+/// also lets pre-existing mods (installed before file IDs were tracked)
+/// backfill both their version and file ID.
+async fn resolve_mod_metadata_from_source_url(
     source_url: &str,
+    existing_nexus_file_id: Option<u64>,
+    archive_name: &str,
     api_key: Option<&str>,
     oauth_token: Option<&str>,
     nexus_service: &nexus_api::NexusApiService,
     modio_service: &ModioApiService,
-) -> Result<Option<String>> {
+) -> Result<ResolvedModMetadata> {
     let trimmed = source_url.trim();
     if trimmed.is_empty() {
-        return Ok(None);
+        return Ok(NO_RESOLVED_METADATA);
     }
 
     if trimmed.contains("nexusmods.com") {
         let Some(key) = api_key else {
-            return Ok(None);
+            return Ok(NO_RESOLVED_METADATA);
         };
         let mod_id = nexus_api::parse_nexus_url_to_mod_id(trimmed)?;
         let mod_info = nexus_service.get_mod_info(key, mod_id).await?;
-        return Ok(Some(mod_info.name));
+        let files = nexus_service
+            .list_mod_files(key, mod_id)
+            .await
+            .unwrap_or_default();
+
+        let matched_file = match existing_nexus_file_id {
+            Some(fid) => files.iter().find(|f| f.file_id == fid),
+            None => files
+                .iter()
+                .find(|f| sanitize_filename_for_download(&f.file_name) == archive_name),
+        };
+
+        return Ok(ResolvedModMetadata {
+            display_name: Some(mod_info.name),
+            version: matched_file.and_then(|f| f.version.clone()),
+            nexus_file_id: existing_nexus_file_id
+                .is_none()
+                .then(|| matched_file.map(|f| f.file_id))
+                .flatten(),
+        });
     }
 
     if trimmed.contains("mod.io") {
         let Some(token) = oauth_token else {
-            return Ok(None);
+            return Ok(NO_RESOLVED_METADATA);
         };
         let (explicit_id, slug) = parse_modio_input_to_slug_or_id(trimmed)?;
         let mod_id = match explicit_id {
@@ -1059,10 +1101,14 @@ async fn resolve_display_name_from_source_url(
             }
         };
         let mod_details = modio_service.get_mod_download_info(token, mod_id).await?;
-        return Ok(Some(mod_details.name));
+        return Ok(ResolvedModMetadata {
+            display_name: Some(mod_details.name),
+            version: mod_details.version,
+            nexus_file_id: None,
+        });
     }
 
-    Ok(None)
+    Ok(NO_RESOLVED_METADATA)
 }
 
 #[tauri::command]
@@ -1105,8 +1151,10 @@ pub async fn refresh_mod_metadata(state: State<'_, AppState>) -> Result<RefreshM
             continue;
         }
 
-        match resolve_display_name_from_source_url(
+        match resolve_mod_metadata_from_source_url(
             &source_url,
+            manifest_data.nexus_file_id,
+            &manifest_data.source_archive,
             api_key,
             oauth_token,
             &nexus_service,
@@ -1114,15 +1162,31 @@ pub async fn refresh_mod_metadata(state: State<'_, AppState>) -> Result<RefreshM
         )
         .await
         {
-            Ok(Some(name)) => {
-                manifest_data.display_name = Some(name);
-                if manager.save_manifest(&manifest_data).is_err() {
+            Ok(resolved) => {
+                let mut changed = false;
+                if let Some(name) = resolved.display_name {
+                    manifest_data.display_name = Some(name);
+                    changed = true;
+                }
+                if manifest_data.installed_version.is_none() {
+                    if let Some(version) = resolved.version {
+                        manifest_data.installed_version = Some(version);
+                        changed = true;
+                    }
+                }
+                if let Some(fid) = resolved.nexus_file_id {
+                    manifest_data.nexus_file_id = Some(fid);
+                    changed = true;
+                }
+
+                if !changed {
+                    result.skipped += 1;
+                } else if manager.save_manifest(&manifest_data).is_err() {
                     result.failed += 1;
                 } else {
                     result.refreshed += 1;
                 }
             }
-            Ok(None) => result.skipped += 1,
             Err(_) => result.failed += 1,
         }
     }
@@ -1851,8 +1915,10 @@ pub async fn update_mod_source_url(
         .filter(|v| !v.is_empty());
 
     if let Some(ref url) = manifest_data.source_url {
-        if let Ok(Some(name)) = resolve_display_name_from_source_url(
+        if let Ok(resolved) = resolve_mod_metadata_from_source_url(
             url,
+            manifest_data.nexus_file_id,
+            &manifest_data.source_archive,
             api_key,
             oauth_token,
             &nexus_service,
@@ -1860,7 +1926,17 @@ pub async fn update_mod_source_url(
         )
         .await
         {
-            manifest_data.display_name = Some(name);
+            if let Some(name) = resolved.display_name {
+                manifest_data.display_name = Some(name);
+            }
+            if manifest_data.installed_version.is_none() {
+                if let Some(v) = resolved.version {
+                    manifest_data.installed_version = Some(v);
+                }
+            }
+            if let Some(fid) = resolved.nexus_file_id {
+                manifest_data.nexus_file_id = Some(fid);
+            }
         }
     }
 
