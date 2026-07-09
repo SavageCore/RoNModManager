@@ -1550,7 +1550,7 @@
 {#if nexusFreeDownloads.length > 0}
   <NexusFreeDownloadModal
     downloads={nexusFreeDownloads}
-    on:cancel={() => {
+    on:close={() => {
       nexusFreeDownloads = [];
     }}
   />

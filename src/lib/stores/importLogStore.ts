@@ -17,8 +17,16 @@ interface ImportLogState {
   isOpen: boolean;
 }
 
-function phaseLabel(operation: string): string {
-  if (operation.includes("download")) return "Downloading...";
+function phaseLabel(operation: string, message: string): string {
+  if (operation.includes("download")) {
+    if (
+      message.startsWith("Waiting for") ||
+      message.startsWith("Opening Nexus")
+    ) {
+      return "Waiting for download...";
+    }
+    return "Downloading...";
+  }
   if (operation === "install") return "Preparing...";
   if (operation === "hash") return "Verifying archive...";
   if (operation === "dedupe") return "Checking for duplicates...";
@@ -33,7 +41,7 @@ function createImportLogStore() {
   });
 
   let currentModId: string | null = null;
-  const seenOperations = new Set<string>();
+  const seenLabels = new Set<string>();
   const prevStatuses = new Map<string, QueueStatus>();
 
   modAddQueueStore.subscribe((state) => {
@@ -42,7 +50,7 @@ function createImportLogStore() {
       if (prev !== item.status) {
         if (item.status === "running") {
           currentModId = item.id;
-          seenOperations.clear();
+          seenLabels.clear();
           update((s) => ({
             ...s,
             isOpen: true,
@@ -62,7 +70,7 @@ function createImportLogStore() {
         } else if (item.status === "done" || item.status === "error") {
           if (currentModId === item.id) {
             currentModId = null;
-            seenOperations.clear();
+            seenLabels.clear();
           }
           update((s) => ({
             ...s,
@@ -94,16 +102,13 @@ function createImportLogStore() {
 
   operationStatusStore.subscribe((state) => {
     if (!state.visible || !state.operation || !currentModId) {
-      if (!state.visible) seenOperations.clear();
+      if (!state.visible) seenLabels.clear();
       return;
     }
-    if (
-      !seenOperations.has(state.operation) &&
-      state.operation !== "complete" &&
-      state.operation !== "error"
-    ) {
-      seenOperations.add(state.operation);
-      const label = phaseLabel(state.operation);
+    if (state.operation === "complete" || state.operation === "error") return;
+    const label = phaseLabel(state.operation, state.message);
+    if (!seenLabels.has(label)) {
+      seenLabels.add(label);
       update((s) => ({
         ...s,
         mods: s.mods.map((m) =>
@@ -120,12 +125,12 @@ function createImportLogStore() {
     close: () => update((s) => ({ ...s, isOpen: false })),
     clear: () => {
       currentModId = null;
-      seenOperations.clear();
+      seenLabels.clear();
       update((s) => ({ ...s, mods: [] }));
     },
     setCurrentMod: (id: string) => {
       currentModId = id;
-      seenOperations.clear();
+      seenLabels.clear();
       update((s) => ({
         ...s,
         mods: s.mods.map((m) =>

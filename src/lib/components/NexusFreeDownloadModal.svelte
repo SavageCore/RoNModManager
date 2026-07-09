@@ -1,6 +1,5 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
-  import { cancelNexusDownload } from "$lib/api/commands";
 
   export let downloads: Array<{
     prettyName: string | null;
@@ -8,12 +7,7 @@
     modUrl: string;
   }> = [];
 
-  const dispatch = createEventDispatcher<{ cancel: void }>();
-
-  async function handleCancel() {
-    await cancelNexusDownload();
-    dispatch("cancel");
-  }
+  const dispatch = createEventDispatcher<{ close: void }>();
 </script>
 
 <div
@@ -71,7 +65,7 @@
     </p>
 
     <div class="flex justify-end">
-      <button on:click={handleCancel} class="btn">Cancel</button>
+      <button on:click={() => dispatch("close")} class="btn">Close</button>
     </div>
   </div>
 </div>
