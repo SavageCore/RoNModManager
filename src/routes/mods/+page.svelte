@@ -220,6 +220,12 @@
   let noWorldGenSet: Set<string> = new Set();
   let modUpdates: Record<string, ModUpdateInfo> = {};
 
+  // Nexus version strings often already include a leading "v" (e.g. "v2.2") -
+  // strip it so we don't double it up when we prepend our own "v".
+  function stripVersionPrefix(version: string): string {
+    return version.replace(/^v/i, "");
+  }
+
   async function loadModUpdates() {
     try {
       const updates = await checkModUpdates();
@@ -2010,7 +2016,7 @@
                     : "s"}
                   {#if group.installedVersion}
                     <span class="mx-1">·</span><span
-                      >{group.installedVersion}</span
+                      >v{stripVersionPrefix(group.installedVersion)}</span
                     >
                   {/if}
                   {#if group.addonFiles?.length}
