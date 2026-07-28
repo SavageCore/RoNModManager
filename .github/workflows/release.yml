@@ -70,7 +70,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -124,7 +124,7 @@ jobs:
           with open('packaging/flatpak/uk.savagecore.ronmodmanager.metainfo.xml', 'w') as f:
               f.write(new_content)
           EOF
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
