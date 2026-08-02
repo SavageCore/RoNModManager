@@ -251,7 +251,11 @@
   let modSourceFilter: "all" | "nexus" | "modio" = "all";
   let modsForActiveProfile: string[] = [];
   let showAddModModal = false;
-  let autoSubmitEntries: Array<{ url: string; replacing: string | null }> = [];
+  let autoSubmitEntries: Array<{
+    url: string;
+    replacing: string | null;
+    displayName?: string;
+  }> = [];
   let prevDoneCounter = $addModpackPanelStore.doneCounter;
   $: if ($addModpackPanelStore.doneCounter !== prevDoneCounter) {
     prevDoneCounter = $addModpackPanelStore.doneCounter;
@@ -1069,7 +1073,18 @@
   }
 
   function handleUpdateAll() {
-    const count = updatableGroups.length;
+    // Skip mods already queued/running so double-clicking Update All (or clicking it
+    // while a per-mod update is still in flight) doesn't enqueue the same mod twice.
+    const activeInputs = new Set(
+      $modAddQueueStore.items
+        .filter((item) => item.status === "queued" || item.status === "running")
+        .map((item) => item.input),
+    );
+    const pending = updatableGroups.filter(
+      (g) => !activeInputs.has(g.sourceUrl ?? ""),
+    );
+    const count = pending.length;
+    if (count === 0) return;
     confirmModal = {
       isVisible: true,
       title: `Update ${count} mod${count === 1 ? "" : "s"}?`,
@@ -1077,9 +1092,10 @@
       confirmLabel: "Update All",
       detail: "",
       onConfirm: async () => {
-        autoSubmitEntries = updatableGroups.map((g) => ({
+        autoSubmitEntries = pending.map((g) => ({
           url: g.sourceUrl ?? "",
           replacing: g.name,
+          displayName: g.displayName ?? g.name,
         }));
         showAddModModal = true;
       },
@@ -2075,6 +2091,7 @@
                             {
                               url: group.sourceUrl ?? "",
                               replacing: group.name,
+                              displayName: group.displayName ?? group.name,
                             },
                           ];
                           showAddModModal = true;
@@ -2087,6 +2104,7 @@
                               {
                                 url: group.sourceUrl ?? "",
                                 replacing: group.name,
+                                displayName: group.displayName ?? group.name,
                               },
                             ];
                             showAddModModal = true;

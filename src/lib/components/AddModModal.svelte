@@ -25,6 +25,7 @@
   export let autoSubmitEntries: Array<{
     url: string;
     replacing: string | null;
+    displayName?: string;
   }> = [];
 
   $: if (isVisible && autoSubmitEntries.length > 0) {
@@ -46,6 +47,7 @@
     input: string;
     queueId: string;
     replacingArchiveName?: string;
+    displayName?: string;
   }> = [];
 
   $: activeQueueCount = $modAddQueueStore.items.filter(
@@ -179,13 +181,18 @@
 
   // Bulk auto-submit (e.g. "Update All") - each entry replaces its own archive.
   async function submitAutoEntries(
-    entries: Array<{ url: string; replacing: string | null }>,
+    entries: Array<{
+      url: string;
+      replacing: string | null;
+      displayName?: string;
+    }>,
   ) {
     for (const entry of entries) {
       pendingLinkQueue.push({
         input: entry.url,
         queueId: modAddQueueStore.enqueue(entry.url),
         replacingArchiveName: entry.replacing ?? undefined,
+        displayName: entry.displayName,
       });
     }
     closeModal();
@@ -204,6 +211,7 @@
             input: string;
             queueId: string;
             replacingArchiveName?: string;
+            displayName?: string;
           };
           chosenFileId?: number;
           downloadPromise?:
@@ -234,7 +242,7 @@
               );
               importLogStore.setWaitingForInput(plan.entry.queueId);
               const chosen = await requestNexusFileSelection(
-                nexusPreviewName || plan.entry.input,
+                plan.entry.displayName || nexusPreviewName || plan.entry.input,
                 fileOptions,
               );
               importLogStore.clearWaitingForInput(plan.entry.queueId);
