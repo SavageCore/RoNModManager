@@ -206,6 +206,8 @@
             replacingArchiveName?: string;
           };
           chosenFileId?: number;
+          downloadPromise?:
+            ReturnType<typeof addNexusMod> | ReturnType<typeof addModIoMod>;
           downloadResult?:
             | Awaited<ReturnType<typeof addNexusMod>>
             | Awaited<ReturnType<typeof addModIoMod>>;
@@ -255,19 +257,29 @@
           }
         }
 
-        // Phase 2: Download all mods
+        // Phase 2: Download all mods. Kick every download off before awaiting any of
+        // them, so N Nexus mods open N browser tabs together instead of waiting for
+        // each free-account download to land before starting the next.
+        // ponytail: concurrent premium downloads share one footer progress bar and
+        // will interleave their percentages - same as AddModpackPanel's import flow
+        // already does. Upgrade path: branch on checkNexusPremium() and keep premium
+        // serial if that ever actually bothers someone.
         for (const plan of plans) {
           if (plan.failed) continue;
-          modAddQueueStore.markRunning(plan.entry.queueId, "Starting...");
+          plan.downloadPromise = isNexusUrl(plan.entry.input)
+            ? addNexusMod(plan.entry.input, plan.chosenFileId)
+            : addModIoMod(plan.entry.input);
+          modAddQueueStore.markRunning(
+            plan.entry.queueId,
+            isNexusUrl(plan.entry.input)
+              ? "Waiting for download..."
+              : "Starting...",
+          );
+        }
+        for (const plan of plans) {
+          if (plan.failed || !plan.downloadPromise) continue;
           try {
-            if (isNexusUrl(plan.entry.input)) {
-              plan.downloadResult = await addNexusMod(
-                plan.entry.input,
-                plan.chosenFileId,
-              );
-            } else {
-              plan.downloadResult = await addModIoMod(plan.entry.input);
-            }
+            plan.downloadResult = await plan.downloadPromise;
           } catch (error) {
             const msg = String(error);
             if (msg.includes("CANCELLED:")) {
