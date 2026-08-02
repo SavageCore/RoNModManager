@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { get } from "svelte/store";
   import {
     addModIoMod,
     addModToCollection,
@@ -30,8 +31,10 @@
     setModNoWorldGen,
     clearModNoWorldGen,
     checkModUpdates,
+    fileExists,
     type ModUpdateInfo,
   } from "$lib/api/commands";
+  import { ue4ssBannerDismissed } from "$lib/stores/ue4ssBannerDismissed";
   import AddModModal from "$lib/components/AddModModal.svelte";
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import { pendingInstallUrl } from "$lib/stores/pendingInstall";
@@ -183,6 +186,7 @@
     AlertTriangle,
     ArrowUpCircle,
     Calendar,
+    Copy,
     ExternalLink,
     Globe,
     Layers,
@@ -193,6 +197,7 @@
     Shield,
     Tag,
     Trash2,
+    X,
   } from "lucide-svelte";
   import { onMount } from "svelte";
 
@@ -283,6 +288,18 @@
   let allInstalledGroupNames = new Set<string>();
   let pendingIncludeNewModsForActiveProfile = false;
   let hasGamePath = false;
+  let showUe4ssLaunchOptionBanner = false;
+  const UE4SS_LAUNCH_OPTION = 'WINEDLLOVERRIDES="dwmapi=n,b" %command%';
+
+  async function copyUe4ssLaunchOption() {
+    await navigator.clipboard.writeText(UE4SS_LAUNCH_OPTION);
+    toastStore.success("Copied launch option to clipboard");
+  }
+
+  function dismissUe4ssLaunchOptionBanner() {
+    ue4ssBannerDismissed.set(true);
+    showUe4ssLaunchOptionBanner = false;
+  }
   let isApplyingProfile = false;
   let expandedGroups: Record<string, boolean> = {};
   let isDraggingOver = false;
@@ -660,6 +677,17 @@
       // Backend already filters addon groups and populates addonFiles on parents
       modGroups = sortModGroups(groups);
       hasGamePath = config.game_path != null;
+      showUe4ssLaunchOptionBanner = false;
+      if (
+        hasGamePath &&
+        config.game_path &&
+        navigator.userAgent.includes("Linux") &&
+        !get(ue4ssBannerDismissed)
+      ) {
+        showUe4ssLaunchOptionBanner = await fileExists(
+          `${config.game_path}/ReadyOrNot/Binaries/Win64/UE4SS.dll`,
+        ).catch(() => false);
+      }
       profiles = await ensureDefaultProfile(profileList);
       expandedGroups = Object.fromEntries(
         modGroups.map((group) => [
@@ -1688,6 +1716,52 @@
         Clear
       </button>
     {/if}
+  </div>
+{/if}
+
+{#if showUe4ssLaunchOptionBanner}
+  <div
+    role="alert"
+    style="background: var(--clr-surface); border-color: var(--clr-danger-300);"
+    class="border rounded-lg p-3 mb-4 flex items-start gap-3"
+  >
+    <AlertTriangle
+      size={18}
+      style="color: var(--clr-danger-300); flex-shrink: 0; margin-top: 2px;"
+    />
+    <div class="flex-1 min-w-0">
+      <div style="color: var(--clr-text);" class="text-sm font-semibold">
+        UE4SS needs a Steam launch option on Linux
+      </div>
+      <div style="color: var(--clr-text-secondary);" class="text-xs mt-1">
+        Proton loads its own dwmapi.dll, so UE4SS mods won't load until you add
+        this launch option to Ready or Not in Steam (Properties → General →
+        Launch Options):
+      </div>
+      <code
+        style="background: var(--adw-border-color); color: var(--clr-text);"
+        class="block mt-2 rounded px-2 py-1 text-xs overflow-x-auto"
+      >
+        {UE4SS_LAUNCH_OPTION}
+      </code>
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <button
+        on:click={copyUe4ssLaunchOption}
+        class="btn btn-sm"
+        title="Copy launch option"
+      >
+        <Copy size={14} class="inline mr-1" />
+        Copy
+      </button>
+      <button
+        on:click={dismissUe4ssLaunchOptionBanner}
+        class="btn btn-sm"
+        title="Dismiss"
+      >
+        <X size={14} class="inline" />
+      </button>
+    </div>
   </div>
 {/if}
 

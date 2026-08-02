@@ -305,7 +305,7 @@ fn remove_mod_from_active_profile(state: &State<'_, AppState>, mod_name: &str) -
     Ok(())
 }
 
-fn add_mod_to_active_profile(state: &State<'_, AppState>, mod_name: &str) -> Result<()> {
+pub(crate) fn add_mod_to_active_profile(state: &State<'_, AppState>, mod_name: &str) -> Result<()> {
     let config = state.get_config()?;
     let Some(active_profile_name) = config.active_profile else {
         return Ok(());
@@ -767,10 +767,12 @@ pub async fn install_mods(
             file,
             &install_context,
             &app,
+            &state,
             &download_root,
             None,
             download_hash.clone(),
-        )?;
+        )
+        .await?;
 
         if let Some(ref pack_data) = pack {
             if !pack_data.addons.is_empty() {
@@ -2302,10 +2304,13 @@ pub async fn install_local_mod(
         &path,
         &context,
         &app,
+        &state,
         &temp_root,
         pak_filter_set.as_ref(),
         precomputedHash,
-    ) {
+    )
+    .await
+    {
         Ok(is_duplicate) => {
             if let Some(installed_mod_name) = path.file_name().and_then(|n| n.to_str()) {
                 let _ = add_mod_to_active_profile(&state, installed_mod_name);
@@ -2460,10 +2465,11 @@ fn save_install_manifest(
     Ok(())
 }
 
-fn install_downloaded_file(
+pub(crate) async fn install_downloaded_file(
     path: &PathBuf,
     context: &installer::InstallContext,
     app: &AppHandle,
+    state: &State<'_, AppState>,
     temp_root: &Path,
     pak_filter: Option<&HashSet<String>>,
     precomputed_hash: Option<String>,
@@ -2540,6 +2546,25 @@ fn install_downloaded_file(
             },
         );
         return Ok(true);
+    }
+
+    // If this archive is a UE4SS Lua/Blueprint mod (or bundles UE4SS itself), make sure
+    // the UE4SS runtime is on disk first. `bundles_runtime` guards against recursing when
+    // the archive being installed *is* the UE4SS runtime download.
+    let entry_names = installer::list_archive_entry_names(path).unwrap_or_default();
+    if let Some(layout) = installer::detect_ue4ss_layout(&entry_names) {
+        if !layout.bundles_runtime {
+            // Boxed because this closes a (runtime-guarded, non-infinite) recursive cycle:
+            // ensure_installed itself calls back into install_downloaded_file to install
+            // the UE4SS archive it downloads.
+            Box::pin(crate::services::ue4ss::ensure_installed(
+                app,
+                state,
+                &context.game_path,
+                temp_root,
+            ))
+            .await?;
+        }
     }
 
     let _ = app.emit(

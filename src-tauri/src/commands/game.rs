@@ -238,7 +238,23 @@ pub(crate) fn sync_mod_links_for_game_path(
             let is_bank = ext.eq_ignore_ascii_case("bank");
             let is_ini = ext.eq_ignore_ascii_case("ini");
 
-            if is_bank {
+            // Check overrides first: a nested .ini/.bank (e.g. UE4SS-settings.ini under
+            // ReadyOrNot/Binaries/Win64) must be restored to its real nested location, not
+            // treated as a flat FMOD bank or Saved/Config/Windows config file. override_paths
+            // only matches nested paths, so flat .bank/.ini files still fall through below.
+            if let Some((game_target, backup)) =
+                override_paths(staged_path, &staging_root, game_path)
+            {
+                if game_target.exists() || game_target.is_symlink() {
+                    let _ = fs::remove_file(&game_target);
+                }
+                if backup.exists() {
+                    if let Some(parent) = game_target.parent() {
+                        let _ = fs::create_dir_all(parent);
+                    }
+                    let _ = fs::copy(&backup, &game_target);
+                }
+            } else if is_bank {
                 let Some(file_name) = staged_path.file_name() else {
                     continue;
                 };
@@ -269,18 +285,6 @@ pub(crate) fn sync_mod_links_for_game_path(
                 }
                 if backup.exists() {
                     let _ = fs::copy(&backup, &game_dest);
-                }
-            } else if let Some((game_target, backup)) =
-                override_paths(staged_path, &staging_root, game_path)
-            {
-                if game_target.exists() || game_target.is_symlink() {
-                    let _ = fs::remove_file(&game_target);
-                }
-                if backup.exists() {
-                    if let Some(parent) = game_target.parent() {
-                        let _ = fs::create_dir_all(parent);
-                    }
-                    let _ = fs::copy(&backup, &game_target);
                 }
             } else if let Some(target) =
                 target_path_for_staged_file(staged_path, &live_mods_path, &live_savegames_path)
@@ -309,7 +313,16 @@ pub(crate) fn sync_mod_links_for_game_path(
             let is_bank = ext.eq_ignore_ascii_case("bank");
             let is_ini = ext.eq_ignore_ascii_case("ini");
 
-            if is_bank {
+            // Overrides first - see matching comment in the teardown loop above.
+            if let Some((game_target, _)) = override_paths(staged_path, &staging_root, game_path) {
+                if let Some(parent) = game_target.parent() {
+                    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                }
+                if game_target.exists() || game_target.is_symlink() {
+                    let _ = fs::remove_file(&game_target);
+                }
+                create_file_link(staged_path, &game_target)?;
+            } else if is_bank {
                 let Some(file_name) = staged_path.file_name() else {
                     continue;
                 };
@@ -331,16 +344,6 @@ pub(crate) fn sync_mod_links_for_game_path(
                     let _ = fs::remove_file(&game_dest);
                 }
                 create_file_link(staged_path, &game_dest)?;
-            } else if let Some((game_target, _)) =
-                override_paths(staged_path, &staging_root, game_path)
-            {
-                if let Some(parent) = game_target.parent() {
-                    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-                }
-                if game_target.exists() || game_target.is_symlink() {
-                    let _ = fs::remove_file(&game_target);
-                }
-                create_file_link(staged_path, &game_target)?;
             } else {
                 let Some(target) =
                     target_path_for_staged_file(staged_path, &live_mods_path, &live_savegames_path)
@@ -386,4 +389,47 @@ pub async fn launch_game_with_groups(
 
     sync_mod_links_for_game_path(&game_path, enabled_groups)?;
     launch_game_internal(&game_path, config.intro_skip_enabled)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn override_paths_routes_nested_ini_under_win64_not_flat_config() {
+        // A UE4SS mod archive routes UE4SS-settings.ini to
+        // staged/mods/<key>/ReadyOrNot/Binaries/Win64/UE4SS-settings.ini (nested, since
+        // installer::classify_archive_entry treats it as an Override, not a ConfigMod).
+        // sync_mod_links_for_game_path must check override_paths() before its is_ini
+        // extension check, or this would get symlinked into Saved/Config/Windows instead.
+        let staging_root = Path::new("/staged");
+        let game_path = Path::new("/game");
+        let staged_path = staging_root
+            .join("mods")
+            .join("UE4SS_v3.0.1.zip")
+            .join("ReadyOrNot/Binaries/Win64/UE4SS-settings.ini");
+
+        let (game_target, _backup) = override_paths(&staged_path, staging_root, game_path)
+            .expect("nested .ini under a mod key should be treated as an override");
+
+        assert_eq!(
+            game_target,
+            game_path.join("ReadyOrNot/Binaries/Win64/UE4SS-settings.ini")
+        );
+    }
+
+    #[test]
+    fn override_paths_ignores_flat_ini_at_key_root() {
+        // A flat .ini sitting directly under <key>/ (no nested folder) is the legacy
+        // ConfigMod case and must NOT be treated as an override, so it still falls through
+        // to the is_ini branch (Saved/Config/Windows).
+        let staging_root = Path::new("/staged");
+        let game_path = Path::new("/game");
+        let staged_path = staging_root
+            .join("mods")
+            .join("SomeConfigMod.zip")
+            .join("GameUserSettings.ini");
+
+        assert!(override_paths(&staged_path, staging_root, game_path).is_none());
+    }
 }

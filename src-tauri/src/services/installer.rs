@@ -65,6 +65,144 @@ pub fn classify_archive_entry(path: &Path) -> ModFileType {
     }
 }
 
+/// A UE4SS mod archive (Lua/Blueprint script mod, or the UE4SS runtime itself)
+/// needs its entries routed to `<game>/ReadyOrNot/Binaries/Win64/...` rather
+/// than the usual `~mods` folder. Since that path starts with `ReadyOrNot`,
+/// `classify_archive_entry` already treats it as an `Override`, so the rest of
+/// the install/symlink/backup machinery needs no changes.
+#[derive(Debug, Clone)]
+pub struct Ue4ssLayout {
+    /// Prepended to every entry path before classification.
+    pub prefix: PathBuf,
+    /// True if the archive already ships `UE4SS.dll` (the runtime itself, or a
+    /// mod bundled together with it) - used as the recursion guard so
+    /// installing UE4SS doesn't re-trigger installing UE4SS.
+    pub bundles_runtime: bool,
+}
+
+/// Inspect an archive's entry names (no extraction needed) and decide whether
+/// this is a UE4SS mod archive, and if so, what prefix routes its files into
+/// `Binaries/Win64`.
+pub fn detect_ue4ss_layout(entry_names: &[String]) -> Option<Ue4ssLayout> {
+    let mut is_ue4ss = false;
+    let mut bundles_runtime = false;
+    let mut has_top_level_mods_dir = false;
+
+    for name in entry_names {
+        let path = Path::new(name);
+        let file_name = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
+        let is_root_level = path
+            .parent()
+            .map(|p| p.as_os_str().is_empty())
+            .unwrap_or(true);
+        let first_component = path
+            .components()
+            .next()
+            .and_then(|c| c.as_os_str().to_str());
+        let parent_dir_name = path
+            .parent()
+            .and_then(|p| p.file_name())
+            .and_then(|f| f.to_str());
+
+        if file_name.eq_ignore_ascii_case("enabled.txt") {
+            is_ue4ss = true;
+        }
+        if file_name.eq_ignore_ascii_case("UE4SS.dll") {
+            is_ue4ss = true;
+            bundles_runtime = true;
+            if is_root_level {
+                has_top_level_mods_dir = true;
+            }
+        }
+        if file_name.eq_ignore_ascii_case("dwmapi.dll") && is_root_level {
+            is_ue4ss = true;
+            has_top_level_mods_dir = true;
+        }
+        if file_name.to_ascii_lowercase().ends_with(".lua")
+            && parent_dir_name
+                .map(|p| p.eq_ignore_ascii_case("Scripts"))
+                .unwrap_or(false)
+        {
+            is_ue4ss = true;
+        }
+        if first_component
+            .map(|c| c.eq_ignore_ascii_case("Mods"))
+            .unwrap_or(false)
+        {
+            has_top_level_mods_dir = true;
+        }
+    }
+
+    if !is_ue4ss {
+        return None;
+    }
+
+    let prefix = if has_top_level_mods_dir {
+        PathBuf::from("ReadyOrNot/Binaries/Win64")
+    } else {
+        PathBuf::from("ReadyOrNot/Binaries/Win64/Mods")
+    };
+
+    Some(Ue4ssLayout {
+        prefix,
+        bundles_runtime,
+    })
+}
+
+/// List every file entry's name in a zip/rar/7z archive without extracting.
+/// Used to detect a UE4SS layout up front - both inside the extractors below
+/// and by callers deciding whether to install the UE4SS runtime first.
+pub fn list_archive_entry_names(archive_path: &Path) -> Result<Vec<String>> {
+    let extension = archive_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default();
+
+    if extension.eq_ignore_ascii_case("zip") {
+        let file = fs::File::open(archive_path)?;
+        let mut archive = ZipArchive::new(file)
+            .map_err(|e| AppError::Validation(format!("invalid zip archive: {e}")))?;
+        let mut names = Vec::with_capacity(archive.len());
+        for i in 0..archive.len() {
+            let entry = archive
+                .by_index(i)
+                .map_err(|e| AppError::Validation(format!("zip entry error: {e}")))?;
+            if !entry.is_dir() {
+                names.push(entry.name().to_string());
+            }
+        }
+        return Ok(names);
+    }
+
+    if extension.eq_ignore_ascii_case("rar") {
+        let archive = RarArchive::new(archive_path)
+            .open_for_listing()
+            .map_err(|e| AppError::Validation(format!("failed to open RAR: {e:?}")))?;
+        let mut names = Vec::new();
+        for entry_result in archive {
+            let entry = entry_result
+                .map_err(|e| AppError::Validation(format!("RAR entry error: {e:?}")))?;
+            if !entry.is_directory() {
+                names.push(entry.filename.to_string_lossy().to_string());
+            }
+        }
+        return Ok(names);
+    }
+
+    if extension.eq_ignore_ascii_case("7z") {
+        let archive = sevenz_rust2::Archive::open(archive_path)
+            .map_err(|e| AppError::Validation(format!("failed to open 7z: {e}")))?;
+        return Ok(archive
+            .files
+            .iter()
+            .filter(|f| !f.is_directory)
+            .map(|f| f.name.clone())
+            .collect());
+    }
+
+    Ok(vec![])
+}
+
 pub fn install_archive(archive_path: &Path, context: &InstallContext) -> Result<InstallReport> {
     install_archive_with_progress(archive_path, context, |_| {}, None)
 }
@@ -85,6 +223,23 @@ where
     let mut report = InstallReport::default();
     let mut total_bytes = 0u64;
 
+    let mut entry_names: Vec<String> = Vec::with_capacity(archive.len());
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index).map_err(|error| {
+            AppError::Validation(format!("invalid zip entry at {index}: {error}"))
+        })?;
+        if !entry.is_dir() {
+            entry_names.push(entry.name().to_string());
+        }
+    }
+    let ue4ss = detect_ue4ss_layout(&entry_names);
+    let rewrite_entry_path = |path: PathBuf| -> PathBuf {
+        match &ue4ss {
+            Some(layout) => layout.prefix.join(path),
+            None => path,
+        }
+    };
+
     for index in 0..archive.len() {
         let entry = archive.by_index(index).map_err(|error| {
             AppError::Validation(format!("invalid zip entry at {index}: {error}"))
@@ -94,7 +249,7 @@ where
             continue;
         }
 
-        let entry_path = PathBuf::from(entry.name());
+        let entry_path = rewrite_entry_path(PathBuf::from(entry.name()));
         if classify_archive_entry(&entry_path) != ModFileType::Unknown {
             total_bytes = total_bytes.saturating_add(entry.size());
         }
@@ -125,7 +280,7 @@ where
             continue;
         }
 
-        let entry_path = PathBuf::from(entry.name());
+        let entry_path = rewrite_entry_path(PathBuf::from(entry.name()));
         let entry_name = entry.name().to_string();
         match classify_archive_entry(&entry_path) {
             ModFileType::PakMod => {
@@ -267,6 +422,9 @@ pub fn install_rar_archive(
 ) -> Result<InstallReport> {
     let mut report = InstallReport::default();
 
+    let entry_names = list_archive_entry_names(archive_path)?;
+    let ue4ss = detect_ue4ss_layout(&entry_names);
+
     // Create temporary directory for extraction
     let temp_dir = temp_root.join(format!(
         "ronmod_{}_{}",
@@ -296,8 +454,12 @@ pub fn install_rar_archive(
             continue;
         }
 
-        let entry_path = PathBuf::from(&entry_name);
-        let temp_file = temp_dir.join(&entry_path);
+        let raw_entry_path = PathBuf::from(&entry_name);
+        let entry_path = match &ue4ss {
+            Some(layout) => layout.prefix.join(&raw_entry_path),
+            None => raw_entry_path.clone(),
+        };
+        let temp_file = temp_dir.join(&raw_entry_path);
 
         if let Some(parent) = temp_file.parent() {
             fs::create_dir_all(parent)?;
@@ -432,16 +594,23 @@ pub fn install_7z_archive(
     ));
     fs::create_dir_all(&temp_dir)?;
 
+    let entry_names = list_archive_entry_names(archive_path)?;
+    let ue4ss = detect_ue4ss_layout(&entry_names);
+
     let src = archive_path.to_string_lossy().to_string();
     let dest = temp_dir.to_string_lossy().to_string();
     sevenz_rust2::decompress_file(&src, &dest)
         .map_err(|e| AppError::Validation(format!("Failed to open 7z archive: {e}")))?;
 
     for abs_path in walk_files(&temp_dir) {
-        let rel_path = abs_path
+        let raw_rel_path = abs_path
             .strip_prefix(&temp_dir)
             .unwrap_or(abs_path.as_path())
             .to_path_buf();
+        let rel_path = match &ue4ss {
+            Some(layout) => layout.prefix.join(&raw_rel_path),
+            None => raw_rel_path,
+        };
 
         match classify_archive_entry(&rel_path) {
             ModFileType::PakMod => {
@@ -699,6 +868,57 @@ mod tests {
     }
 
     #[test]
+    fn detect_ue4ss_layout_for_standalone_lua_mod() {
+        // e.g. "RoundReport-1.0.zip" - the mod folder sits at the archive root.
+        let names = vec![
+            "RoundReport/enabled.txt".to_string(),
+            "RoundReport/Scripts/main.lua".to_string(),
+        ];
+        let layout = detect_ue4ss_layout(&names).expect("should detect UE4SS layout");
+        assert_eq!(layout.prefix, Path::new("ReadyOrNot/Binaries/Win64/Mods"));
+        assert!(!layout.bundles_runtime);
+
+        let rewritten = layout.prefix.join("RoundReport/Scripts/main.lua");
+        assert_eq!(
+            rewritten,
+            Path::new("ReadyOrNot/Binaries/Win64/Mods/RoundReport/Scripts/main.lua")
+        );
+        assert_eq!(classify_archive_entry(&rewritten), ModFileType::Override);
+    }
+
+    #[test]
+    fn detect_ue4ss_layout_for_bundled_runtime() {
+        // e.g. "RoundReport-1.0-with-UE4SS-3.0.1.zip" - a full UE4SS drop.
+        let names = vec![
+            "dwmapi.dll".to_string(),
+            "UE4SS.dll".to_string(),
+            "Mods/mods.txt".to_string(),
+            "Mods/RoundReport/enabled.txt".to_string(),
+            "Mods/RoundReport/Scripts/main.lua".to_string(),
+        ];
+        let layout = detect_ue4ss_layout(&names).expect("should detect UE4SS layout");
+        assert_eq!(layout.prefix, Path::new("ReadyOrNot/Binaries/Win64"));
+        assert!(layout.bundles_runtime);
+
+        let rewritten = layout.prefix.join("Mods/RoundReport/Scripts/main.lua");
+        assert_eq!(
+            rewritten,
+            Path::new("ReadyOrNot/Binaries/Win64/Mods/RoundReport/Scripts/main.lua")
+        );
+
+        // A nested .ini under a mod's Mods/ tree must stay an Override, not a ConfigMod
+        // that would get mis-routed to Saved/Config/Windows.
+        let nested_ini = layout.prefix.join("Mods/RoundReport/config.ini");
+        assert_eq!(classify_archive_entry(&nested_ini), ModFileType::Override);
+    }
+
+    #[test]
+    fn detect_ue4ss_layout_returns_none_for_ordinary_pak_mod() {
+        let names = vec!["nested/a_mod.pak".to_string(), "readme.txt".to_string()];
+        assert!(detect_ue4ss_layout(&names).is_none());
+    }
+
+    #[test]
     fn install_extracts_pak_and_save_files() {
         let temp = TempDir::new().unwrap();
         let context = create_context(temp.path());
@@ -788,5 +1008,29 @@ mod tests {
         let report = install_archive(&archive, &context).unwrap();
         assert_eq!(report.installed, 0);
         assert_eq!(report.skipped, 1);
+    }
+
+    #[test]
+    fn install_routes_ue4ss_lua_mod_into_binaries_win64() {
+        let temp = TempDir::new().unwrap();
+        let context = create_context(temp.path());
+        fs::create_dir_all(&context.game_path).unwrap();
+
+        let archive = create_test_archive(
+            temp.path(),
+            vec![
+                ("RoundReport/enabled.txt", b""),
+                ("RoundReport/Scripts/main.lua", b"-- lua code"),
+            ],
+        );
+
+        let report = install_archive(&archive, &context).unwrap();
+
+        assert_eq!(report.installed, 2);
+        let installed_lua = context
+            .game_path
+            .join("ReadyOrNot/Binaries/Win64/Mods/RoundReport/Scripts/main.lua");
+        assert!(installed_lua.exists());
+        assert_eq!(fs::read(installed_lua).unwrap(), b"-- lua code");
     }
 }
