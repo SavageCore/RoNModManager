@@ -224,6 +224,9 @@
   let brokenModsMap: Record<string, string> = {};
   let noWorldGenSet: Set<string> = new Set();
   let modUpdates: Record<string, ModUpdateInfo> = {};
+  $: updatableGroups = modGroups.filter(
+    (g) => modUpdates[g.name] && g.sourceUrl,
+  );
 
   // Nexus version strings often already include a leading "v" (e.g. "v2.2") -
   // strip it so we don't double it up when we prepend our own "v".
@@ -248,8 +251,7 @@
   let modSourceFilter: "all" | "nexus" | "modio" = "all";
   let modsForActiveProfile: string[] = [];
   let showAddModModal = false;
-  let autoSubmitUrl = "";
-  let autoSubmitReplacing: string | null = null;
+  let autoSubmitEntries: Array<{ url: string; replacing: string | null }> = [];
   let prevDoneCounter = $addModpackPanelStore.doneCounter;
   $: if ($addModpackPanelStore.doneCounter !== prevDoneCounter) {
     prevDoneCounter = $addModpackPanelStore.doneCounter;
@@ -1066,6 +1068,24 @@
     };
   }
 
+  function handleUpdateAll() {
+    const count = updatableGroups.length;
+    confirmModal = {
+      isVisible: true,
+      title: `Update ${count} mod${count === 1 ? "" : "s"}?`,
+      message: `This will download and install the latest version of ${count} mod${count === 1 ? "" : "s"} with an available update.`,
+      confirmLabel: "Update All",
+      detail: "",
+      onConfirm: async () => {
+        autoSubmitEntries = updatableGroups.map((g) => ({
+          url: g.sourceUrl ?? "",
+          replacing: g.name,
+        }));
+        showAddModModal = true;
+      },
+    };
+  }
+
   async function handleUninstallSelected() {
     const count = selectedMods.size;
     confirmModal = {
@@ -1328,8 +1348,7 @@
     const unsubPending = pendingInstallUrl.subscribe((url) => {
       if (url) {
         pendingInstallUrl.set(null);
-        autoSubmitUrl = url;
-        autoSubmitReplacing = null;
+        autoSubmitEntries = [{ url, replacing: null }];
         showAddModModal = true;
       }
     });
@@ -1438,12 +1457,10 @@
 
 <AddModModal
   isVisible={showAddModModal}
-  {autoSubmitUrl}
-  {autoSubmitReplacing}
+  {autoSubmitEntries}
   on:close={() => {
     showAddModModal = false;
-    autoSubmitUrl = "";
-    autoSubmitReplacing = null;
+    autoSubmitEntries = [];
   }}
   on:modAdded={handleModAdded}
 />
@@ -1801,6 +1818,16 @@
         <Globe size={16} class="inline mr-1" />
         Add Modpack
       </button>
+      {#if updatableGroups.length > 0}
+        <button
+          class="btn btn-sm btn-primary"
+          on:click={handleUpdateAll}
+          title="Update every mod with an available update"
+        >
+          <ArrowUpCircle size={16} class="inline mr-1" />
+          Update All ({updatableGroups.length})
+        </button>
+      {/if}
       <button
         class="btn btn-sm btn-danger"
         on:click={() => {
@@ -2041,24 +2068,35 @@
                         role="button"
                         tabindex="0"
                         title={`Update available${modUpdates[group.name].latestVersion ? `: ${modUpdates[group.name].currentVersion ?? "?"} -> ${modUpdates[group.name].latestVersion}` : ""}`}
-                        class="flex items-center cursor-pointer"
-                        style="color: #f59e0b;"
+                        class="flex items-center gap-0.5 cursor-pointer text-xs rounded px-1.5 border"
+                        style="color: #f59e0b; border-color: #f59e0b;"
                         on:click|stopPropagation={() => {
-                          autoSubmitUrl = group.sourceUrl ?? "";
-                          autoSubmitReplacing = group.name;
+                          autoSubmitEntries = [
+                            {
+                              url: group.sourceUrl ?? "",
+                              replacing: group.name,
+                            },
+                          ];
                           showAddModModal = true;
                         }}
                         on:keydown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
                             e.stopPropagation();
-                            autoSubmitUrl = group.sourceUrl ?? "";
-                            autoSubmitReplacing = group.name;
+                            autoSubmitEntries = [
+                              {
+                                url: group.sourceUrl ?? "",
+                                replacing: group.name,
+                              },
+                            ];
                             showAddModModal = true;
                           }
                         }}
                       >
-                        <ArrowUpCircle size={14} style="flex-shrink: 0;" />
+                        <ArrowUpCircle size={12} style="flex-shrink: 0;" />
+                        {modUpdates[group.name].latestVersion
+                          ? `v${stripVersionPrefix(modUpdates[group.name].latestVersion ?? "")}`
+                          : "Update"}
                       </span>
                     {/if}
                     <span

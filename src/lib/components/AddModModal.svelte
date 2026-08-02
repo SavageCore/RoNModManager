@@ -22,12 +22,13 @@
   import { createEventDispatcher, onDestroy, onMount } from "svelte";
 
   export let isVisible = false;
-  export let autoSubmitUrl: string = "";
-  export let autoSubmitReplacing: string | null = null;
+  export let autoSubmitEntries: Array<{
+    url: string;
+    replacing: string | null;
+  }> = [];
 
-  $: if (isVisible && autoSubmitUrl) {
-    modioInput = autoSubmitUrl;
-    void handleAddViaLink(autoSubmitReplacing ?? undefined);
+  $: if (isVisible && autoSubmitEntries.length > 0) {
+    void submitAutoEntries(autoSubmitEntries);
   }
 
   const dispatch = createEventDispatcher();
@@ -173,6 +174,25 @@
     // Close immediately - progress is visible in the bottom bar
     closeModal();
 
+    void processQueue();
+  }
+
+  // Bulk auto-submit (e.g. "Update All") - each entry replaces its own archive.
+  async function submitAutoEntries(
+    entries: Array<{ url: string; replacing: string | null }>,
+  ) {
+    for (const entry of entries) {
+      pendingLinkQueue.push({
+        input: entry.url,
+        queueId: modAddQueueStore.enqueue(entry.url),
+        replacingArchiveName: entry.replacing ?? undefined,
+      });
+    }
+    closeModal();
+    void processQueue();
+  }
+
+  async function processQueue() {
     // Single worker loop - if already running, the new items will be picked up naturally
     if (isProcessingLinks) return;
 
