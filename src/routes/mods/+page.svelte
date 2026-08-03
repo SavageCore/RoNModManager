@@ -159,7 +159,13 @@
   import ItemPickerModal from "$lib/components/ItemPickerModal.svelte";
   import BrokenModModal from "$lib/components/BrokenModModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
-  import { Menu, MenuItem } from "@tauri-apps/api/menu";
+  import {
+    Menu,
+    MenuItem,
+    Submenu,
+    CheckMenuItem,
+    PredefinedMenuItem,
+  } from "@tauri-apps/api/menu";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
   import { importLogStore } from "$lib/stores/importLogStore";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
@@ -897,9 +903,7 @@
     showTagPickerModal = true;
   }
 
-  async function handleTagToggle(event: CustomEvent<{ itemName: string }>) {
-    const tag = event.detail.itemName;
-    const modName = tagPickerModName;
+  async function toggleModTag(modName: string, tag: string) {
     const currentTags = modToTagsMap[modName] ?? [];
     const newTags = currentTags.includes(tag)
       ? currentTags.filter((t) => t !== tag)
@@ -910,6 +914,10 @@
     } catch (error) {
       toastStore.error(`Failed to update tags: ${String(error)}`);
     }
+  }
+
+  function handleTagToggle(event: CustomEvent<{ itemName: string }>) {
+    return toggleModTag(tagPickerModName, event.detail.itemName);
   }
 
   async function handleTagCreate(event: CustomEvent<{ itemName: string }>) {
@@ -1957,10 +1965,32 @@
                       group.displayName || group.name,
                     ),
                 }),
-                await MenuItem.new({
+                await Submenu.new({
                   text: "Manage tags",
-                  action: () =>
-                    openTagPicker(group.name, group.displayName || group.name),
+                  items: [
+                    ...(await Promise.all(
+                      effectiveTagNames.map((tag) =>
+                        CheckMenuItem.new({
+                          text: tag,
+                          checked: (modToTagsMap[group.name] ?? []).includes(
+                            tag,
+                          ),
+                          action: () => toggleModTag(group.name, tag),
+                        }),
+                      ),
+                    )),
+                    ...(effectiveTagNames.length
+                      ? [await PredefinedMenuItem.new({ item: "Separator" })]
+                      : []),
+                    await MenuItem.new({
+                      text: "New tag…",
+                      action: () =>
+                        openTagPicker(
+                          group.name,
+                          group.displayName || group.name,
+                        ),
+                    }),
+                  ],
                 }),
                 await MenuItem.new({
                   text:
