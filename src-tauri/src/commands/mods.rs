@@ -1206,6 +1206,37 @@ pub struct ModUpdateInfo {
     pub update_available: bool,
 }
 
+/// The newest active file belonging to the same variant as the installed one.
+/// Nexus mods often ship several same-version variants (VRR/No-VRR, SAS/No-SAS)
+/// uploaded minutes apart; comparing against the mod's overall newest file flags a
+/// phantom update whenever a sibling variant happened to upload last.
+/// Grouped by Nexus's `name` field, which authors keep stable per variant across
+/// releases. Falls back to the mod's ranked-first file when the installed file has
+/// no `name` to group by, or no active file shares it.
+fn nexus_latest_for_variant(
+    installed_file_id: Option<u64>,
+    files: &[nexus_api::NexusModFile],
+) -> Option<&nexus_api::NexusModFile> {
+    let options = nexus_api::get_file_options(files);
+
+    let variant_name = installed_file_id
+        .and_then(|fid| files.iter().find(|f| f.file_id == fid))
+        .and_then(|f| f.name.as_deref());
+
+    if let Some(key) = variant_name {
+        if let Some(same_variant) = options
+            .iter()
+            .copied()
+            .filter(|f| f.name.as_deref() == Some(key))
+            .max_by_key(|f| f.uploaded_timestamp.unwrap_or(0))
+        {
+            return Some(same_variant);
+        }
+    }
+
+    options.into_iter().next()
+}
+
 /// Version strings are unreliable/often absent on Nexus, so compare upload
 /// timestamps instead - avoids false positives when the user deliberately
 /// installed a non-primary variant.
@@ -1213,10 +1244,8 @@ fn nexus_update_available(
     installed_file_id: Option<u64>,
     files: &[nexus_api::NexusModFile],
 ) -> bool {
-    let Some(latest_ts) = nexus_api::get_file_options(files)
-        .into_iter()
-        .next()
-        .and_then(|f| f.uploaded_timestamp)
+    let Some(latest_ts) =
+        nexus_latest_for_variant(installed_file_id, files).and_then(|f| f.uploaded_timestamp)
     else {
         return false;
     };
@@ -1294,7 +1323,7 @@ pub async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<ModUpda
             let Ok(files) = nexus_service.list_mod_files(key, mod_id).await else {
                 continue;
             };
-            let Some(latest) = nexus_api::get_file_options(&files).into_iter().next() else {
+            let Some(latest) = nexus_latest_for_variant(manifest_data.nexus_file_id, &files) else {
                 continue;
             };
             let latest_version = latest.version.clone();
@@ -2868,13 +2897,22 @@ mod update_check_tests {
     use super::*;
 
     fn nexus_file(file_id: u64, uploaded_timestamp: Option<u64>) -> nexus_api::NexusModFile {
+        nexus_file_variant(file_id, uploaded_timestamp, None, Some(1))
+    }
+
+    fn nexus_file_variant(
+        file_id: u64,
+        uploaded_timestamp: Option<u64>,
+        name: Option<&str>,
+        category_id: Option<u32>,
+    ) -> nexus_api::NexusModFile {
         nexus_api::NexusModFile {
             file_id,
             file_name: format!("file-{file_id}.zip"),
-            name: None,
+            name: name.map(str::to_string),
             version: None,
             description: None,
-            category_id: Some(1), // MAIN
+            category_id,
             category_name: None,
             is_primary: Some(false),
             uploaded_timestamp,
@@ -2904,6 +2942,59 @@ mod update_check_tests {
     fn nexus_no_update_without_recorded_baseline() {
         let files = vec![nexus_file(1, Some(100))];
         assert!(!nexus_update_available(None, &files));
+    }
+
+    #[test]
+    fn nexus_no_update_when_sibling_variant_uploaded_later() {
+        // Mirrors mod 7191 (CLEAN HOUSE (MW2019)): two same-version MAIN variants,
+        // "NO SAS" uploaded ~15 min after the plain one. Installing the plain one
+        // must not be flagged as outdated just because its sibling uploaded later.
+        let files = vec![
+            nexus_file_variant(
+                28032,
+                Some(1780257698),
+                Some("CLEAN HOUSE (MW2019)"),
+                Some(1),
+            ),
+            nexus_file_variant(
+                28033,
+                Some(1780258631),
+                Some("CLEAN HOUSE (MW2019) - NO SAS"),
+                Some(1),
+            ),
+        ];
+        assert!(!nexus_update_available(Some(28032), &files));
+    }
+
+    #[test]
+    fn nexus_flags_update_when_same_variant_uploaded_later() {
+        let files = vec![
+            nexus_file_variant(1, Some(100), Some("Variant A"), Some(1)),
+            nexus_file_variant(2, Some(200), Some("Variant A"), Some(1)),
+            nexus_file_variant(3, Some(150), Some("Variant B"), Some(1)),
+        ];
+        assert!(nexus_update_available(Some(1), &files));
+    }
+
+    #[test]
+    fn nexus_falls_back_to_global_latest_when_variant_not_found() {
+        // Installed file is no longer active (e.g. archived) and no other active file
+        // shares its name - fall back to the mod's ranked-first file rather than
+        // silently comparing against nothing.
+        let files = vec![
+            nexus_file_variant(1, Some(100), Some("Old Name"), Some(7)), // ARCHIVED
+            nexus_file_variant(2, Some(200), Some("New Name"), Some(1)),
+        ];
+        assert!(nexus_update_available(Some(1), &files));
+    }
+
+    #[test]
+    fn nexus_flags_update_when_installed_variant_archived_but_sibling_release_exists() {
+        let files = vec![
+            nexus_file_variant(1, Some(100), Some("Variant A"), Some(7)), // ARCHIVED
+            nexus_file_variant(2, Some(200), Some("Variant A"), Some(1)),
+        ];
+        assert!(nexus_update_available(Some(1), &files));
     }
 
     #[test]
