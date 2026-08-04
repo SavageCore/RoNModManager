@@ -1,5 +1,6 @@
 import { writable } from "svelte/store";
 import type { InstalledModGroup } from "$lib/types";
+import type { ModUpdateInfo } from "$lib/api/commands";
 
 export const incognitoMode = writable<boolean>(false);
 export const screenshotMode = writable<boolean>(false);
@@ -11,6 +12,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/1042",
     managedByManifest: true,
     installedAt: 1736899200,
+    installedVersion: "1.4",
     files: [
       {
         name: "CQB_Tactics_Pack_P.pak",
@@ -25,6 +27,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/2187",
     managedByManifest: true,
     installedAt: 1738540800,
+    installedVersion: "2.0.1",
     files: [
       {
         name: "Urban_Warfare_Bundle_P.pak",
@@ -44,6 +47,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     sourceUrl: "https://mod.io/g/readyornot/m/realistic-swat-equipment",
     managedByManifest: false,
     installedAt: 1740009600,
+    installedVersion: "1.1",
     files: [
       {
         name: "Realistic_SWAT_Equipment_P.pak",
@@ -58,6 +62,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/3301",
     managedByManifest: true,
     installedAt: 1741305600,
+    installedVersion: "3.2",
     files: [
       {
         name: "Breach_And_Clear_Maps_P.pak",
@@ -82,6 +87,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     sourceUrl: "https://mod.io/g/readyornot/m/nightvision-overhaul",
     managedByManifest: false,
     installedAt: 1742601600,
+    installedVersion: "1.0",
     files: [
       {
         name: "NightVision_Overhaul_P.pak",
@@ -96,6 +102,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/4455",
     managedByManifest: true,
     installedAt: 1744243200,
+    installedVersion: "1.3",
     files: [
       {
         name: "Radio_Comms_Rework_P.pak",
@@ -110,6 +117,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/5123",
     managedByManifest: true,
     installedAt: 1745539200,
+    installedVersion: "2.5",
     files: [
       {
         name: "Suspect_AI_Overhaul_P.pak",
@@ -129,6 +137,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     sourceUrl: "https://mod.io/g/readyornot/m/modular-gear-pack",
     managedByManifest: false,
     installedAt: 1746662400,
+    installedVersion: "1.2",
     files: [
       {
         name: "Modular_Gear_Pack_P.pak",
@@ -143,6 +152,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/6078",
     managedByManifest: false,
     installedAt: 1747612800,
+    installedVersion: "1.0.2",
     files: [
       {
         name: "Tactical_HUD_P.pak",
@@ -157,6 +167,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/7290",
     managedByManifest: true,
     installedAt: 1748304000,
+    installedVersion: "1.0",
     files: [
       {
         name: "Mission_Pack_Vol1_P.pak",
@@ -189,4 +200,28 @@ export const DUMMY_TAGS: Record<string, string[]> = {
   equipment: ["Realistic_SWAT_Equipment", "Modular_Gear_Pack"],
   map: ["Breach_And_Clear_Maps", "Mission_Pack_Vol1"],
   visual: ["NightVision_Overhaul", "Tactical_HUD"],
+};
+
+export const DUMMY_MOD_UPDATES: Record<string, ModUpdateInfo> = {
+  CQB_Tactics_Pack: {
+    archiveName: "CQB_Tactics_Pack",
+    source: "nexus",
+    currentVersion: "1.4",
+    latestVersion: "1.6",
+    updateAvailable: true,
+  },
+  NightVision_Overhaul: {
+    archiveName: "NightVision_Overhaul",
+    source: "modio",
+    currentVersion: "1.0",
+    latestVersion: "1.1",
+    updateAvailable: true,
+  },
+  Suspect_AI_Overhaul: {
+    archiveName: "Suspect_AI_Overhaul",
+    source: "nexus",
+    currentVersion: "2.5",
+    latestVersion: "2.6",
+    updateAvailable: true,
+  },
 };

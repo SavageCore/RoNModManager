@@ -179,6 +179,7 @@
     DUMMY_COLLECTIONS,
     DUMMY_COLLECTION_COLORS,
     DUMMY_TAGS,
+    DUMMY_MOD_UPDATES,
   } from "$lib/stores/incognitoMode";
   import { formatDistanceToNow } from "date-fns";
   import type {
@@ -230,8 +231,9 @@
   let brokenModsMap: Record<string, string> = {};
   let noWorldGenSet: Set<string> = new Set();
   let modUpdates: Record<string, ModUpdateInfo> = {};
-  $: updatableGroups = modGroups.filter(
-    (g) => modUpdates[g.name] && g.sourceUrl,
+  $: effectiveModUpdates = $incognitoMode ? DUMMY_MOD_UPDATES : modUpdates;
+  $: updatableGroups = effectiveModGroups.filter(
+    (g) => effectiveModUpdates[g.name] && g.sourceUrl,
   );
 
   // Nexus version strings often already include a leading "v" (e.g. "v2.2") -
@@ -2109,11 +2111,11 @@
                         />
                       </span>
                     {/if}
-                    {#if modUpdates[group.name] && group.sourceUrl}
+                    {#if effectiveModUpdates[group.name] && group.sourceUrl}
                       <span
                         role="button"
                         tabindex="0"
-                        title={`Update available${modUpdates[group.name].latestVersion ? `: ${modUpdates[group.name].currentVersion ?? "?"} -> ${modUpdates[group.name].latestVersion}` : ""}`}
+                        title={`Update available${effectiveModUpdates[group.name].latestVersion ? `: ${effectiveModUpdates[group.name].currentVersion ?? "?"} -> ${effectiveModUpdates[group.name].latestVersion}` : ""}`}
                         class="flex items-center gap-0.5 cursor-pointer text-xs rounded px-1.5 border"
                         style="color: #f59e0b; border-color: #f59e0b;"
                         on:click|stopPropagation={() => {
@@ -2142,8 +2144,8 @@
                         }}
                       >
                         <ArrowUpCircle size={12} style="flex-shrink: 0;" />
-                        {modUpdates[group.name].latestVersion
-                          ? `v${stripVersionPrefix(modUpdates[group.name].latestVersion ?? "")}`
+                        {effectiveModUpdates[group.name].latestVersion
+                          ? `v${stripVersionPrefix(effectiveModUpdates[group.name].latestVersion ?? "")}`
                           : "Update"}
                       </span>
                     {/if}
