@@ -977,10 +977,10 @@
     }
   }
 
-  async function handleBulkTagToggle(event: CustomEvent<{ itemName: string }>) {
-    const tag = event.detail.itemName;
-    const withTag = activeProfileTags[tag] ?? [];
-    const allHave = [...selectedMods].every((m) => withTag.includes(m));
+  async function toggleBulkModTag(tag: string) {
+    const allHave = [...selectedMods].every((m) =>
+      (effectiveTags[tag] ?? []).includes(m),
+    );
     try {
       for (const mod of selectedMods) {
         const cur = modToTagsMap[mod] ?? [];
@@ -993,6 +993,10 @@
     } catch (error) {
       toastStore.error(`Failed to update tags: ${String(error)}`);
     }
+  }
+
+  async function handleBulkTagToggle(event: CustomEvent<{ itemName: string }>) {
+    await toggleBulkModTag(event.detail.itemName);
   }
 
   async function handleBulkTagCreate(event: CustomEvent<{ itemName: string }>) {
@@ -1974,10 +1978,16 @@
                       effectiveTagNames.map((tag) =>
                         CheckMenuItem.new({
                           text: tag,
-                          checked: (modToTagsMap[group.name] ?? []).includes(
-                            tag,
-                          ),
-                          action: () => toggleModTag(group.name, tag),
+                          checked:
+                            selectedMods.size > 0
+                              ? [...selectedMods].every((m) =>
+                                  (effectiveTags[tag] ?? []).includes(m),
+                                )
+                              : (modToTagsMap[group.name] ?? []).includes(tag),
+                          action: () =>
+                            selectedMods.size > 0
+                              ? toggleBulkModTag(tag)
+                              : toggleModTag(group.name, tag),
                         }),
                       ),
                     )),
@@ -1987,10 +1997,12 @@
                     await MenuItem.new({
                       text: "New tag…",
                       action: () =>
-                        openTagPicker(
-                          group.name,
-                          group.displayName || group.name,
-                        ),
+                        selectedMods.size > 0
+                          ? (showBulkTagModal = true)
+                          : openTagPicker(
+                              group.name,
+                              group.displayName || group.name,
+                            ),
                     }),
                   ],
                 }),

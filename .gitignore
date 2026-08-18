@@ -10,3 +10,4 @@ flatpak-repo/
 src-tauri/vendor/
 src-tauri/.cargo/
 *.flatpak
+.opencode/
