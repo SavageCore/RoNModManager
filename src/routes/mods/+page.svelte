@@ -32,6 +32,7 @@
     clearModNoWorldGen,
     checkModUpdates,
     fileExists,
+    revealInFileManager,
     type ModUpdateInfo,
   } from "$lib/api/commands";
   import { ue4ssBannerDismissed } from "$lib/stores/ue4ssBannerDismissed";
@@ -188,7 +189,6 @@
     Profile,
   } from "$lib/types";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import {
     AlertTriangle,
     ArrowUpCircle,
@@ -1280,7 +1280,7 @@
     }
 
     try {
-      await revealItemInDir(path);
+      await revealInFileManager(path);
     } catch (error) {
       toastStore.error(`Failed to open file location: ${String(error)}`);
     }

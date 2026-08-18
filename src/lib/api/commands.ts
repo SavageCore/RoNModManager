@@ -20,9 +20,12 @@ export const fetchModpackJson = (url: string) =>
 // Check if a file exists
 export const fileExists = (path: string) =>
   invoke<boolean>("file_exists", { path });
-import { invoke } from "@tauri-apps/api/core";
 // Get the archive root path from backend
 export const getArchiveRootPath = () => invoke<string>("get_archive_root_path");
+// Open a file's containing directory in the system file manager; returns the opened dir
+export const revealInFileManager = (path: string) =>
+  invoke<string>("reveal_in_file_manager", { path });
+import { invoke } from "@tauri-apps/api/core";
 import type {
   AppConfig,
   Collection,

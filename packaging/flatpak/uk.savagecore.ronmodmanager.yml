@@ -12,6 +12,8 @@ finish-args:
   - --socket=wayland
   - --device=dri
   - --filesystem=home
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.portal.Desktop
   - --env=GDK_BACKEND=x11
 build-options:
   append-path: /usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin

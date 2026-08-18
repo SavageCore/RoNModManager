@@ -11,6 +11,7 @@
     isRunningInFlatpak,
     isIntroSkipApplied,
     logout,
+    revealInFileManager,
     setGamePath,
     setTheme,
     syncModpackToRemote,
@@ -44,7 +45,7 @@
   import { applyThemeClass } from "$lib/theme";
   import { getVersion } from "@tauri-apps/api/app";
   import { downloadDir } from "@tauri-apps/api/path";
-  import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { onDestroy, onMount } from "svelte";
   // Persist modpack export metadata in localStorage
   const MODPACK_META_KEY = "ronmodmanager.modpackMeta";
@@ -557,7 +558,7 @@
         );
         // @ts-ignore
         window.__OPEN_EXPORT_DIR = () => {
-          revealItemInDir(exportDir);
+          revealInFileManager(exportDir);
           toastStore.remove(toastId);
         };
       } catch (error) {

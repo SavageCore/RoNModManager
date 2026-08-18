@@ -191,6 +191,7 @@ pub fn run() {
             commands::fetch_archive::download_mod_archive,
             commands::fs::file_exists,
             commands::fs::get_archive_root_path,
+            commands::fs::reveal_in_file_manager,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
