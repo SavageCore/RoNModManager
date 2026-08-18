@@ -2083,6 +2083,20 @@ pub async fn get_installed_mod_groups(
     let manager = manifest::ManifestManager::new(&staging_root);
     let manifests = manager.list_all_manifests().unwrap_or_default();
     let mut tracked_pak_names: HashSet<String> = HashSet::new();
+    // All manifest source archives keyed by their bare filename. Used to keep
+    // the mods_path scan from re-emitting an ad-hoc group for a pak that
+    // already has a manifest (e.g. one created by update_mod_source_url with
+    // an empty installed_files), which would otherwise overwrite the manifest
+    // group in the groups_by_name map and drop its source_url/display_name.
+    let manifest_archive_names: HashSet<String> = manifests
+        .keys()
+        .filter_map(|name| {
+            Path::new(name)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(str::to_string)
+        })
+        .collect();
     let mut groups: Vec<InstalledModGroup> = Vec::new();
 
     for manifest_data in manifests.values() {
@@ -2168,6 +2182,30 @@ pub async fn get_installed_mod_groups(
                 .unwrap_or_default()
                 .to_string();
             if tracked_pak_names.contains(&file_name) {
+                continue;
+            }
+            if manifest_archive_names.contains(&file_name) {
+                // A manifest already owns this pak (e.g. one created for an
+                // ad-hoc pak by update_mod_source_url). Avoid emitting a
+                // second ad-hoc group, but make sure the disk file stays
+                // listed even when that manifest's installed_files was empty.
+                if let Some(group) = groups
+                    .iter_mut()
+                    .find(|g: &&mut InstalledModGroup| g.name == file_name)
+                {
+                    let already = group
+                        .files
+                        .iter()
+                        .any(|f| f.name == file_name || f.path == path.to_string_lossy());
+                    if !already {
+                        group.files.push(InstalledModFile {
+                            name: file_name.clone(),
+                            path: path.to_string_lossy().to_string(),
+                            exists: path.exists(),
+                            archive_name: None,
+                        });
+                    }
+                }
                 continue;
             }
             groups.push(InstalledModGroup {
