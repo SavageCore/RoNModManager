@@ -1114,7 +1114,10 @@ async fn resolve_mod_metadata_from_source_url(
 }
 
 #[tauri::command]
-pub async fn refresh_mod_metadata(state: State<'_, AppState>) -> Result<RefreshModMetadataResult> {
+pub async fn refresh_mod_metadata(
+    state: State<'_, AppState>,
+    archive_names: Option<Vec<String>>,
+) -> Result<RefreshModMetadataResult> {
     let config = state.get_config()?;
     let api_key = config
         .nexus_api_key
@@ -1131,6 +1134,10 @@ pub async fn refresh_mod_metadata(state: State<'_, AppState>) -> Result<RefreshM
     let manager = manifest::ManifestManager::new(&staging_root);
     let manifests = manager.list_all_manifests()?;
 
+    let filter: Option<HashSet<String>> = archive_names
+        .filter(|names| !names.is_empty())
+        .map(|names| names.into_iter().collect::<HashSet<_>>());
+
     let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
     let modio_service = ModioApiService::new(state.client.clone(), config.modio_game_id);
 
@@ -1141,7 +1148,12 @@ pub async fn refresh_mod_metadata(state: State<'_, AppState>) -> Result<RefreshM
         failed: 0,
     };
 
-    for mut manifest_data in manifests.into_values() {
+    for (name, mut manifest_data) in manifests {
+        if let Some(filter) = &filter {
+            if !filter.contains(&name) {
+                continue;
+            }
+        }
         result.checked += 1;
         let Some(source_url) = manifest_data.source_url.as_ref() else {
             result.skipped += 1;

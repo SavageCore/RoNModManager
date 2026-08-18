@@ -180,13 +180,13 @@ export interface ModioRemoteInfo {
 }
 export const fetchModioRemoteInfo = (input: string): Promise<ModioRemoteInfo> =>
   invoke<ModioRemoteInfo>("get_modio_remote_info", { input });
-export const refreshModMetadata = () =>
+export const refreshModMetadata = (archiveNames?: string[]) =>
   invoke<{
     checked: number;
     refreshed: number;
     skipped: number;
     failed: number;
-  }>("refresh_mod_metadata");
+  }>("refresh_mod_metadata", { archiveNames });
 
 export interface ModUpdateInfo {
   archiveName: string;

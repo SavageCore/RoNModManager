@@ -33,6 +33,7 @@
     checkModUpdates,
     fileExists,
     revealInFileManager,
+    refreshModMetadata,
     type ModUpdateInfo,
   } from "$lib/api/commands";
   import { ue4ssBannerDismissed } from "$lib/stores/ue4ssBannerDismissed";
@@ -1086,6 +1087,20 @@
     };
   }
 
+  async function handleRefreshMetadataSelection(modName: string) {
+    const targets = selectedMods.size > 0 ? [...selectedMods] : [modName];
+    try {
+      const result = await refreshModMetadata(targets);
+      const tone = result.failed > 0 ? "error" : "success";
+      toastStore[tone](
+        `Metadata refresh: checked ${result.checked}, refreshed ${result.refreshed}, skipped ${result.skipped}, failed ${result.failed}`,
+      );
+      await refresh();
+    } catch (error) {
+      toastStore.error(`Failed to refresh metadata: ${String(error)}`);
+    }
+  }
+
   function handleUpdateAll() {
     // Skip mods already queued/running so double-clicking Update All (or clicking it
     // while a per-mod update is still in flight) doesn't enqueue the same mod twice.
@@ -1963,6 +1978,10 @@
           on:contextmenu|preventDefault={async () => {
             const menu = await Menu.new({
               items: [
+                await MenuItem.new({
+                  text: "Refresh metadata",
+                  action: () => handleRefreshMetadataSelection(group.name),
+                }),
                 await MenuItem.new({
                   text: "Manage collections",
                   action: () =>
