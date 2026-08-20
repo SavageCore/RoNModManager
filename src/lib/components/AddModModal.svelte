@@ -206,6 +206,15 @@
     isProcessingLinks = true;
     try {
       while (pendingLinkQueue.length > 0) {
+        type Download = {
+          promise?:
+            ReturnType<typeof addNexusMod> | ReturnType<typeof addModIoMod>;
+          result?:
+            | Awaited<ReturnType<typeof addNexusMod>>
+            | Awaited<ReturnType<typeof addModIoMod>>;
+          selectedPaks?: string[];
+          failed?: boolean;
+        };
         type Plan = {
           entry: {
             input: string;
@@ -213,17 +222,14 @@
             replacingArchiveName?: string;
             displayName?: string;
           };
-          chosenFileId?: number;
-          downloadPromise?:
-            ReturnType<typeof addNexusMod> | ReturnType<typeof addModIoMod>;
-          downloadResult?:
-            | Awaited<ReturnType<typeof addNexusMod>>
-            | Awaited<ReturnType<typeof addModIoMod>>;
-          selectedPaks?: string[];
+          chosenFileIds: number[];
+          downloads: Download[];
           failed?: boolean;
         };
         const plans: Plan[] = pendingLinkQueue.splice(0).map((e) => ({
           entry: e,
+          chosenFileIds: [],
+          downloads: [],
         }));
 
         // Phase 1: Ask all Nexus file variant questions before downloading anything
@@ -235,6 +241,7 @@
               "Checking available files...",
             );
             const fileOptions = await listNexusFileOptions(plan.entry.input);
+            let chosenFileIds: number[] = [];
             if (fileOptions.length > 1) {
               modAddQueueStore.markRunning(
                 plan.entry.queueId,
@@ -251,10 +258,11 @@
                 plan.failed = true;
                 continue;
               }
-              plan.chosenFileId = chosen.fileId;
+              chosenFileIds = chosen.map((f) => f.fileId);
             } else if (fileOptions.length === 1) {
-              plan.chosenFileId = fileOptions[0].fileId;
+              chosenFileIds = [fileOptions[0].fileId];
             }
+            plan.chosenFileIds = chosenFileIds;
             modAddQueueStore.markRunning(plan.entry.queueId, "Queued");
           } catch (error) {
             modAddQueueStore.markError(
@@ -274,9 +282,17 @@
         // serial if that ever actually bothers someone.
         for (const plan of plans) {
           if (plan.failed) continue;
-          plan.downloadPromise = isNexusUrl(plan.entry.input)
-            ? addNexusMod(plan.entry.input, plan.chosenFileId)
-            : addModIoMod(plan.entry.input);
+          if (isNexusUrl(plan.entry.input)) {
+            const fileIds =
+              plan.chosenFileIds.length > 0 ? plan.chosenFileIds : [undefined];
+            for (const fileId of fileIds) {
+              plan.downloads.push({
+                promise: addNexusMod(plan.entry.input, fileId),
+              });
+            }
+          } else {
+            plan.downloads.push({ promise: addModIoMod(plan.entry.input) });
+          }
           modAddQueueStore.markRunning(
             plan.entry.queueId,
             isNexusUrl(plan.entry.input)
@@ -285,84 +301,100 @@
           );
         }
         for (const plan of plans) {
-          if (plan.failed || !plan.downloadPromise) continue;
-          try {
-            plan.downloadResult = await plan.downloadPromise;
-          } catch (error) {
-            const msg = String(error);
-            if (msg.includes("CANCELLED:")) {
-              modAddQueueStore.markError(plan.entry.queueId, "Cancelled");
-              importLogStore.clear();
-            } else {
-              modAddQueueStore.markError(plan.entry.queueId, `Failed: ${msg}`);
+          if (plan.failed) continue;
+          for (const download of plan.downloads) {
+            if (!download.promise) continue;
+            try {
+              download.result = await download.promise;
+            } catch (error) {
+              const msg = String(error);
+              if (msg.includes("CANCELLED:")) {
+                modAddQueueStore.markError(plan.entry.queueId, "Cancelled");
+                importLogStore.clear();
+              } else {
+                modAddQueueStore.markError(
+                  plan.entry.queueId,
+                  `Failed: ${msg}`,
+                );
+              }
+              download.failed = true;
             }
-            plan.failed = true;
           }
         }
 
         // Phase 3: Ask all PAK selection questions before installing anything
         for (const plan of plans) {
-          if (plan.failed || !plan.downloadResult) continue;
-          const result = plan.downloadResult;
-          const selectedPaks = await choosePaks(
-            result.archivePath,
-            result.archiveName,
-            plan.entry.queueId,
-          );
-          if (selectedPaks === null) {
-            modAddQueueStore.markError(plan.entry.queueId, "Cancelled");
-            plan.failed = true;
-            continue;
+          if (plan.failed) continue;
+          for (const download of plan.downloads) {
+            const result = download.result;
+            if (download.failed || !result) continue;
+            const selectedPaks = await choosePaks(
+              result.archivePath,
+              result.archiveName,
+              plan.entry.queueId,
+            );
+            if (selectedPaks === null) {
+              modAddQueueStore.markError(plan.entry.queueId, "Cancelled");
+              download.failed = true;
+              continue;
+            }
+            download.selectedPaks = selectedPaks ?? undefined;
+            modAddQueueStore.markRunning(plan.entry.queueId, "Queued");
           }
-          plan.selectedPaks = selectedPaks ?? undefined;
-          modAddQueueStore.markRunning(plan.entry.queueId, "Queued");
         }
 
         // Phase 4: Install all mods
         for (const plan of plans) {
-          if (plan.failed || !plan.downloadResult) continue;
-          const result = plan.downloadResult;
-          importLogStore.setCurrentMod(plan.entry.queueId);
-          modAddQueueStore.markRunning(plan.entry.queueId, "Installing...");
-          try {
-            await installLocalMod(
-              result.archivePath,
-              plan.selectedPaks,
-              result.contentHash,
-            );
-            await updateModDisplayName(result.archiveName, result.name).catch(
-              () => {},
-            );
-            await updateModSourceUrl(
-              result.archiveName,
-              result.sourceUrl,
-              result.version,
-            ).catch(() => {});
-            if (result.fileId != null) {
-              await updateNexusFileId(result.archiveName, result.fileId).catch(
+          if (plan.failed) continue;
+          const results = plan.downloads.filter((d) => d.result && !d.failed);
+          for (const download of results) {
+            const result = download.result!;
+            importLogStore.setCurrentMod(plan.entry.queueId);
+            modAddQueueStore.markRunning(plan.entry.queueId, "Installing...");
+            try {
+              await installLocalMod(
+                result.archivePath,
+                download.selectedPaks,
+                result.contentHash,
+              );
+              await updateModDisplayName(result.archiveName, result.name).catch(
                 () => {},
               );
-            }
-            if (
-              plan.entry.replacingArchiveName &&
-              plan.entry.replacingArchiveName !== result.archiveName
-            ) {
-              await replaceModArchive(
-                plan.entry.replacingArchiveName,
+              await updateModSourceUrl(
                 result.archiveName,
+                result.sourceUrl,
+                result.version,
               ).catch(() => {});
+              if (result.fileId != null) {
+                await updateNexusFileId(
+                  result.archiveName,
+                  result.fileId,
+                ).catch(() => {});
+              }
+              if (
+                plan.entry.replacingArchiveName &&
+                plan.entry.replacingArchiveName !== result.archiveName
+              ) {
+                await replaceModArchive(
+                  plan.entry.replacingArchiveName,
+                  result.archiveName,
+                ).catch(() => {});
+              }
+            } catch (error) {
+              modAddQueueStore.markError(
+                plan.entry.queueId,
+                `Failed: ${String(error)}`,
+              );
+              plan.failed = true;
+              break;
             }
-            modAddQueueStore.markDone(
-              plan.entry.queueId,
-              `Installed ${result.name}`,
-            );
-            addModpackPanelStore.notifyModInstalled();
-          } catch (error) {
-            modAddQueueStore.markError(
-              plan.entry.queueId,
-              `Failed: ${String(error)}`,
-            );
           }
+          if (plan.failed) continue;
+          modAddQueueStore.markDone(
+            plan.entry.queueId,
+            `Installed ${results.length} file${results.length === 1 ? "" : "s"}`,
+          );
+          addModpackPanelStore.notifyModInstalled();
         }
       }
     } finally {

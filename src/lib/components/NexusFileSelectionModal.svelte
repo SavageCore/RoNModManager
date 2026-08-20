@@ -6,11 +6,11 @@
   export let files: NexusFileOption[] = [];
 
   const dispatch = createEventDispatcher<{
-    select: NexusFileOption;
+    select: NexusFileOption[];
     cancel: void;
   }>();
 
-  let selected: NexusFileOption = files[0];
+  let selected: NexusFileOption[] = files[0] ? [files[0]] : [];
 
   function handleDownload() {
     dispatch("select", selected);
@@ -47,17 +47,23 @@
       {modName}
     </p>
 
+    <p style="color: var(--clr-text-secondary);" class="text-xs mb-2">
+      Select one or more files — mods shipped as multiple parts (e.g. Part 1 +
+      Part 2) require all of them.
+    </p>
+
     <div class="space-y-2 overflow-y-auto mb-5" style="max-height: 320px;">
       {#each files as file (file.fileId)}
         <label
           class="flex items-start gap-3 p-3 rounded cursor-pointer transition-colors"
-          style="background: var(--clr-surface-alt, rgba(255,255,255,0.04)); border: 1px solid {selected ===
-          file
+          style="background: var(--clr-surface-alt, rgba(255,255,255,0.04)); border: 1px solid {selected.includes(
+            file,
+          )
             ? 'var(--clr-primary-300)'
             : 'var(--adw-border-color)'};"
         >
           <input
-            type="radio"
+            type="checkbox"
             name="nexus-file"
             bind:group={selected}
             value={file}
@@ -97,7 +103,7 @@
       <button on:click={handleCancel} class="flex-1 btn">Cancel</button>
       <button
         on:click={handleDownload}
-        disabled={!selected}
+        disabled={selected.length === 0}
         class="flex-1 btn primary"
       >
         Download

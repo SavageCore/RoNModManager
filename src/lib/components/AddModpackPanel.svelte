@@ -115,7 +115,7 @@
       type PendingNexus = {
         modFile: string;
         modInfo: ModInfo;
-        promise: Promise<Awaited<ReturnType<typeof addNexusMod>>>;
+        promises: Promise<Awaited<ReturnType<typeof addNexusMod>>>[];
       };
       const pendingNexus: PendingNexus[] = [];
 
@@ -203,9 +203,9 @@
               continue;
             }
 
-            let chosenFileId: number | undefined =
-              modInfo.nexus_file_id ?? undefined;
-            if (chosenFileId == null) {
+            let chosenFileIds: number[] | null =
+              modInfo.nexus_file_id != null ? [modInfo.nexus_file_id] : null;
+            if (chosenFileIds == null) {
               const fileOptions = await listNexusFileOptions(src);
               if (fileOptions.length > 1) {
                 const chosen = await requestNexusFileSelection(
@@ -218,19 +218,23 @@
                   await tick();
                   continue;
                 }
-                chosenFileId = chosen.fileId;
+                chosenFileIds = chosen.map((f) => f.fileId);
               } else if (fileOptions.length === 1) {
-                chosenFileId = fileOptions[0].fileId;
+                chosenFileIds = [fileOptions[0].fileId];
+              } else {
+                chosenFileIds = [];
               }
             }
 
+            const fileIds: (number | undefined)[] =
+              chosenFileIds.length > 0 ? chosenFileIds : [undefined];
             log.push(`Nexus download queued, continuing with other mods...`);
             log = log;
             await tick();
             pendingNexus.push({
               modFile,
               modInfo,
-              promise: addNexusMod(src, chosenFileId),
+              promises: fileIds.map((fid) => addNexusMod(src, fid)),
             });
           } catch (modErr: any) {
             log.push(
@@ -315,9 +319,9 @@
                 hadError = true;
               }
             } else {
-              let chosenFileId: number | undefined =
-                modInfo.nexus_file_id ?? undefined;
-              if (chosenFileId == null) {
+              let chosenFileIds: number[] | null =
+                modInfo.nexus_file_id != null ? [modInfo.nexus_file_id] : null;
+              if (chosenFileIds == null) {
                 try {
                   const fileOptions = await listNexusFileOptions(src);
                   if (fileOptions.length > 1) {
@@ -331,9 +335,11 @@
                       await tick();
                       continue;
                     }
-                    chosenFileId = chosen.fileId;
+                    chosenFileIds = chosen.map((f) => f.fileId);
                   } else if (fileOptions.length === 1) {
-                    chosenFileId = fileOptions[0].fileId;
+                    chosenFileIds = [fileOptions[0].fileId];
+                  } else {
+                    chosenFileIds = [];
                   }
                 } catch (optErr: any) {
                   log.push(
@@ -346,13 +352,15 @@
                   continue;
                 }
               }
+              const fileIds: (number | undefined)[] =
+                chosenFileIds.length > 0 ? chosenFileIds : [undefined];
               log.push(`Nexus download queued, continuing with other mods...`);
               log = log;
               await tick();
               pendingNexus.push({
                 modFile,
                 modInfo,
-                promise: addNexusMod(src, chosenFileId),
+                promises: fileIds.map((fid) => addNexusMod(src, fid)),
               });
             }
           }
@@ -490,35 +498,37 @@
             log.push(`Installing Nexus mod: ${pending.modFile}...`);
             log = log;
             await tick();
-            try {
-              const result = await pending.promise;
-              await installLocalMod(
-                result.archivePath,
-                pending.modInfo.selected_pak_files ?? undefined,
-                result.contentHash,
-              );
-              await updateModSourceUrl(
-                result.archiveName,
-                result.sourceUrl,
-              ).catch(() => {});
-              if (result.fileId != null) {
-                await updateNexusFileId(
+            for (const promise of pending.promises) {
+              try {
+                const result = await promise;
+                await installLocalMod(
+                  result.archivePath,
+                  pending.modInfo.selected_pak_files ?? undefined,
+                  result.contentHash,
+                );
+                await updateModSourceUrl(
                   result.archiveName,
-                  result.fileId,
+                  result.sourceUrl,
                 ).catch(() => {});
+                if (result.fileId != null) {
+                  await updateNexusFileId(
+                    result.archiveName,
+                    result.fileId,
+                  ).catch(() => {});
+                }
+                addModpackPanelStore.notifyModInstalled();
+                log.push(`Installed '${result.name}' from Nexus.`);
+                log = log;
+                await tick();
+              } catch (modErr: any) {
+                log.push(
+                  `Error installing Nexus mod ${pending.modFile}: ${modErr.message || String(modErr)}`,
+                );
+                log = log;
+                await tick();
+                error = modErr.message || String(modErr);
+                hadError = true;
               }
-              addModpackPanelStore.notifyModInstalled();
-              log.push(`Installed '${result.name}' from Nexus.`);
-              log = log;
-              await tick();
-            } catch (modErr: any) {
-              log.push(
-                `Error installing Nexus mod ${pending.modFile}: ${modErr.message || String(modErr)}`,
-              );
-              log = log;
-              await tick();
-              error = modErr.message || String(modErr);
-              hadError = true;
             }
           }
         } finally {
