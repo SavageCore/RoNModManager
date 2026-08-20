@@ -192,6 +192,7 @@ pub fn run() {
             commands::fs::file_exists,
             commands::fs::get_archive_root_path,
             commands::fs::reveal_in_file_manager,
+            commands::fs::open_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

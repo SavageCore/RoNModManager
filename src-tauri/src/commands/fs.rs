@@ -58,3 +58,39 @@ pub async fn reveal_in_file_manager(
 
     Ok(dir.to_string_lossy().to_string())
 }
+
+/// Open a directory in the system file manager.
+///
+/// On Linux this uses xdg-open directly, which works natively and inside a
+/// Flatpak sandbox (the tauri-plugin-opener open-path path spawns the opener
+/// detached, so failures never surface). Returns the opened directory path.
+#[tauri::command]
+pub async fn open_dir(
+    #[cfg_attr(target_os = "linux", allow(unused_variables))] app: tauri::AppHandle,
+    path: String,
+) -> Result<String, String> {
+    let dir = std::path::PathBuf::from(&path);
+    if !dir.is_dir() {
+        return Err(format!("Directory is missing on disk: {}", path));
+    }
+    let canonical = dir
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve path {}: {}", path, e))?;
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&canonical)
+            .spawn()
+            .map_err(|e| format!("Failed to open directory: {}", e))?;
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_path(canonical.to_string_lossy(), None::<&str>)
+            .map_err(|e| format!("Failed to open directory: {}", e))?;
+    }
+
+    Ok(canonical.to_string_lossy().to_string())
+}

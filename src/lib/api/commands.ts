@@ -25,6 +25,8 @@ export const getArchiveRootPath = () => invoke<string>("get_archive_root_path");
 // Open a file's containing directory in the system file manager; returns the opened dir
 export const revealInFileManager = (path: string) =>
   invoke<string>("reveal_in_file_manager", { path });
+// Open a directory in the system file manager; returns the opened dir
+export const openDir = (path: string) => invoke<string>("open_dir", { path });
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppConfig,

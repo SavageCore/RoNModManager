@@ -1,5 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
+  import { downloadDir } from "@tauri-apps/api/path";
+  import { openDir } from "$lib/api/commands";
 
   export let downloads: Array<{
     prettyName: string | null;
@@ -8,6 +10,17 @@
   }> = [];
 
   const dispatch = createEventDispatcher<{ close: void }>();
+
+  let downloadsPath: string | null = null;
+
+  async function openDownloadsFolder() {
+    try {
+      if (!downloadsPath) downloadsPath = await downloadDir();
+      if (downloadsPath) await openDir(downloadsPath);
+    } catch (e) {
+      console.error("Failed to open downloads folder:", e);
+    }
+  }
 </script>
 
 <div
@@ -61,7 +74,12 @@
 
     <p style="color: var(--clr-text-secondary);" class="text-xs mb-4">
       Downloads will be detected automatically once the files appear in your
-      Downloads folder.
+      <button
+        class="link"
+        on:click={openDownloadsFolder}
+        style="color: var(--clr-primary-300); text-decoration: underline; cursor: pointer; background: none; border: none; padding: 0; font: inherit;"
+        >Downloads folder</button
+      >.
     </p>
 
     <div class="flex justify-end">
