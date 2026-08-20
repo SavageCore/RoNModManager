@@ -287,8 +287,9 @@ where
                 let file_name = entry_path.file_name().ok_or_else(|| {
                     AppError::Validation(format!("invalid pak path in archive: {}", entry.name()))
                 })?;
+                let filter_key = normalize_archive_path(&entry_path);
                 if pak_filter
-                    .map(|f| !f.contains(file_name.to_string_lossy().as_ref()))
+                    .map(|f| !f.contains(&filter_key))
                     .unwrap_or(false)
                 {
                     report.skipped += 1;
@@ -479,8 +480,9 @@ pub fn install_rar_archive(
                 let file_name = entry_path.file_name().ok_or_else(|| {
                     AppError::Validation(format!("invalid pak path in archive: {}", entry_name))
                 })?;
+                let filter_key = normalize_archive_path(&entry_path);
                 if pak_filter
-                    .map(|f| !f.contains(file_name.to_string_lossy().as_ref()))
+                    .map(|f| !f.contains(&filter_key))
                     .unwrap_or(false)
                 {
                     report.skipped += 1;
@@ -620,8 +622,9 @@ pub fn install_7z_archive(
                         rel_path.display()
                     ))
                 })?;
+                let filter_key = normalize_archive_path(&rel_path);
                 if pak_filter
-                    .map(|f| !f.contains(file_name.to_string_lossy().as_ref()))
+                    .map(|f| !f.contains(&filter_key))
                     .unwrap_or(false)
                 {
                     report.skipped += 1;
@@ -723,6 +726,13 @@ pub fn install_7z_archive(
     let _ = fs::remove_dir_all(&temp_dir);
 
     Ok(report)
+}
+
+fn normalize_archive_path(path: &Path) -> String {
+    path.to_string_lossy()
+        .replace('\\', "/")
+        .trim_start_matches('/')
+        .to_string()
 }
 
 fn walk_files(dir: &Path) -> Vec<PathBuf> {
@@ -939,6 +949,37 @@ mod tests {
         assert_eq!(report.skipped, 1);
         assert!(context.mods_path.join("a_mod.pak").exists());
         assert!(context.savegames_path.join("world.sav").exists());
+    }
+
+    #[test]
+    fn pak_filter_matches_full_path_not_basename() {
+        // Simulates a FOMOD "choose one" archive (e.g. Holo Clarity): three variants
+        // share the identical basename but live in different nested folders.
+        let temp = TempDir::new().unwrap();
+        let context = create_context(temp.path());
+        fs::create_dir_all(&context.mods_path).unwrap();
+
+        let archive = create_test_archive(
+            temp.path(),
+            vec![
+                ("Mod/Variants/Green/shared.pak", b"green"),
+                ("Mod/Variants/Red/shared.pak", b"red"),
+                ("Mod/Variants/Blue/shared.pak", b"blue"),
+            ],
+        );
+
+        let filter =
+            std::collections::HashSet::from([String::from("Mod/Variants/Blue/shared.pak")]);
+        let report =
+            install_archive_with_progress(&archive, &context, |_| {}, Some(&filter)).unwrap();
+
+        assert_eq!(report.installed, 1);
+        assert_eq!(report.skipped, 2);
+        assert_eq!(
+            fs::read(context.mods_path.join("shared.pak")).unwrap(),
+            b"blue",
+            "installed variant must be the user's choice, not walk-order"
+        );
     }
 
     #[test]

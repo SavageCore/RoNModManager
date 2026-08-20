@@ -10,20 +10,20 @@
     cancel: void;
   }>();
 
-  let selected: Set<string> = new Set(paks.map((p) => p.name));
+  let selected: Set<string> = new Set(paks.map((p) => p.path));
 
-  function toggle(name: string) {
+  function toggle(path: string) {
     const next = new Set(selected);
-    if (next.has(name)) {
-      next.delete(name);
+    if (next.has(path)) {
+      next.delete(path);
     } else {
-      next.add(name);
+      next.add(path);
     }
     selected = next;
   }
 
   function selectAll() {
-    selected = new Set(paks.map((p) => p.name));
+    selected = new Set(paks.map((p) => p.path));
   }
 
   function selectNone() {
@@ -93,34 +93,25 @@
     </div>
 
     <div class="space-y-2 overflow-y-auto mb-5" style="max-height: 280px;">
-      {#each paks as pak (pak.name)}
+      {#each paks as pak (pak.path)}
         <label
           class="flex items-center gap-3 p-3 rounded cursor-pointer transition-colors"
           style="background: var(--clr-surface-alt, rgba(255,255,255,0.04)); border: 1px solid var(--adw-border-color);"
         >
           <input
             type="checkbox"
-            checked={selected.has(pak.name)}
-            on:change={() => toggle(pak.name)}
+            checked={selected.has(pak.path)}
+            on:change={() => toggle(pak.path)}
             class="w-4 h-4 flex-shrink-0"
           />
           <span class="flex-1 min-w-0">
             <span
               class="block text-sm font-medium truncate"
               style="color: var(--clr-text);"
-              title={pak.name}
+              title={pak.path}
             >
-              {pak.name}
+              {pak.path}
             </span>
-            {#if pak.path !== pak.name}
-              <span
-                class="block text-xs truncate"
-                style="color: var(--clr-text-secondary);"
-                title={pak.path}
-              >
-                {pak.path}
-              </span>
-            {/if}
           </span>
           <span
             class="text-xs flex-shrink-0"
