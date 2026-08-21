@@ -137,6 +137,7 @@
       isApplyingProfile = true;
       await applyProfile(selectedProfile);
       await updateWindowTitle();
+      window.dispatchEvent(new CustomEvent("ron:profile-changed"));
     } catch (error) {
       console.error("Failed to apply profile:", error);
     } finally {

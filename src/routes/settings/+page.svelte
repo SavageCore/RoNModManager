@@ -209,9 +209,7 @@
     gamePath = config.game_path ?? "";
     theme = config.theme;
     if (!$screenshotMode) applyThemeClass(theme);
-    const syncDetails = await getSyncDetails().catch(() => null);
-    syncRemoteHost = syncDetails?.host ?? "";
-    syncRemotePath = syncDetails?.path ?? "";
+    await loadSyncDetails();
     onGameLaunch = config.on_game_launch ?? "nothing";
     closeAction = config.close_action ?? "quit";
     minimizeTarget = config.minimize_target ?? "taskbar";
@@ -513,7 +511,15 @@
     void runSync(auth);
   }
 
-  onDestroy(() => {});
+  async function loadSyncDetails() {
+    const syncDetails = await getSyncDetails().catch(() => null);
+    syncRemoteHost = syncDetails?.host ?? "";
+    syncRemotePath = syncDetails?.path ?? "";
+  }
+
+  function handleProfileChanged() {
+    void loadSyncDetails();
+  }
 
   async function handleExportModpack({
     name,
@@ -657,10 +663,15 @@
   }
 
   onMount(async () => {
+    window.addEventListener("ron:profile-changed", handleProfileChanged);
     runningInFlatpak = await isRunningInFlatpak();
     currentVersion = await getVersion();
     void migrateLegacyModpackMeta();
     void refresh();
+  });
+
+  onDestroy(() => {
+    window.removeEventListener("ron:profile-changed", handleProfileChanged);
   });
 </script>
 
