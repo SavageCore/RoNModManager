@@ -1,4 +1,6 @@
-use tauri::{Emitter, Manager};
+#[cfg(not(debug_assertions))]
+use tauri::Emitter;
+use tauri::Manager;
 pub mod commands;
 pub mod models;
 pub mod services;
@@ -81,8 +83,9 @@ pub fn run() {
 
         Ok(())
     });
-    builder
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(
+        |app: &tauri::AppHandle, argv: Vec<String>, _cwd: String| {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
                 let _ = w.set_focus();
@@ -94,7 +97,9 @@ pub fn run() {
             if !urls.is_empty() {
                 let _ = app.emit("deep-link://new-url", urls);
             }
-        }))
+        },
+    ));
+    builder
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())

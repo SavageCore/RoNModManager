@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount } from "svelte";
+  import { createEventDispatcher } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
 
   export let isVisible = false;
@@ -23,12 +23,12 @@
   let description = initialDescription;
   let author = initialAuthor;
 
-  onMount(() => {
+  $: if (isVisible) {
     name = initialName;
     version = initialVersion;
     description = initialDescription;
     author = initialAuthor;
-  });
+  }
 
   function closeModal() {
     dispatch("close");
