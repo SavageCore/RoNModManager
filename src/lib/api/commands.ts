@@ -34,7 +34,9 @@ import type {
   InstalledModGroup,
   ModInfo,
   ModPack,
+  ModpackMeta,
   Profile,
+  SyncDetails,
   UpdateInfo,
   WindowState,
 } from "../types";
@@ -267,6 +269,23 @@ export const deleteProfile = (name: string) =>
   invoke<void>("delete_profile", { name });
 export const applyProfile = (name: string) =>
   invoke<Profile>("apply_profile", { name });
+export const getModpackMeta = () =>
+  invoke<ModpackMeta | null>("get_modpack_meta");
+export const setModpackMeta = (
+  name: string,
+  version: string,
+  description?: string | null,
+  author?: string | null,
+) =>
+  invoke<void>("set_modpack_meta", {
+    name,
+    version,
+    description: description ?? null,
+    author: author ?? null,
+  });
+export const getSyncDetails = () => invoke<SyncDetails>("get_sync_details");
+export const setSyncDetails = (host?: string | null, path?: string | null) =>
+  invoke<void>("set_sync_details", { host: host ?? null, path: path ?? null });
 
 export const launchGame = () => invoke<void>("launch_game");
 export const syncModLinks = (enabledGroups: string[]) =>

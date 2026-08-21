@@ -109,6 +109,18 @@ export interface SharedModpack {
   updated_at: string;
 }
 
+export interface ModpackMeta {
+  name: string;
+  version: string;
+  description?: string;
+  author?: string | null;
+}
+
+export interface SyncDetails {
+  host: string | null;
+  path: string | null;
+}
+
 export interface Profile {
   name: string;
   description: string | null;
@@ -118,6 +130,9 @@ export interface Profile {
   tags: Record<string, string[]>;
   collection_colors: Record<string, string>;
   created_at: string;
+  modpack_meta?: ModpackMeta | null;
+  sync_remote_host?: string | null;
+  sync_remote_path?: string | null;
 }
 
 export interface UpdateInfo {

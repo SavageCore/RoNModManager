@@ -9,5 +9,5 @@ pub use config::{AppConfig, ThemeMode};
 pub use error::{AppError, Result};
 pub use modinfo::{InstalledModFile, InstalledModGroup, ModInfo, ModSource, ModStatus};
 pub use modpack::{Collection, ModEntry, ModPack};
-pub use profile::Profile;
+pub use profile::{ModpackMeta, Profile, SyncDetails};
 pub use progress::ProgressEvent;

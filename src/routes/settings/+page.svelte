@@ -7,12 +7,16 @@
     exportModpackToFile,
     getAuthStatus,
     getConfig,
+    getModpackMeta,
+    getSyncDetails,
     installUpdate,
     isRunningInFlatpak,
     isIntroSkipApplied,
     logout,
     revealInFileManager,
     setGamePath,
+    setModpackMeta,
+    setSyncDetails,
     setTheme,
     syncModpackToRemote,
     undoIntroSkip,
@@ -47,25 +51,14 @@
   import { downloadDir } from "@tauri-apps/api/path";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { onDestroy, onMount } from "svelte";
-  // Persist modpack export metadata in localStorage
-  const MODPACK_META_KEY = "ronmodmanager.modpackMeta";
-  function loadModpackMeta() {
-    if (typeof window === "undefined") return {};
-    try {
-      return (
-        JSON.parse(window.localStorage.getItem(MODPACK_META_KEY) || "{}") ?? {}
-      );
-    } catch {
-      return {};
-    }
-  }
-  function saveModpackMeta(meta: any) {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(MODPACK_META_KEY, JSON.stringify(meta));
-  }
-
+  // Persist modpack export metadata per-profile (backend), not localStorage
   let showExportModal = false;
-  let exportMeta = loadModpackMeta();
+  let exportMeta = {
+    name: "",
+    version: "",
+    description: "",
+    author: "",
+  };
 
   const VALIDATION_TTL_MS = 6 * 60 * 60 * 1000;
   const UPDATE_CHECK_COOLDOWN_MS = 15 * 1000;
@@ -216,8 +209,9 @@
     gamePath = config.game_path ?? "";
     theme = config.theme;
     if (!$screenshotMode) applyThemeClass(theme);
-    syncRemoteHost = config.sync_remote_host ?? "";
-    syncRemotePath = config.sync_remote_path ?? "";
+    const syncDetails = await getSyncDetails().catch(() => null);
+    syncRemoteHost = syncDetails?.host ?? "";
+    syncRemotePath = syncDetails?.path ?? "";
     onGameLaunch = config.on_game_launch ?? "nothing";
     closeAction = config.close_action ?? "quit";
     minimizeTarget = config.minimize_target ?? "taskbar";
@@ -462,15 +456,23 @@
     }
   }
 
-  function exportInstalledMods() {
+  async function exportInstalledMods() {
+    try {
+      const meta = await getModpackMeta().catch(() => null);
+      exportMeta = {
+        name: meta?.name ?? "",
+        version: meta?.version ?? "",
+        description: meta?.description ?? "",
+        author: meta?.author ?? "",
+      };
+    } catch (error) {
+      console.warn("Failed to load modpack metadata for profile:", error);
+    }
     showExportModal = true;
   }
 
   async function runSync(auth?: SyncAuth) {
-    await updateConfig({
-      sync_remote_host: syncRemoteHost.trim(),
-      sync_remote_path: syncRemotePath.trim(),
-    });
+    await setSyncDetails(syncRemoteHost.trim(), syncRemotePath.trim());
     syncLogStore.start();
 
     let unlisten: UnlistenFn | null = null;
@@ -526,7 +528,11 @@
   }) {
     showExportModal = false;
     exportMeta = { name, version, description, author };
-    saveModpackMeta(exportMeta);
+    setModpackMeta(name, version, description, author || null).catch(
+      (error) => {
+        console.warn("Failed to save modpack metadata to profile:", error);
+      },
+    );
     let exportDir = "";
     try {
       let modpack = await buildModpackFromInstalled();
@@ -629,9 +635,31 @@
     }
   }
 
+  async function migrateLegacyModpackMeta() {
+    if (typeof window === "undefined") return;
+    const LEGACY_KEY = "ronmodmanager.modpackMeta";
+    const raw = window.localStorage.getItem(LEGACY_KEY);
+    if (!raw) return;
+    window.localStorage.removeItem(LEGACY_KEY);
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.name) {
+        await setModpackMeta(
+          parsed.name,
+          parsed.version ?? "1.0.0",
+          parsed.description ?? null,
+          parsed.author || null,
+        );
+      }
+    } catch (error) {
+      console.warn("Failed to migrate legacy modpack metadata:", error);
+    }
+  }
+
   onMount(async () => {
     runningInFlatpak = await isRunningInFlatpak();
     currentVersion = await getVersion();
+    void migrateLegacyModpackMeta();
     void refresh();
   });
 </script>
@@ -1048,10 +1076,7 @@
         bind:value={syncRemoteHost}
         on:blur={async () => {
           try {
-            await updateConfig({
-              sync_remote_host: syncRemoteHost.trim(),
-              sync_remote_path: syncRemotePath.trim(),
-            });
+            await setSyncDetails(syncRemoteHost.trim(), syncRemotePath.trim());
           } catch (error) {
             toastStore.error(`Sync settings: ${String(error)}`);
           }
@@ -1063,10 +1088,7 @@
         bind:value={syncRemotePath}
         on:blur={async () => {
           try {
-            await updateConfig({
-              sync_remote_host: syncRemoteHost.trim(),
-              sync_remote_path: syncRemotePath.trim(),
-            });
+            await setSyncDetails(syncRemoteHost.trim(), syncRemotePath.trim());
           } catch (error) {
             toastStore.error(`Sync settings: ${String(error)}`);
           }

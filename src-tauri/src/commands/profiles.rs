@@ -65,6 +65,9 @@ pub async fn save_profile(
         profile.created_at = existing.created_at;
         profile.broken_mods = existing.broken_mods;
         profile.no_world_gen = existing.no_world_gen;
+        profile.modpack_meta = existing.modpack_meta;
+        profile.sync_remote_host = existing.sync_remote_host;
+        profile.sync_remote_path = existing.sync_remote_path;
     }
     if let Some(desc) = description {
         profile = profile.with_description(desc);
@@ -76,6 +79,108 @@ pub async fn save_profile(
 #[tauri::command]
 pub async fn delete_profile(name: String) -> Result<()> {
     services::profiles::delete_profile(&name)
+}
+
+#[tauri::command]
+pub async fn get_modpack_meta(
+    state: State<'_, AppState>,
+) -> Result<Option<crate::models::ModpackMeta>> {
+    let config = state.get_config()?;
+    let active_profile_name = match config.active_profile {
+        Some(name) => name,
+        None => return Ok(None),
+    };
+
+    Ok(services::profiles::get_profile(&active_profile_name)?
+        .and_then(|profile| profile.modpack_meta))
+}
+
+#[tauri::command]
+pub async fn set_modpack_meta(
+    name: String,
+    version: String,
+    description: Option<String>,
+    author: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<()> {
+    let config = state.get_config()?;
+    let active_profile_name = config
+        .active_profile
+        .ok_or_else(|| AppError::Validation("No active profile".to_string()))?;
+
+    let mut profile = services::profiles::get_profile(&active_profile_name)?.ok_or_else(|| {
+        AppError::Validation(format!("Profile '{}' not found", active_profile_name))
+    })?;
+
+    profile.modpack_meta = Some(crate::models::ModpackMeta {
+        name,
+        version,
+        description: description.unwrap_or_default(),
+        author,
+    });
+    services::profiles::save_profile(&profile)?;
+    Ok(())
+}
+
+pub fn resolve_sync_details(
+    state: &State<'_, AppState>,
+) -> Result<(Option<String>, Option<String>)> {
+    let config = state.get_config()?;
+    let Some(active_profile_name) = config.active_profile.clone() else {
+        return Ok((
+            config.sync_remote_host.clone(),
+            config.sync_remote_path.clone(),
+        ));
+    };
+
+    match services::profiles::get_profile(&active_profile_name)? {
+        Some(profile) => Ok((
+            profile
+                .sync_remote_host
+                .or_else(|| config.sync_remote_host.clone()),
+            profile
+                .sync_remote_path
+                .or_else(|| config.sync_remote_path.clone()),
+        )),
+        None => Ok((
+            config.sync_remote_host.clone(),
+            config.sync_remote_path.clone(),
+        )),
+    }
+}
+
+#[tauri::command]
+pub async fn get_sync_details(state: State<'_, AppState>) -> Result<crate::models::SyncDetails> {
+    let (host, path) = resolve_sync_details(&state)?;
+    Ok(crate::models::SyncDetails { host, path })
+}
+
+#[tauri::command]
+pub async fn set_sync_details(
+    host: Option<String>,
+    path: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<()> {
+    let config = state.get_config()?;
+    let active_profile_name = config
+        .active_profile
+        .ok_or_else(|| AppError::Validation("No active profile".to_string()))?;
+
+    let mut profile = services::profiles::get_profile(&active_profile_name)?.ok_or_else(|| {
+        AppError::Validation(format!("Profile '{}' not found", active_profile_name))
+    })?;
+
+    profile.sync_remote_host = normalize(host);
+    profile.sync_remote_path = normalize(path);
+    services::profiles::save_profile(&profile)?;
+    Ok(())
+}
+
+/// Trim and treat empty strings as None so clearing an input removes the stored value.
+fn normalize(value: Option<String>) -> Option<String> {
+    value
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 #[tauri::command]

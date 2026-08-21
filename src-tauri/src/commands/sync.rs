@@ -65,11 +65,11 @@ pub async fn sync_modpack_to_remote(
         )));
     }
 
-    let remote_host = config.sync_remote_host.as_deref().ok_or_else(|| {
+    let (remote_host, remote_path) = crate::commands::profiles::resolve_sync_details(&state)?;
+    let remote_host = remote_host.as_deref().ok_or_else(|| {
         AppError::Validation("No remote host configured. Set it in Settings.".to_string())
     })?;
-    let remote_path = config
-        .sync_remote_path
+    let remote_path = remote_path
         .clone()
         .ok_or_else(|| AppError::Validation("No remote path configured.".to_string()))?;
 
