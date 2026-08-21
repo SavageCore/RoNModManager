@@ -192,6 +192,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
     AlertTriangle,
+    ArrowUp,
     ArrowUpCircle,
     Calendar,
     Copy,
@@ -345,6 +346,19 @@
   let selectedMods = new Set<string>();
   let showBulkCollectionModal = false;
   let showBulkTagModal = false;
+  let showScrollTop = false;
+  let scrollContainer: HTMLElement | null = null;
+  let modListRegion: HTMLElement | null = null;
+  const SCROLL_TOP_THRESHOLD = 300;
+
+  function updateScrollTopVisibility() {
+    showScrollTop =
+      !!scrollContainer && scrollContainer.scrollTop > SCROLL_TOP_THRESHOLD;
+  }
+
+  function scrollToTop() {
+    scrollContainer?.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   function extractModIoInputFromDroppedText(raw: string): string | null {
     const candidates = raw
@@ -1390,6 +1404,14 @@
     void refresh();
     void loadModUpdates();
 
+    scrollContainer = modListRegion?.closest("main") ?? null;
+    if (scrollContainer) {
+      scrollContainer.addEventListener("scroll", updateScrollTopVisibility, {
+        passive: true,
+      });
+      updateScrollTopVisibility();
+    }
+
     const unsubPending = pendingInstallUrl.subscribe((url) => {
       if (url) {
         pendingInstallUrl.set(null);
@@ -1473,6 +1495,7 @@
 
     return () => {
       console.log("Cleaning up mods page listeners");
+      scrollContainer?.removeEventListener("scroll", updateScrollTopVisibility);
       unsubPending();
       window.removeEventListener("focus", handleAppFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -1829,6 +1852,7 @@
 
 <!-- Gale-style Mod List -->
 <div
+  bind:this={modListRegion}
   role="region"
   aria-label="Mod list with drag and drop support"
   style="background: var(--clr-surface); border-color: {isDraggingOver
@@ -2510,3 +2534,15 @@
     }}
   />
 </div>
+
+{#if showScrollTop}
+  <button
+    class="fixed right-6 z-[800] flex h-10 w-10 items-center justify-center rounded-full border shadow-lg transition-transform hover:scale-105 cursor-pointer"
+    style="bottom: calc(2.25rem + 1rem); background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text);"
+    on:click={scrollToTop}
+    aria-label="Scroll to top"
+    title="Back to top"
+  >
+    <ArrowUp size={18} />
+  </button>
+{/if}
