@@ -58,6 +58,13 @@ pub async fn sync_modpack_to_remote(
         })?;
     let export_dir = PathBuf::from(export_dir);
 
+    if !export_dir.exists() {
+        return Err(AppError::Validation(format!(
+            "Export directory '{}' not found - export a modpack first.",
+            export_dir.display()
+        )));
+    }
+
     let remote_host = config.sync_remote_host.as_deref().ok_or_else(|| {
         AppError::Validation("No remote host configured. Set it in Settings.".to_string())
     })?;
@@ -353,8 +360,9 @@ async fn list_remote_files(sftp: &SftpSession, base: &str) -> Result<HashMap<Str
 fn list_local_files(base: &Path) -> Result<HashMap<String, u64>> {
     let mut map = HashMap::new();
 
-    let top = std::fs::read_dir(base)
-        .map_err(|e| AppError::Validation(format!("Cannot read export dir: {e}")))?;
+    let top = std::fs::read_dir(base).map_err(|e| {
+        AppError::Validation(format!("Cannot read export dir '{}': {e}", base.display()))
+    })?;
 
     for entry in top.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
