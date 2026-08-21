@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter};
 
 use crate::models::{ProgressEvent, Result};
 use crate::services::{downloader, installer};
-use crate::state::{app_data_root, AppState};
+use crate::state::app_data_root;
 
 /// Pinned: mod 8300 (and the wider Ready or Not Lua-modding scene) targets this
 /// UE4SS release. Bump both consts together to move to a newer version.
@@ -27,7 +27,7 @@ pub fn is_installed(game_path: &Path) -> bool {
 /// once UE4SS is on disk.
 pub async fn ensure_installed(
     app: &AppHandle,
-    state: &State<'_, AppState>,
+    client: &reqwest::Client,
     game_path: &Path,
     temp_root: &Path,
 ) -> Result<()> {
@@ -52,7 +52,7 @@ pub async fn ensure_installed(
     std::fs::create_dir_all(&archives_root)?;
     let archive_path = archives_root.join(UE4SS_ARCHIVE_NAME);
 
-    let content_hash = downloader::download_file(&state.client, UE4SS_URL, &archive_path).await?;
+    let content_hash = downloader::download_file(client, UE4SS_URL, &archive_path).await?;
 
     let context = installer::InstallContext {
         game_path: game_path.to_path_buf(),
@@ -67,14 +67,21 @@ pub async fn ensure_installed(
         &archive_path,
         &context,
         app,
-        state,
+        client,
         temp_root,
         None,
         Some(content_hash),
     )
     .await?;
 
-    let _ = crate::commands::mods::add_mod_to_active_profile(state, UE4SS_ARCHIVE_NAME);
+    let active_profile =
+        crate::state::load_config_from_path(&crate::state::app_config_root()?.join("config.json"))
+            .map(|config| config.active_profile)
+            .unwrap_or(None);
+    let _ = crate::commands::mods::add_mod_to_active_profile(
+        active_profile.as_deref(),
+        UE4SS_ARCHIVE_NAME,
+    );
 
     Ok(())
 }

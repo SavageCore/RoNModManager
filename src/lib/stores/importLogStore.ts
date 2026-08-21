@@ -106,6 +106,10 @@ function createImportLogStore() {
       return;
     }
     if (state.operation === "complete" || state.operation === "error") return;
+    // Downloads run concurrently with installs, so their progress events
+    // can't be attributed to a single mod - the queue status text already
+    // shows waiting/downloading state per row.
+    if (state.operation.includes("download")) return;
     const label = phaseLabel(state.operation, state.message);
     if (!seenLabels.has(label)) {
       seenLabels.add(label);

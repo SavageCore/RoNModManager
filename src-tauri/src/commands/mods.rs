@@ -305,13 +305,15 @@ fn remove_mod_from_active_profile(state: &State<'_, AppState>, mod_name: &str) -
     Ok(())
 }
 
-pub(crate) fn add_mod_to_active_profile(state: &State<'_, AppState>, mod_name: &str) -> Result<()> {
-    let config = state.get_config()?;
-    let Some(active_profile_name) = config.active_profile else {
+pub(crate) fn add_mod_to_active_profile(
+    active_profile: Option<&str>,
+    mod_name: &str,
+) -> Result<()> {
+    let Some(active_profile_name) = active_profile else {
         return Ok(());
     };
 
-    let Some(mut profile) = profiles::get_profile(&active_profile_name)? else {
+    let Some(mut profile) = profiles::get_profile(active_profile_name)? else {
         return Ok(());
     };
 
@@ -603,9 +605,105 @@ pub async fn install_mods(
         },
     );
 
-    let mut downloaded_files: Vec<(PathBuf, Option<String>)> = Vec::with_capacity(total);
+    let (download_tx, mut download_rx) = tokio::sync::mpsc::channel::<(PathBuf, Option<String>)>(4);
+    let install_err: std::sync::Arc<tokio::sync::Mutex<Option<AppError>>> =
+        std::sync::Arc::new(tokio::sync::Mutex::new(None));
 
+    let install_context = installer::InstallContext {
+        game_path: game_path.clone(),
+        mods_path: mods_path.clone(),
+        savegames_path,
+        backup_path,
+    };
+
+    // Consumer: installs each archive as soon as the download producer hands it
+    // off, so installs overlap with the (possibly slow) download queue instead of
+    // waiting for every file to finish downloading first.
+    let consumer_app = app.clone();
+    let consumer_client = state.client.clone();
+    let consumer_pack = pack.clone();
+    let consumer_download_root = download_root.clone();
+    let consumer_err = install_err.clone();
+    let consumer = tokio::spawn(async move {
+        let mut failed = false;
+        while let Some((file, download_hash)) = download_rx.recv().await {
+            if failed {
+                // Keep draining so the producer never blocks on a full channel.
+                continue;
+            }
+            let file_name = file
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let _ = consumer_app.emit(
+                "install_progress",
+                &ProgressEvent::new_install(&file_name, 50.0),
+            );
+            let result = install_downloaded_file(
+                &file,
+                &install_context,
+                &consumer_app,
+                &consumer_client,
+                &consumer_download_root,
+                None,
+                download_hash.clone(),
+            )
+            .await;
+
+            let result = result.and_then(|_| {
+                if let Some(ref pack_data) = consumer_pack {
+                    if !pack_data.addons.is_empty() {
+                        let is_parent = pack_data.addons.contains_key(&file_name);
+                        let is_addon =
+                            !is_parent && pack_data.addons.values().any(|v| v.contains(&file_name));
+                        if is_parent || is_addon {
+                            let mut local_map = addon_map::read_addon_map().unwrap_or_default();
+                            if is_parent {
+                                if let Some(addon_archives) = pack_data.addons.get(&file_name) {
+                                    let entry = local_map.entry(file_name.clone()).or_default();
+                                    for a in addon_archives {
+                                        if !entry.contains(a) {
+                                            entry.push(a.clone());
+                                        }
+                                    }
+                                }
+                            } else {
+                                for (parent, addons) in &pack_data.addons {
+                                    if addons.contains(&file_name) {
+                                        let entry = local_map.entry(parent.clone()).or_default();
+                                        if !entry.contains(&file_name) {
+                                            entry.push(file_name.clone());
+                                        }
+                                    }
+                                }
+                            }
+                            addon_map::write_addon_map(&local_map)?;
+                        }
+                    }
+                }
+                Ok(())
+            });
+
+            if let Err(e) = result {
+                let mut slot = consumer_err.lock().await;
+                if slot.is_none() {
+                    *slot = Some(e);
+                }
+                failed = true;
+            }
+        }
+    });
+
+    // Producer: download loop. Each completed archive is pushed straight to the
+    // consumer channel rather than being buffered until every download finishes.
     for (idx, entry) in filtered_manifest.files.iter().enumerate() {
+        {
+            let slot = install_err.lock().await;
+            if slot.is_some() {
+                break;
+            }
+        }
         let local_path = download_root.join(&entry.path);
         let archive_name = Path::new(&entry.path)
             .file_name()
@@ -617,7 +715,9 @@ pub async fn install_mods(
         if local_path.exists() {
             let actual_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
             if entry.size == 0 || actual_size == entry.size {
-                downloaded_files.push((local_path, None));
+                if download_tx.send((local_path, None)).await.is_err() {
+                    break;
+                }
                 continue;
             }
         }
@@ -660,7 +760,7 @@ pub async fn install_mods(
             if let Some(parent) = local_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            std::fs::copy(&found, &local_path)?;
+            let _ = std::fs::copy(&found, &local_path);
             let _ = app.emit(
                 "install_progress",
                 &ProgressEvent {
@@ -673,7 +773,13 @@ pub async fn install_mods(
                 },
             );
             // Pass the validated MD5 through so install does not re-hash.
-            downloaded_files.push((local_path, expected_md5.map(|h| h.to_string())));
+            if download_tx
+                .send((local_path, expected_md5.map(|h| h.to_string())))
+                .await
+                .is_err()
+            {
+                break;
+            }
             continue;
         }
 
@@ -716,94 +822,42 @@ pub async fn install_mods(
 
         if download_hash.is_none() {
             let remote = format!("{}/mods/{}", modpack_url.trim_end_matches('/'), entry.path);
-            download_hash =
-                Some(downloader::download_file(&state.client, &remote, &local_path).await?);
+            match downloader::download_file(&state.client, &remote, &local_path).await {
+                Ok(hash) => download_hash = Some(hash),
+                Err(e) => {
+                    let mut slot = install_err.lock().await;
+                    if slot.is_none() {
+                        *slot = Some(e);
+                    }
+                    break;
+                }
+            }
         }
 
         if entry.size > 0 {
             let actual_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
             if actual_size != entry.size {
-                return Err(AppError::Validation(format!(
-                    "Size mismatch for {}: expected {} bytes, got {}",
-                    entry.path, entry.size, actual_size
-                )));
-            }
-        }
-
-        downloaded_files.push((local_path, download_hash));
-    }
-
-    let _ = app.emit(
-        "install_progress",
-        &ProgressEvent {
-            operation: "install_start".to_string(),
-            file: String::new(),
-            percent: 50.0,
-            message: format!("Installing {} mods...", downloaded_files.len()),
-            total_bytes: None,
-            processed_bytes: None,
-        },
-    );
-
-    let install_context = installer::InstallContext {
-        game_path: game_path.clone(),
-        mods_path: mods_path.clone(),
-        savegames_path,
-        backup_path,
-    };
-
-    for (index, (file, download_hash)) in downloaded_files.iter().enumerate() {
-        let file_name = file
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unknown")
-            .to_string();
-        let progress_pct = 50.0 + (index as f32 / downloaded_files.len() as f32) * 49.0;
-        let _ = app.emit(
-            "install_progress",
-            &ProgressEvent::new_install(&file_name, progress_pct),
-        );
-        install_downloaded_file(
-            file,
-            &install_context,
-            &app,
-            &state,
-            &download_root,
-            None,
-            download_hash.clone(),
-        )
-        .await?;
-
-        if let Some(ref pack_data) = pack {
-            if !pack_data.addons.is_empty() {
-                let is_parent = pack_data.addons.contains_key(&file_name);
-                let is_addon =
-                    !is_parent && pack_data.addons.values().any(|v| v.contains(&file_name));
-                if is_parent || is_addon {
-                    let mut local_map = addon_map::read_addon_map().unwrap_or_default();
-                    if is_parent {
-                        if let Some(addon_archives) = pack_data.addons.get(&file_name) {
-                            let entry = local_map.entry(file_name.clone()).or_default();
-                            for a in addon_archives {
-                                if !entry.contains(a) {
-                                    entry.push(a.clone());
-                                }
-                            }
-                        }
-                    } else {
-                        for (parent, addons) in &pack_data.addons {
-                            if addons.contains(&file_name) {
-                                let entry = local_map.entry(parent.clone()).or_default();
-                                if !entry.contains(&file_name) {
-                                    entry.push(file_name.clone());
-                                }
-                            }
-                        }
-                    }
-                    let _ = addon_map::write_addon_map(&local_map);
+                let mut slot = install_err.lock().await;
+                if slot.is_none() {
+                    *slot = Some(AppError::Validation(format!(
+                        "Size mismatch for {}: expected {} bytes, got {}",
+                        entry.path, entry.size, actual_size
+                    )));
                 }
+                break;
             }
         }
+
+        if download_tx.send((local_path, download_hash)).await.is_err() {
+            break;
+        }
+    }
+    drop(download_tx);
+
+    let _ = consumer.await;
+
+    if let Some(e) = install_err.lock().await.take() {
+        return Err(e);
     }
 
     let _ = app.emit("install_progress", &ProgressEvent::new_complete());
@@ -2383,7 +2437,7 @@ pub async fn install_local_mod(
         &path,
         &context,
         &app,
-        &state,
+        &state.client,
         &temp_root,
         pak_filter_set.as_ref(),
         precomputedHash,
@@ -2392,7 +2446,8 @@ pub async fn install_local_mod(
     {
         Ok(is_duplicate) => {
             if let Some(installed_mod_name) = path.file_name().and_then(|n| n.to_str()) {
-                let _ = add_mod_to_active_profile(&state, installed_mod_name);
+                let _ =
+                    add_mod_to_active_profile(config.active_profile.as_deref(), installed_mod_name);
             }
             sync_active_profile_links(&state)?;
             let _ = app.emit(
@@ -2548,7 +2603,7 @@ pub(crate) async fn install_downloaded_file(
     path: &PathBuf,
     context: &installer::InstallContext,
     app: &AppHandle,
-    state: &State<'_, AppState>,
+    client: &reqwest::Client,
     temp_root: &Path,
     pak_filter: Option<&HashSet<String>>,
     precomputed_hash: Option<String>,
@@ -2638,7 +2693,7 @@ pub(crate) async fn install_downloaded_file(
             // the UE4SS archive it downloads.
             Box::pin(crate::services::ue4ss::ensure_installed(
                 app,
-                state,
+                client,
                 &context.game_path,
                 temp_root,
             ))

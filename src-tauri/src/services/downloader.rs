@@ -51,10 +51,47 @@ fn normalise_download_name(name: &str) -> String {
     .to_string()
 }
 
+/// True when a file in Downloads refers to the same download as `expected`.
+/// Beyond normalised equality this tolerates Nexus CDN suffixes — the browser
+/// often saves `Mod-6603-6-2.zip` as `Mod-6603-6-2-1778691223.zip`. Callers
+/// still validate the candidate by size/hash, so a suffix match alone can't
+/// pair the wrong file.
+fn download_names_match(candidate: &str, expected: &str) -> bool {
+    let normalised_candidate = normalise_download_name(candidate);
+    let normalised_expected = normalise_download_name(expected);
+    if normalised_candidate == normalised_expected {
+        return true;
+    }
+
+    // Suffix tolerance: "<expected-stem>-<digits> <ext>". Both normalised
+    // names are "stem ext", so compare stems and require the extra segment
+    // to be dash-separated digits only.
+    let (cand_stem, cand_ext) = match normalised_candidate.rsplit_once(' ') {
+        Some(parts) => parts,
+        None => return false,
+    };
+    let (exp_stem, exp_ext) = match normalised_expected.rsplit_once(' ') {
+        Some(parts) => parts,
+        None => return false,
+    };
+    if cand_ext != exp_ext || !cand_stem.starts_with(exp_stem) {
+        return false;
+    }
+    let extra = &cand_stem[exp_stem.len()..];
+    let Some(digits_part) = extra.strip_prefix('-') else {
+        return false;
+    };
+    !digits_part.is_empty()
+        && digits_part
+            .split('-')
+            .all(|segment| !segment.is_empty() && segment.chars().all(|c| c.is_ascii_digit()))
+}
+
 /// Look for a file the user has already downloaded in their Downloads folder that
 /// matches what we were about to fetch. Tries an exact name match first, then
 /// falls back to a tolerant scan (normalised whitespace/case, browser dedup
-/// suffixes like ` (1)`) — skipping any in-progress partials.
+/// suffixes like ` (1)`, Nexus CDN suffixes like `-1778691223`) — skipping any
+/// in-progress partials.
 ///
 /// When an MD5 is provided the candidate is validated by hash (reporting progress
 /// via `on_progress`, since hashing a large archive is slow); when `expected_size`
@@ -81,7 +118,6 @@ where
             exact
         } else {
             // Tolerant scan: normalised name match, skip in-progress files
-            let normalised_expected = normalise_download_name(filename);
             let mut found = None;
             for entry in std::fs::read_dir(&download_dir).ok()?.flatten() {
                 let path = entry.path();
@@ -97,7 +133,7 @@ where
                     continue;
                 }
                 if let Some(fname) = path.file_name().and_then(|n| n.to_str()) {
-                    if normalise_download_name(fname) == normalised_expected {
+                    if download_names_match(fname, filename) {
                         found = Some(path);
                         break;
                     }
@@ -215,6 +251,36 @@ mod tests {
             normalise_download_name("Something Completely Different.zip"),
             base
         );
+    }
+
+    #[test]
+    fn download_names_match_tolerates_cdn_suffixes() {
+        let expected = "HK416D-6603-6-2.zip";
+        // Exact
+        assert!(download_names_match(expected, expected));
+        // Nexus CDN timestamp suffix (the reported real-world case)
+        assert!(download_names_match(
+            "HK416D-6603-6-2-1778691223.zip",
+            expected
+        ));
+        // Case-insensitive
+        assert!(download_names_match(
+            "hk416d-6603-6-2-1778691223.ZIP",
+            expected
+        ));
+        // Different extension does not match
+        assert!(!download_names_match(
+            "HK416D-6603-6-2-1778691223.rar",
+            expected
+        ));
+        // Different name with digits appended does not match
+        assert!(!download_names_match(
+            "SomeOtherMod-6603-6-2-1778691223.zip",
+            expected
+        ));
+        // Prefix must end on a dash-digit boundary - a longer mod name that
+        // merely starts with the expected stem is not a suffix match
+        assert!(!download_names_match("HK416D-6603-6-2-X.zip", expected));
     }
 
     #[tokio::test]
