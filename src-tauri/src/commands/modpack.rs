@@ -89,7 +89,9 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
 
     let all_manifests = manifest_manager.list_all_manifests()?;
     for (archive_name, manifest) in all_manifests {
-        let is_enabled = profile.installed_mod_names.contains(&archive_name);
+        if !profile.installed_mod_names.contains(&archive_name) {
+            continue;
+        }
 
         let source_url = manifest.source_url.as_ref().map(|url| {
             url.split('#')
@@ -122,7 +124,7 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
         mods.insert(
             archive_name,
             ModEntry {
-                enabled: is_enabled,
+                enabled: true,
                 source_url,
                 content_hash,
                 selected_pak_files,
@@ -132,9 +134,16 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
     }
 
     for (name, mod_archives) in &profile.collections {
-        let is_collection_enabled = profile.enabled_collections.contains(name);
-        let mut sorted_mods = mod_archives.clone();
+        let mut sorted_mods: Vec<String> = mod_archives
+            .iter()
+            .filter(|a| mods.contains_key(*a))
+            .cloned()
+            .collect();
+        if sorted_mods.is_empty() {
+            continue;
+        }
         sorted_mods.sort_by_key(|a| a.to_lowercase());
+        let is_collection_enabled = profile.enabled_collections.contains(name);
 
         collections.insert(
             name.clone(),
@@ -155,7 +164,14 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
 
     let mut tags: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (tag_name, mod_archives) in &profile.tags {
-        let mut sorted = mod_archives.clone();
+        let mut sorted: Vec<String> = mod_archives
+            .iter()
+            .filter(|a| mods.contains_key(*a))
+            .cloned()
+            .collect();
+        if sorted.is_empty() {
+            continue;
+        }
         sorted.sort_by_key(|a| a.to_lowercase());
         tags.insert(tag_name.clone(), sorted);
     }
@@ -163,10 +179,16 @@ pub async fn build_modpack_from_installed(state: State<'_, AppState>) -> Result<
     let broken: BTreeMap<String, String> = profile
         .broken_mods
         .iter()
+        .filter(|(k, _)| mods.contains_key(*k))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
-    let mut no_world_gen = profile.no_world_gen.clone();
+    let mut no_world_gen: Vec<String> = profile
+        .no_world_gen
+        .iter()
+        .filter(|a| mods.contains_key(*a))
+        .cloned()
+        .collect();
     no_world_gen.sort_by_key(|a| a.to_lowercase());
 
     Ok(ModPack {
@@ -328,11 +350,12 @@ pub async fn export_modpack_to_file(
         .mods
         .iter()
         .filter(|(_, entry)| {
-            entry
-                .source_url
-                .as_ref()
-                .map(|u| !u.to_lowercase().contains("mod.io"))
-                .unwrap_or(true)
+            entry.enabled
+                && entry
+                    .source_url
+                    .as_ref()
+                    .map(|u| !u.to_lowercase().contains("mod.io"))
+                    .unwrap_or(true)
         })
         .map(|(k, _)| k.clone())
         .collect();
