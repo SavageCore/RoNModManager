@@ -1,10 +1,11 @@
 use std::collections::HashSet;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{Chain, Cursor, Read, Seek, SeekFrom, Take, Write};
 use std::path::{Path, PathBuf};
 
 use unrar::Archive as RarArchive;
-use zip::ZipArchive;
+use zip::read::ZipFile;
+use zip::{CompressionMethod, ZipArchive};
 
 use crate::models::{AppError, Result};
 use crate::services::hasher;
@@ -207,6 +208,78 @@ pub fn install_archive(archive_path: &Path, context: &InstallContext) -> Result<
     install_archive_with_progress(archive_path, context, |_| {}, None)
 }
 
+type LzmaEntryDecoder = xz2::read::XzDecoder<Chain<Cursor<Vec<u8>>, Take<fs::File>>>;
+
+enum ZipEntrySource<'a> {
+    Zip(ZipFile<'a, fs::File>),
+    Lzma(LzmaEntryDecoder),
+}
+
+impl Read for ZipEntrySource<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            ZipEntrySource::Zip(entry) => entry.read(buf),
+            ZipEntrySource::Lzma(decoder) => decoder.read(buf),
+        }
+    }
+}
+
+fn open_lzma_zip_entry(
+    archive_path: &Path,
+    entry: &ZipFile<'_, fs::File>,
+) -> Result<LzmaEntryDecoder> {
+    if entry.encrypted() {
+        return Err(AppError::Validation(format!(
+            "encrypted LZMA zip entry '{}' is not supported",
+            entry.name()
+        )));
+    }
+
+    let data_start = entry.data_start().ok_or_else(|| {
+        AppError::Validation(format!(
+            "missing data offset for zip entry '{}'",
+            entry.name()
+        ))
+    })?;
+    let compressed_size = entry.compressed_size();
+    if compressed_size < 9 {
+        return Err(AppError::Validation(format!(
+            "truncated LZMA zip entry '{}'",
+            entry.name()
+        )));
+    }
+
+    let mut raw = fs::File::open(archive_path)?;
+    raw.seek(SeekFrom::Start(data_start))?;
+
+    let mut header = [0u8; 4];
+    raw.read_exact(&mut header)?;
+    let props_size = u16::from_le_bytes([header[2], header[3]]);
+    if props_size != 5 {
+        return Err(AppError::Validation(format!(
+            "unexpected LZMA properties size of {props_size} in zip entry '{}'",
+            entry.name()
+        )));
+    }
+    let mut properties = [0u8; 5];
+    raw.read_exact(&mut properties)?;
+    let dict_size = u32::from_le_bytes(properties[1..5].try_into().expect("slice is 4 bytes"));
+
+    let uncompressed_size = entry.size();
+    let mut lzma_header = Vec::with_capacity(13);
+    lzma_header.push(properties[0]);
+    lzma_header.extend_from_slice(&dict_size.to_le_bytes());
+    lzma_header.extend_from_slice(&uncompressed_size.to_le_bytes());
+
+    let stream = xz2::stream::Stream::new_lzma_decoder(u64::MAX)
+        .map_err(|e| AppError::Validation(format!("failed to init LZMA decoder: {e}")))?;
+
+    Ok(xz2::read::XzDecoder::new_stream(
+        Cursor::new(lzma_header).chain(raw.take(compressed_size - 9)),
+        stream,
+    ))
+}
+
 pub fn install_archive_with_progress<F>(
     archive_path: &Path,
     context: &InstallContext,
@@ -272,7 +345,7 @@ where
     };
 
     for index in 0..archive.len() {
-        let mut entry = archive.by_index(index).map_err(|error| {
+        let entry = archive.by_index(index).map_err(|error| {
             AppError::Validation(format!("invalid zip entry at {index}: {error}"))
         })?;
 
@@ -282,10 +355,19 @@ where
 
         let entry_path = rewrite_entry_path(PathBuf::from(entry.name()));
         let entry_name = entry.name().to_string();
+        let entry_crc32 = entry.crc32();
+        let entry_size = entry.size();
+        let mut source = match entry.compression() {
+            CompressionMethod::Lzma => {
+                ZipEntrySource::Lzma(open_lzma_zip_entry(archive_path, &entry)?)
+            }
+            _ => ZipEntrySource::Zip(entry),
+        };
+
         match classify_archive_entry(&entry_path) {
             ModFileType::PakMod => {
                 let file_name = entry_path.file_name().ok_or_else(|| {
-                    AppError::Validation(format!("invalid pak path in archive: {}", entry.name()))
+                    AppError::Validation(format!("invalid pak path in archive: {}", entry_name))
                 })?;
                 let filter_key = normalize_archive_path(&entry_path);
                 if pak_filter
@@ -297,11 +379,16 @@ where
                 }
                 fs::create_dir_all(&context.mods_path)?;
                 let destination = context.mods_path.join(file_name);
-                let entry_size = entry.size();
-                if copy_entry_if_changed_with_progress(&mut entry, &destination, |chunk| {
-                    processed_bytes = processed_bytes.saturating_add(chunk);
-                    emit_progress(&entry_name, processed_bytes);
-                })? {
+                if copy_entry_if_changed_with_progress(
+                    &mut source,
+                    entry_crc32,
+                    &entry_name,
+                    &destination,
+                    |chunk| {
+                        processed_bytes = processed_bytes.saturating_add(chunk);
+                        emit_progress(&entry_name, processed_bytes);
+                    },
+                )? {
                     report.installed += 1;
                     report.installed_files.push(destination);
                 } else {
@@ -313,15 +400,20 @@ where
             ModFileType::WorldGenSave => {
                 // Always install .sav files to savegames_path
                 let file_name = entry_path.file_name().ok_or_else(|| {
-                    AppError::Validation(format!("invalid save path in archive: {}", entry.name()))
+                    AppError::Validation(format!("invalid save path in archive: {}", entry_name))
                 })?;
                 fs::create_dir_all(&context.savegames_path)?;
                 let destination = context.savegames_path.join(file_name);
-                let entry_size = entry.size();
-                if copy_entry_if_changed_with_progress(&mut entry, &destination, |chunk| {
-                    processed_bytes = processed_bytes.saturating_add(chunk);
-                    emit_progress(&entry_name, processed_bytes);
-                })? {
+                if copy_entry_if_changed_with_progress(
+                    &mut source,
+                    entry_crc32,
+                    &entry_name,
+                    &destination,
+                    |chunk| {
+                        processed_bytes = processed_bytes.saturating_add(chunk);
+                        emit_progress(&entry_name, processed_bytes);
+                    },
+                )? {
                     report.installed += 1;
                     report.installed_files.push(destination);
                 } else {
@@ -332,15 +424,20 @@ where
             }
             ModFileType::BankMod => {
                 let file_name = entry_path.file_name().ok_or_else(|| {
-                    AppError::Validation(format!("invalid bank path in archive: {}", entry.name()))
+                    AppError::Validation(format!("invalid bank path in archive: {}", entry_name))
                 })?;
                 fs::create_dir_all(&context.mods_path)?;
                 let destination = context.mods_path.join(file_name);
-                let entry_size = entry.size();
-                if copy_entry_if_changed_with_progress(&mut entry, &destination, |chunk| {
-                    processed_bytes = processed_bytes.saturating_add(chunk);
-                    emit_progress(&entry_name, processed_bytes);
-                })? {
+                if copy_entry_if_changed_with_progress(
+                    &mut source,
+                    entry_crc32,
+                    &entry_name,
+                    &destination,
+                    |chunk| {
+                        processed_bytes = processed_bytes.saturating_add(chunk);
+                        emit_progress(&entry_name, processed_bytes);
+                    },
+                )? {
                     report.installed += 1;
                     report.installed_files.push(destination);
                 } else {
@@ -351,15 +448,20 @@ where
             }
             ModFileType::ConfigMod => {
                 let file_name = entry_path.file_name().ok_or_else(|| {
-                    AppError::Validation(format!("invalid ini path in archive: {}", entry.name()))
+                    AppError::Validation(format!("invalid ini path in archive: {}", entry_name))
                 })?;
                 fs::create_dir_all(&context.mods_path)?;
                 let destination = context.mods_path.join(file_name);
-                let entry_size = entry.size();
-                if copy_entry_if_changed_with_progress(&mut entry, &destination, |chunk| {
-                    processed_bytes = processed_bytes.saturating_add(chunk);
-                    emit_progress(&entry_name, processed_bytes);
-                })? {
+                if copy_entry_if_changed_with_progress(
+                    &mut source,
+                    entry_crc32,
+                    &entry_name,
+                    &destination,
+                    |chunk| {
+                        processed_bytes = processed_bytes.saturating_add(chunk);
+                        emit_progress(&entry_name, processed_bytes);
+                    },
+                )? {
                     report.installed += 1;
                     report.installed_files.push(destination);
                 } else {
@@ -373,7 +475,7 @@ where
                     entry_path.strip_prefix("_overrides").map_err(|_| {
                         AppError::Validation(format!(
                             "invalid override path in archive: {}",
-                            entry.name()
+                            entry_name
                         ))
                     })?
                 } else {
@@ -391,11 +493,16 @@ where
                     report.overrides_backed_up += 1;
                 }
 
-                let entry_size = entry.size();
-                if copy_entry_if_changed_with_progress(&mut entry, &destination, |chunk| {
-                    processed_bytes = processed_bytes.saturating_add(chunk);
-                    emit_progress(&entry_name, processed_bytes);
-                })? {
+                if copy_entry_if_changed_with_progress(
+                    &mut source,
+                    entry_crc32,
+                    &entry_name,
+                    &destination,
+                    |chunk| {
+                        processed_bytes = processed_bytes.saturating_add(chunk);
+                        emit_progress(&entry_name, processed_bytes);
+                    },
+                )? {
                     report.installed += 1;
                     report.installed_files.push(destination);
                 } else {
@@ -771,7 +878,9 @@ fn copy_file_if_changed(source: &Path, destination: &Path) -> Result<bool> {
 }
 
 fn copy_entry_if_changed_with_progress<F>(
-    entry: &mut zip::read::ZipFile<'_, std::fs::File>,
+    source: &mut ZipEntrySource<'_>,
+    expected_crc32: u32,
+    entry_label: &str,
     destination: &Path,
     mut on_chunk: F,
 ) -> Result<bool>
@@ -780,7 +889,7 @@ where
 {
     if destination.exists() {
         let current_crc = hasher::crc32_file(destination)?;
-        if current_crc == entry.crc32() {
+        if current_crc == expected_crc32 {
             return Ok(false);
         }
     }
@@ -789,15 +898,27 @@ where
         fs::create_dir_all(parent)?;
     }
 
+    let verify_crc32 = matches!(source, ZipEntrySource::Lzma(_));
+    let mut crc32 = crc32fast::Hasher::new();
     let mut output = fs::File::create(destination)?;
     let mut buffer = [0u8; 64 * 1024];
     loop {
-        let read = entry.read(&mut buffer)?;
+        let read = source.read(&mut buffer).map_err(|error| {
+            AppError::Validation(format!("failed to extract '{entry_label}': {error}"))
+        })?;
         if read == 0 {
             break;
         }
+        if verify_crc32 {
+            crc32.update(&buffer[..read]);
+        }
         output.write_all(&buffer[..read])?;
         on_chunk(read as u64);
+    }
+    if verify_crc32 && crc32.finalize() != expected_crc32 {
+        return Err(AppError::Validation(format!(
+            "CRC mismatch while extracting '{entry_label}'"
+        )));
     }
     Ok(true)
 }
@@ -851,6 +972,24 @@ mod tests {
 
         zip.finish().unwrap();
         archive_path
+    }
+
+    #[test]
+    fn installs_lzma_compressed_zip_entries() {
+        let temp = TempDir::new().unwrap();
+        let archive_path = Path::new("tests/fixtures/lzma_pak.zip");
+        let context = create_context(temp.path());
+        fs::create_dir_all(&context.mods_path).unwrap();
+        let report = install_archive(archive_path, &context).unwrap();
+
+        assert_eq!(report.installed, 1);
+        let installed = &report.installed_files[0];
+        assert_eq!(
+            installed.file_name().unwrap(),
+            "pakchunk99-Mods_CleanHouse_P.pak"
+        );
+        let expected = b"pak-bytes-for-lzma-entry".repeat(8);
+        assert_eq!(fs::read(installed).unwrap(), expected);
     }
 
     #[test]
