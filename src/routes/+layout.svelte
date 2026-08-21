@@ -763,7 +763,7 @@
 
     <!-- Main content area -->
     <main style="background: var(--clr-bg);" class="flex-1 overflow-auto p-6">
-      <div class="mx-auto max-w-5xl">
+      <div class="mx-auto h-full max-w-5xl">
         <slot />
       </div>
     </main>

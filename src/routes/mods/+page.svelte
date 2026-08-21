@@ -348,7 +348,7 @@
   let showBulkTagModal = false;
   let showScrollTop = false;
   let scrollContainer: HTMLElement | null = null;
-  let modListRegion: HTMLElement | null = null;
+  let modListScrollEl: HTMLElement | null = null;
   const SCROLL_TOP_THRESHOLD = 300;
 
   function updateScrollTopVisibility() {
@@ -1404,7 +1404,7 @@
     void refresh();
     void loadModUpdates();
 
-    scrollContainer = modListRegion?.closest("main") ?? null;
+    scrollContainer = modListScrollEl;
     if (scrollContainer) {
       scrollContainer.addEventListener("scroll", updateScrollTopVisibility, {
         passive: true,
@@ -1669,870 +1669,899 @@
   />
 {/if}
 
-<!-- Filter Controls -->
-<div class="flex flex-col sm:flex-row gap-2 mb-4 items-center">
-  <input
-    class="input flex-1 min-w-0"
-    type="text"
-    placeholder="Search mods by name..."
-    bind:value={modSearch}
-    style="max-width: 320px;"
-  />
-  <select
-    class="input"
-    bind:value={modSourceFilter}
-    style="width: 140px; padding-top: 0; padding-bottom: 0; height: 2.5rem;"
-    aria-label="Filter by source"
-  >
-    <option value="all">All Sources</option>
-    <option value="modio">Mod.io</option>
-    <option value="nexus">Nexus</option>
-  </select>
-  <select
-    class="input"
-    bind:value={$modSortOrder}
-    style="width: 150px; padding-top: 0; padding-bottom: 0; height: 2.5rem;"
-    aria-label="Sort order"
-  >
-    <option value="alpha-asc">A → Z</option>
-    <option value="alpha-desc">Z → A</option>
-    <option value="date-desc">Newest First</option>
-    <option value="date-asc">Oldest First</option>
-    <option value="files-desc">Most Files First</option>
-    <option value="files-asc">Fewest Files First</option>
-    <option value="missing-sav-first">Missing World Gen</option>
-  </select>
-  <button
-    on:click={() => ($showBroken = !$showBroken)}
-    style={$showBroken
-      ? "background: color-mix(in srgb, var(--clr-danger-300) 15%, transparent); border-color: var(--clr-danger-300); color: var(--clr-danger-300);"
-      : "border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
-    class="inline-flex items-center gap-1.5 rounded border px-2 text-xs cursor-pointer"
-    style:height="2.5rem"
-    title={$showBroken
-      ? "Broken mods visible - click to hide"
-      : "Broken mods hidden - click to show"}
-  >
-    <AlertTriangle size={13} />
-    {$showBroken ? "Showing broken" : "Show broken"}
-  </button>
-</div>
-
-{#if effectiveTagNames.length > 0}
-  <div class="flex flex-wrap items-center gap-1.5 mb-3">
-    <span
-      style="color: var(--clr-text-secondary);"
-      class="text-xs flex items-center gap-1 mr-1"
-    >
-      <Tag size={12} />
-      Filter by tag:
-    </span>
-    {#each effectiveTagNames as tagName (tagName)}
-      <button
-        on:click={() => {
-          if (activeTagFilters.has(tagName)) {
-            activeTagFilters.delete(tagName);
-          } else {
-            activeTagFilters.add(tagName);
-          }
-          activeTagFilters = activeTagFilters;
-        }}
-        style={activeTagFilters.has(tagName)
-          ? "background: color-mix(in srgb, var(--clr-success-300) 20%, transparent); border-color: var(--clr-success-300); color: var(--clr-success-300);"
-          : "border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
-        class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs cursor-pointer"
-      >
-        <Tag size={10} />
-        {tagName}
-      </button>
-    {/each}
-    {#if activeTagFilters.size > 0}
-      <button
-        on:click={() => {
-          activeTagFilters = new Set();
-        }}
-        style="color: var(--clr-text-secondary);"
-        class="text-xs underline ml-1 cursor-pointer"
-      >
-        Clear
-      </button>
-    {/if}
-  </div>
-{/if}
-
-{#if effectiveCollectionNames.length > 0}
-  <div class="flex flex-wrap items-center gap-1.5 mb-3">
-    <span
-      style="color: var(--clr-text-secondary);"
-      class="text-xs flex items-center gap-1 mr-1"
-    >
-      <Layers size={12} />
-      Filter by collection:
-    </span>
-    {#each effectiveCollectionNames as col (col)}
-      {@const colColor =
-        effectiveCollectionColors[col] ?? "var(--clr-accent-300)"}
-      <button
-        on:click={() => {
-          if (activeCollectionFilters.has(col)) {
-            activeCollectionFilters.delete(col);
-          } else {
-            activeCollectionFilters.add(col);
-          }
-          activeCollectionFilters = activeCollectionFilters;
-        }}
-        style={activeCollectionFilters.has(col)
-          ? `background: color-mix(in srgb, ${colColor} 20%, transparent); border-color: ${colColor}; color: ${colColor};`
-          : "border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
-        class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs cursor-pointer"
-      >
-        <Layers size={10} />
-        {col}
-      </button>
-    {/each}
-    {#if activeCollectionFilters.size > 0}
-      <button
-        on:click={() => {
-          activeCollectionFilters = new Set();
-        }}
-        style="color: var(--clr-text-secondary);"
-        class="text-xs underline ml-1 cursor-pointer"
-      >
-        Clear
-      </button>
-    {/if}
-  </div>
-{/if}
-
-{#if showUe4ssLaunchOptionBanner}
-  <div
-    role="alert"
-    style="background: var(--clr-surface); border-color: var(--clr-danger-300);"
-    class="border rounded-lg p-3 mb-4 flex items-start gap-3"
-  >
-    <AlertTriangle
-      size={18}
-      style="color: var(--clr-danger-300); flex-shrink: 0; margin-top: 2px;"
+<div class="flex h-full min-h-0 flex-col">
+  <!-- Filter Controls -->
+  <div class="flex flex-col sm:flex-row gap-2 mb-4 items-center">
+    <input
+      class="input flex-1 min-w-0"
+      type="text"
+      placeholder="Search mods by name..."
+      bind:value={modSearch}
+      style="max-width: 320px;"
     />
-    <div class="flex-1 min-w-0">
-      <div style="color: var(--clr-text);" class="text-sm font-semibold">
-        UE4SS needs a Steam launch option on Linux
-      </div>
-      <div style="color: var(--clr-text-secondary);" class="text-xs mt-1">
-        Proton loads its own dwmapi.dll, so UE4SS mods won't load until you add
-        this launch option to Ready or Not in Steam (Properties → General →
-        Launch Options):
-      </div>
-      <code
-        style="background: var(--adw-border-color); color: var(--clr-text);"
-        class="block mt-2 rounded px-2 py-1 text-xs overflow-x-auto"
-      >
-        {UE4SS_LAUNCH_OPTION}
-      </code>
-    </div>
-    <div class="flex items-center gap-2 flex-shrink-0">
-      <button
-        on:click={copyUe4ssLaunchOption}
-        class="btn btn-sm"
-        title="Copy launch option"
-      >
-        <Copy size={14} class="inline mr-1" />
-        Copy
-      </button>
-      <button
-        on:click={dismissUe4ssLaunchOptionBanner}
-        class="btn btn-sm"
-        title="Dismiss"
-      >
-        <X size={14} class="inline" />
-      </button>
-    </div>
+    <select
+      class="input"
+      bind:value={modSourceFilter}
+      style="width: 140px; padding-top: 0; padding-bottom: 0; height: 2.5rem;"
+      aria-label="Filter by source"
+    >
+      <option value="all">All Sources</option>
+      <option value="modio">Mod.io</option>
+      <option value="nexus">Nexus</option>
+    </select>
+    <select
+      class="input"
+      bind:value={$modSortOrder}
+      style="width: 150px; padding-top: 0; padding-bottom: 0; height: 2.5rem;"
+      aria-label="Sort order"
+    >
+      <option value="alpha-asc">A → Z</option>
+      <option value="alpha-desc">Z → A</option>
+      <option value="date-desc">Newest First</option>
+      <option value="date-asc">Oldest First</option>
+      <option value="files-desc">Most Files First</option>
+      <option value="files-asc">Fewest Files First</option>
+      <option value="missing-sav-first">Missing World Gen</option>
+    </select>
+    <button
+      on:click={() => ($showBroken = !$showBroken)}
+      style={$showBroken
+        ? "background: color-mix(in srgb, var(--clr-danger-300) 15%, transparent); border-color: var(--clr-danger-300); color: var(--clr-danger-300);"
+        : "border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
+      class="inline-flex items-center gap-1.5 rounded border px-2 text-xs cursor-pointer"
+      style:height="2.5rem"
+      title={$showBroken
+        ? "Broken mods visible - click to hide"
+        : "Broken mods hidden - click to show"}
+    >
+      <AlertTriangle size={13} />
+      {$showBroken ? "Showing broken" : "Show broken"}
+    </button>
   </div>
-{/if}
 
-<!-- Gale-style Mod List -->
-<div
-  bind:this={modListRegion}
-  role="region"
-  aria-label="Mod list with drag and drop support"
-  style="background: var(--clr-surface); border-color: {isDraggingOver
-    ? 'var(--clr-primary-300)'
-    : 'var(--adw-border-color)'}; border-width: {isDraggingOver
-    ? '2px'
-    : '1px'};"
-  class="border rounded-lg p-4 transition-all {isDraggingOver
-    ? 'shadow-lg'
-    : ''}"
->
-  <div class="flex items-center justify-between mb-4 gap-3">
-    <h2 style="color: var(--clr-text);" class="text-lg font-semibold">Mods</h2>
-    <div class="flex items-center gap-2">
-      <button
-        on:click={() => {
-          showAddModModal = true;
-        }}
-        class="btn btn-sm btn-success"
-        title="Add Mod"
+  {#if effectiveTagNames.length > 0}
+    <div class="flex flex-wrap items-center gap-1.5 mb-3">
+      <span
+        style="color: var(--clr-text-secondary);"
+        class="text-xs flex items-center gap-1 mr-1"
       >
-        <Plus size={16} class="inline mr-1" />
-        Add Mod
-      </button>
-      <button
-        on:click={() => {
-          addModpackPanelStore.open("add");
-        }}
-        class="btn btn-sm btn-primary"
-        title="Add Modpack"
-      >
-        <Globe size={16} class="inline mr-1" />
-        Add Modpack
-      </button>
-      {#if updatableGroups.length > 0}
+        <Tag size={12} />
+        Filter by tag:
+      </span>
+      {#each effectiveTagNames as tagName (tagName)}
         <button
-          class="btn btn-sm btn-primary"
-          on:click={handleUpdateAll}
-          title="Update every mod with an available update"
+          on:click={() => {
+            if (activeTagFilters.has(tagName)) {
+              activeTagFilters.delete(tagName);
+            } else {
+              activeTagFilters.add(tagName);
+            }
+            activeTagFilters = activeTagFilters;
+          }}
+          style={activeTagFilters.has(tagName)
+            ? "background: color-mix(in srgb, var(--clr-success-300) 20%, transparent); border-color: var(--clr-success-300); color: var(--clr-success-300);"
+            : "border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
+          class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs cursor-pointer"
         >
-          <ArrowUpCircle size={16} class="inline mr-1" />
-          Update All ({updatableGroups.length})
+          <Tag size={10} />
+          {tagName}
+        </button>
+      {/each}
+      {#if activeTagFilters.size > 0}
+        <button
+          on:click={() => {
+            activeTagFilters = new Set();
+          }}
+          style="color: var(--clr-text-secondary);"
+          class="text-xs underline ml-1 cursor-pointer"
+        >
+          Clear
         </button>
       {/if}
-      <button
-        class="btn btn-sm btn-danger"
-        on:click={() => {
-          void handleUninstallAll();
-        }}
-        disabled={modGroups.length === 0}
-        title="Uninstall every installed mod"
-      >
-        <Trash2 size={16} class="inline mr-1" />
-        Uninstall All
-      </button>
-    </div>
-  </div>
-
-  <p style="color: var(--clr-text-secondary);" class="text-sm mb-4">
-    Each profile has its own set of active mods. Use the checkboxes to enable or
-    disable mods for this profile.
-  </p>
-
-  {#if filteredModGroups.length > 0}
-    <div class="flex items-center gap-2 mb-2">
-      <label class="gale-switch" title="Toggle all mods on/off">
-        <input
-          type="checkbox"
-          checked={effectiveModGroups.length > 0 &&
-            effectiveModGroups.every((g) =>
-              effectiveProfileMods.includes(g.name),
-            )}
-          on:change={() => {
-            void handleToggleAll();
-          }}
-          disabled={effectiveModGroups.length === 0 ||
-            !activeProfileName ||
-            $incognitoMode}
-        />
-        <span class="gale-switch-track"></span>
-      </label>
-      <span style="color: var(--clr-text-secondary);" class="text-sm"
-        >Toggle all</span
-      >
     </div>
   {/if}
 
-  {#if selectedMods.size > 0}
-    <div
-      style="background: color-mix(in srgb, var(--clr-primary-300) 10%, var(--clr-surface-variant)); border-color: var(--clr-primary-300);"
-      class="flex items-center gap-3 px-3 py-2 rounded border mb-2 text-sm"
-    >
-      <span style="color: var(--clr-text);" class="font-medium flex-1">
-        {selectedMods.size} mod{selectedMods.size === 1 ? "" : "s"} selected
+  {#if effectiveCollectionNames.length > 0}
+    <div class="flex flex-wrap items-center gap-1.5 mb-3">
+      <span
+        style="color: var(--clr-text-secondary);"
+        class="text-xs flex items-center gap-1 mr-1"
+      >
+        <Layers size={12} />
+        Filter by collection:
       </span>
-      <button
-        class="btn btn-sm btn-primary"
-        on:click={() => {
-          showBulkCollectionModal = true;
-        }}
-        disabled={!activeProfileName}
-      >
-        <Library size={14} class="inline mr-1" />
-        Manage Collections
-      </button>
-      <button
-        class="btn btn-sm btn-success"
-        on:click={() => {
-          showBulkTagModal = true;
-        }}
-        disabled={!activeProfileName}
-      >
-        <Tag size={14} class="inline mr-1" />
-        Manage Tags
-      </button>
-      <button
-        class="btn btn-sm btn-danger"
-        on:click={() => {
-          void handleUninstallSelected();
-        }}
-      >
-        <Trash2 size={14} class="inline mr-1" />
-        Uninstall
-      </button>
-      <button class="btn btn-sm" on:click={clearSelection}>Clear</button>
+      {#each effectiveCollectionNames as col (col)}
+        {@const colColor =
+          effectiveCollectionColors[col] ?? "var(--clr-accent-300)"}
+        <button
+          on:click={() => {
+            if (activeCollectionFilters.has(col)) {
+              activeCollectionFilters.delete(col);
+            } else {
+              activeCollectionFilters.add(col);
+            }
+            activeCollectionFilters = activeCollectionFilters;
+          }}
+          style={activeCollectionFilters.has(col)
+            ? `background: color-mix(in srgb, ${colColor} 20%, transparent); border-color: ${colColor}; color: ${colColor};`
+            : "border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
+          class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs cursor-pointer"
+        >
+          <Layers size={10} />
+          {col}
+        </button>
+      {/each}
+      {#if activeCollectionFilters.size > 0}
+        <button
+          on:click={() => {
+            activeCollectionFilters = new Set();
+          }}
+          style="color: var(--clr-text-secondary);"
+          class="text-xs underline ml-1 cursor-pointer"
+        >
+          Clear
+        </button>
+      {/if}
     </div>
   {/if}
 
-  {#if filteredModGroups.length === 0}
-    <p
-      style="color: var(--clr-text-secondary);"
-      class="text-sm text-center py-8"
+  {#if showUe4ssLaunchOptionBanner}
+    <div
+      role="alert"
+      style="background: var(--clr-surface); border-color: var(--clr-danger-300);"
+      class="border rounded-lg p-3 mb-4 flex items-start gap-3"
     >
-      {#if modGroups.length === 0}
-        No installed mods yet. Click the + button below to add mods or drag and
-        drop files here.
-      {:else}
-        No mods match your filter.
-      {/if}
+      <AlertTriangle
+        size={18}
+        style="color: var(--clr-danger-300); flex-shrink: 0; margin-top: 2px;"
+      />
+      <div class="flex-1 min-w-0">
+        <div style="color: var(--clr-text);" class="text-sm font-semibold">
+          UE4SS needs a Steam launch option on Linux
+        </div>
+        <div style="color: var(--clr-text-secondary);" class="text-xs mt-1">
+          Proton loads its own dwmapi.dll, so UE4SS mods won't load until you
+          add this launch option to Ready or Not in Steam (Properties → General
+          → Launch Options):
+        </div>
+        <code
+          style="background: var(--adw-border-color); color: var(--clr-text);"
+          class="block mt-2 rounded px-2 py-1 text-xs overflow-x-auto"
+        >
+          {UE4SS_LAUNCH_OPTION}
+        </code>
+      </div>
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <button
+          on:click={copyUe4ssLaunchOption}
+          class="btn btn-sm"
+          title="Copy launch option"
+        >
+          <Copy size={14} class="inline mr-1" />
+          Copy
+        </button>
+        <button
+          on:click={dismissUe4ssLaunchOptionBanner}
+          class="btn btn-sm"
+          title="Dismiss"
+        >
+          <X size={14} class="inline" />
+        </button>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Gale-style Mod List -->
+  <div
+    role="region"
+    aria-label="Mod list with drag and drop support"
+    style="background: var(--clr-surface); border-color: {isDraggingOver
+      ? 'var(--clr-primary-300)'
+      : 'var(--adw-border-color)'}; border-width: {isDraggingOver
+      ? '2px'
+      : '1px'};"
+    class="flex min-h-0 flex-1 flex-col border rounded-lg p-4 transition-all {isDraggingOver
+      ? 'shadow-lg'
+      : ''}"
+  >
+    <div class="flex items-center justify-between mb-4 gap-3">
+      <h2 style="color: var(--clr-text);" class="text-lg font-semibold">
+        Mods
+      </h2>
+      <div class="flex items-center gap-2">
+        <button
+          on:click={() => {
+            showAddModModal = true;
+          }}
+          class="btn btn-sm btn-success"
+          title="Add Mod"
+        >
+          <Plus size={16} class="inline mr-1" />
+          Add Mod
+        </button>
+        <button
+          on:click={() => {
+            addModpackPanelStore.open("add");
+          }}
+          class="btn btn-sm btn-primary"
+          title="Add Modpack"
+        >
+          <Globe size={16} class="inline mr-1" />
+          Add Modpack
+        </button>
+        {#if updatableGroups.length > 0}
+          <button
+            class="btn btn-sm btn-primary"
+            on:click={handleUpdateAll}
+            title="Update every mod with an available update"
+          >
+            <ArrowUpCircle size={16} class="inline mr-1" />
+            Update All ({updatableGroups.length})
+          </button>
+        {/if}
+        <button
+          class="btn btn-sm btn-danger"
+          on:click={() => {
+            void handleUninstallAll();
+          }}
+          disabled={modGroups.length === 0}
+          title="Uninstall every installed mod"
+        >
+          <Trash2 size={16} class="inline mr-1" />
+          Uninstall All
+        </button>
+      </div>
+    </div>
+
+    <p style="color: var(--clr-text-secondary);" class="text-sm mb-4">
+      Each profile has its own set of active mods. Use the checkboxes to enable
+      or disable mods for this profile.
     </p>
-  {:else}
-    <ul class="space-y-2">
-      {#each filteredModGroups as group (group.name)}
-        <li
-          style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
-          class="rounded border group/row"
-          on:contextmenu|preventDefault={async () => {
-            const menu = await Menu.new({
-              items: [
-                await MenuItem.new({
-                  text: "Refresh metadata",
-                  action: () => handleRefreshMetadataSelection(group.name),
-                }),
-                await MenuItem.new({
-                  text: "Manage collections",
-                  action: () =>
-                    openCollectionPicker(
-                      group.name,
-                      group.displayName || group.name,
-                    ),
-                }),
-                await Submenu.new({
-                  text: "Manage tags",
-                  items: [
-                    ...(await Promise.all(
-                      effectiveTagNames.map((tag) =>
-                        CheckMenuItem.new({
-                          text: tag,
-                          checked:
-                            selectedMods.size > 0
-                              ? [...selectedMods].every((m) =>
-                                  (effectiveTags[tag] ?? []).includes(m),
-                                )
-                              : (modToTagsMap[group.name] ?? []).includes(tag),
-                          action: () =>
-                            selectedMods.size > 0
-                              ? toggleBulkModTag(tag)
-                              : toggleModTag(group.name, tag),
-                        }),
-                      ),
-                    )),
-                    ...(effectiveTagNames.length
-                      ? [await PredefinedMenuItem.new({ item: "Separator" })]
-                      : []),
-                    await MenuItem.new({
-                      text: "New tag…",
-                      action: () =>
-                        selectedMods.size > 0
-                          ? (showBulkTagModal = true)
-                          : openTagPicker(
-                              group.name,
-                              group.displayName || group.name,
-                            ),
-                    }),
-                  ],
-                }),
-                await MenuItem.new({
-                  text:
-                    brokenModsMap[group.name] !== undefined
-                      ? "Edit broken note"
-                      : "Mark as broken",
-                  action: () => {
-                    brokenModalModName = group.name;
-                    brokenModalModLabel = group.displayName || group.name;
-                    showBrokenModal = true;
-                  },
-                }),
-                await MenuItem.new({
-                  text: "Manage add-ons",
-                  action: () => openAddOnsModal(group.name),
-                }),
-                await MenuItem.new({
-                  text: group.sourceUrl ? "Edit link" : "Add link",
-                  action: () => {
-                    expandedGroups[group.name] = true;
-                    startEditingSourceUrl(group);
-                  },
-                }),
-              ],
-            });
-            await menu.popup();
+
+    {#if filteredModGroups.length > 0}
+      <div class="flex items-center gap-2 mb-2">
+        <label class="gale-switch" title="Toggle all mods on/off">
+          <input
+            type="checkbox"
+            checked={effectiveModGroups.length > 0 &&
+              effectiveModGroups.every((g) =>
+                effectiveProfileMods.includes(g.name),
+              )}
+            on:change={() => {
+              void handleToggleAll();
+            }}
+            disabled={effectiveModGroups.length === 0 ||
+              !activeProfileName ||
+              $incognitoMode}
+          />
+          <span class="gale-switch-track"></span>
+        </label>
+        <span style="color: var(--clr-text-secondary);" class="text-sm"
+          >Toggle all</span
+        >
+      </div>
+    {/if}
+
+    {#if selectedMods.size > 0}
+      <div
+        style="background: color-mix(in srgb, var(--clr-primary-300) 10%, var(--clr-surface-variant)); border-color: var(--clr-primary-300);"
+        class="flex items-center gap-3 px-3 py-2 rounded border mb-2 text-sm"
+      >
+        <span style="color: var(--clr-text);" class="font-medium flex-1">
+          {selectedMods.size} mod{selectedMods.size === 1 ? "" : "s"} selected
+        </span>
+        <button
+          class="btn btn-sm btn-primary"
+          on:click={() => {
+            showBulkCollectionModal = true;
+          }}
+          disabled={!activeProfileName}
+        >
+          <Library size={14} class="inline mr-1" />
+          Manage Collections
+        </button>
+        <button
+          class="btn btn-sm btn-success"
+          on:click={() => {
+            showBulkTagModal = true;
+          }}
+          disabled={!activeProfileName}
+        >
+          <Tag size={14} class="inline mr-1" />
+          Manage Tags
+        </button>
+        <button
+          class="btn btn-sm btn-danger"
+          on:click={() => {
+            void handleUninstallSelected();
           }}
         >
-          <div class="flex items-center justify-between px-3 py-2 gap-3">
-            <input
-              type="checkbox"
-              class="mod-select-checkbox flex-shrink-0 cursor-pointer"
-              class:is-selection-active={selectedMods.size > 0}
-              style="accent-color: var(--clr-primary-300); width: 15px; height: 15px;"
-              checked={selectedMods.has(group.name)}
-              on:change|stopPropagation={() => toggleModSelection(group.name)}
-              aria-label="Select {group.displayName ?? group.name}"
-            />
-            <button
-              class="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer"
-              on:click={() => toggleGroup(group.name)}
-              title={expandedGroups[group.name] ? "Collapse" : "Expand"}
-            >
-              <span
-                style="color: var(--clr-text-secondary);"
-                class="text-xs w-4 text-center cursor-pointer"
-              >
-                {expandedGroups[group.name] ? "v" : ">"}
-              </span>
-              <div class="min-w-0">
-                {#if editingGroup === group.name}
-                  <input
-                    type="text"
-                    bind:value={editInputValue}
-                    on:blur={() => {
-                      void saveEditedName(group);
-                    }}
-                    on:keydown={(e) => handleNameKeydown(e, group)}
-                    class="text-sm font-medium px-1 py-0.5 rounded border"
-                    style="color: var(--clr-text); background: var(--clr-surface); border-color: var(--clr-primary-300);"
-                    use:focus
-                  />
-                {:else}
-                  <div class="group/name flex items-center gap-1.5">
-                    <SourceIcon
-                      source={getModSource(group.sourceUrl)}
-                      size={16}
-                    />
-                    <p
-                      style="color: var(--clr-text);"
-                      class="text-sm font-medium truncate"
-                    >
-                      {group.displayName || group.name}
-                    </p>
-                    {#if group.sourceUrl}
-                      <a
-                        href={group.sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="ml-1 flex items-center"
-                        title="Open mod page in browser"
-                        tabindex="-1"
-                        style="color: var(--clr-primary-300);"
-                      >
-                        <Globe size={15} />
-                      </a>
-                    {/if}
-                    {#if missingSavMapMods.has(group.name)}
-                      <span
-                        title="No world generation data"
-                        class="flex items-center"
-                      >
-                        <AlertTriangle
-                          size={14}
-                          style="color: #f59e0b; flex-shrink: 0;"
-                        />
-                      </span>
-                    {/if}
-                    {#if brokenModsMap[group.name] !== undefined}
-                      <span
-                        title={brokenModsMap[group.name] || "Marked as broken"}
-                        class="flex items-center"
-                        style="color: var(--clr-danger-300);"
-                      >
-                        <AlertTriangle size={14} style="flex-shrink: 0;" />
-                      </span>
-                    {/if}
-                    {#if group.hasOverrideFiles}
-                      <span
-                        title="Contains game file overrides"
-                        class="flex items-center"
-                      >
-                        <Shield
-                          size={14}
-                          style="color: #f59e0b; flex-shrink: 0;"
-                        />
-                      </span>
-                    {/if}
-                    {#if effectiveModUpdates[group.name] && group.sourceUrl}
-                      <span
-                        role="button"
-                        tabindex="0"
-                        title={`Update available${effectiveModUpdates[group.name].latestVersion ? `: ${effectiveModUpdates[group.name].currentVersion ?? "?"} -> ${effectiveModUpdates[group.name].latestVersion}` : ""}`}
-                        class="flex items-center gap-0.5 cursor-pointer text-xs rounded px-1.5 border"
-                        style="color: #f59e0b; border-color: #f59e0b;"
-                        on:click|stopPropagation={() => {
-                          autoSubmitEntries = [
-                            {
-                              url: group.sourceUrl ?? "",
-                              replacing: group.name,
-                              displayName: group.displayName ?? group.name,
-                            },
-                          ];
-                          showAddModModal = true;
-                        }}
-                        on:keydown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            autoSubmitEntries = [
-                              {
-                                url: group.sourceUrl ?? "",
-                                replacing: group.name,
-                                displayName: group.displayName ?? group.name,
-                              },
-                            ];
-                            showAddModModal = true;
-                          }
-                        }}
-                      >
-                        <ArrowUpCircle size={12} style="flex-shrink: 0;" />
-                        {effectiveModUpdates[group.name].latestVersion
-                          ? `v${stripVersionPrefix(effectiveModUpdates[group.name].latestVersion ?? "")}`
-                          : "Update"}
-                      </span>
-                    {/if}
-                    <span
-                      role="button"
-                      tabindex="0"
-                      on:click|stopPropagation={() => startEditingName(group)}
-                      on:keydown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          startEditingName(group);
-                        }
-                      }}
-                      class="opacity-0 group-hover/name:opacity-100 transition-opacity cursor-pointer"
-                      title="Edit display name"
-                    >
-                      <Pencil
-                        size={14}
-                        style="color: var(--clr-text-secondary);"
-                      />
-                    </span>
-                  </div>
-                {/if}
-                <p style="color: var(--clr-text-secondary);" class="text-xs">
-                  {group.files.length + (group.addonFiles?.length || 0)} installed
-                  file{group.files.length + (group.addonFiles?.length || 0) ===
-                  1
-                    ? ""
-                    : "s"}
-                  {#if group.installedVersion}
-                    <span class="mx-1">·</span><span
-                      >v{stripVersionPrefix(group.installedVersion)}</span
-                    >
-                  {/if}
-                  {#if group.addonFiles?.length}
-                    <span style="color: var(--clr-primary-300);">
-                      (+{group.addonFiles.length} add-on)</span
-                    >
-                  {/if}
-                  {#if group.installedAt}
-                    <span class="mx-1">·</span><span
-                      title={new Date(
-                        group.installedAt * 1000,
-                      ).toLocaleString()}
-                      >added {formatDistanceToNow(
-                        new Date(group.installedAt * 1000),
-                        { addSuffix: true },
-                      )}</span
-                    >
-                  {/if}
-                </p>
-              </div>
-            </button>
+          <Trash2 size={14} class="inline mr-1" />
+          Uninstall
+        </button>
+        <button class="btn btn-sm" on:click={clearSelection}>Clear</button>
+      </div>
+    {/if}
 
-            <div class="flex items-center gap-2">
-              {#if (modToCollectionsMap[group.name] ?? []).length > 0 || (modToTagsMap[group.name] ?? []).length > 0}
-                <div class="flex items-center gap-1 flex-wrap">
-                  {#each modToCollectionsMap[group.name] ?? [] as col (col)}
-                    {@const colColor = effectiveCollectionColors[col] ?? null}
-                    {@const isColActive = activeCollectionFilters.has(col)}
-                    <button
-                      on:click|stopPropagation={() => {
-                        if (isColActive) {
-                          activeCollectionFilters.delete(col);
-                        } else {
-                          activeCollectionFilters.add(col);
-                        }
-                        activeCollectionFilters = activeCollectionFilters;
-                      }}
-                      style={colColor
-                        ? `background: color-mix(in srgb, ${colColor} ${isColActive ? 20 : 12}%, transparent); border-color: color-mix(in srgb, ${colColor} ${isColActive ? 100 : 40}%, transparent); color: ${colColor};`
-                        : "background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
-                      class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none cursor-pointer"
-                      title="Filter by collection: {col}"
-                    >
-                      <Layers size={10} />
-                      {col}
-                    </button>
-                  {/each}
-                  {#each modToTagsMap[group.name] ?? [] as tag (tag)}
-                    {@const isTagActive = activeTagFilters.has(tag)}
-                    <button
-                      on:click|stopPropagation={() => {
-                        if (isTagActive) {
-                          activeTagFilters.delete(tag);
-                        } else {
-                          activeTagFilters.add(tag);
-                        }
-                        activeTagFilters = activeTagFilters;
-                      }}
-                      style="background: color-mix(in srgb, var(--clr-success-300) {isTagActive
-                        ? 20
-                        : 12}%, transparent); border-color: color-mix(in srgb, var(--clr-success-300) {isTagActive
-                        ? 100
-                        : 40}%, transparent); color: var(--clr-success-300);"
-                      class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none cursor-pointer"
-                      title="Filter by tag: {tag}"
-                    >
-                      <Tag size={10} />
-                      {tag}
-                    </button>
-                  {/each}
-                </div>
-              {/if}
-              <label
-                class="gale-switch"
-                class:opacity-50={!!brokenModsMap[group.name]}
-                title={brokenModsMap[group.name] !== undefined
-                  ? `Broken: ${brokenModsMap[group.name] || "no note"}`
-                  : `${effectiveProfileMods.includes(group.name) ? "Disable" : "Enable"} ${group.displayName ?? group.name}`}
-              >
+    <div class="min-h-0 flex-1 overflow-y-auto" bind:this={modListScrollEl}>
+      {#if filteredModGroups.length === 0}
+        <p
+          style="color: var(--clr-text-secondary);"
+          class="text-sm text-center py-8"
+        >
+          {#if modGroups.length === 0}
+            No installed mods yet. Click the + button below to add mods or drag
+            and drop files here.
+          {:else}
+            No mods match your filter.
+          {/if}
+        </p>
+      {:else}
+        <ul class="space-y-2">
+          {#each filteredModGroups as group (group.name)}
+            <li
+              style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
+              class="rounded border group/row"
+              on:contextmenu|preventDefault={async () => {
+                const menu = await Menu.new({
+                  items: [
+                    await MenuItem.new({
+                      text: "Refresh metadata",
+                      action: () => handleRefreshMetadataSelection(group.name),
+                    }),
+                    await MenuItem.new({
+                      text: "Manage collections",
+                      action: () =>
+                        openCollectionPicker(
+                          group.name,
+                          group.displayName || group.name,
+                        ),
+                    }),
+                    await Submenu.new({
+                      text: "Manage tags",
+                      items: [
+                        ...(await Promise.all(
+                          effectiveTagNames.map((tag) =>
+                            CheckMenuItem.new({
+                              text: tag,
+                              checked:
+                                selectedMods.size > 0
+                                  ? [...selectedMods].every((m) =>
+                                      (effectiveTags[tag] ?? []).includes(m),
+                                    )
+                                  : (modToTagsMap[group.name] ?? []).includes(
+                                      tag,
+                                    ),
+                              action: () =>
+                                selectedMods.size > 0
+                                  ? toggleBulkModTag(tag)
+                                  : toggleModTag(group.name, tag),
+                            }),
+                          ),
+                        )),
+                        ...(effectiveTagNames.length
+                          ? [
+                              await PredefinedMenuItem.new({
+                                item: "Separator",
+                              }),
+                            ]
+                          : []),
+                        await MenuItem.new({
+                          text: "New tag…",
+                          action: () =>
+                            selectedMods.size > 0
+                              ? (showBulkTagModal = true)
+                              : openTagPicker(
+                                  group.name,
+                                  group.displayName || group.name,
+                                ),
+                        }),
+                      ],
+                    }),
+                    await MenuItem.new({
+                      text:
+                        brokenModsMap[group.name] !== undefined
+                          ? "Edit broken note"
+                          : "Mark as broken",
+                      action: () => {
+                        brokenModalModName = group.name;
+                        brokenModalModLabel = group.displayName || group.name;
+                        showBrokenModal = true;
+                      },
+                    }),
+                    await MenuItem.new({
+                      text: "Manage add-ons",
+                      action: () => openAddOnsModal(group.name),
+                    }),
+                    await MenuItem.new({
+                      text: group.sourceUrl ? "Edit link" : "Add link",
+                      action: () => {
+                        expandedGroups[group.name] = true;
+                        startEditingSourceUrl(group);
+                      },
+                    }),
+                  ],
+                });
+                await menu.popup();
+              }}
+            >
+              <div class="flex items-center justify-between px-3 py-2 gap-3">
                 <input
                   type="checkbox"
-                  checked={effectiveProfileMods.includes(group.name)}
-                  on:change={() => toggleGroupState(group.name)}
-                  disabled={!activeProfileName ||
-                    !!brokenModsMap[group.name] ||
-                    $incognitoMode}
+                  class="mod-select-checkbox flex-shrink-0 cursor-pointer"
+                  class:is-selection-active={selectedMods.size > 0}
+                  style="accent-color: var(--clr-primary-300); width: 15px; height: 15px;"
+                  checked={selectedMods.has(group.name)}
+                  on:change|stopPropagation={() =>
+                    toggleModSelection(group.name)}
+                  aria-label="Select {group.displayName ?? group.name}"
                 />
-                <span class="gale-switch-track"></span>
-              </label>
-
-              <button
-                class="icon-btn-danger"
-                title={`Uninstall ${group.displayName ?? group.name}`}
-                on:click={() => {
-                  void handleUninstallArchive(group);
-                }}
-              >
-                <Trash2 size={14} aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-
-          {#if expandedGroups[group.name]}
-            <div
-              style="border-color: var(--adw-border-color);"
-              class="border-t px-3 py-2 space-y-1"
-            >
-              <div class="flex items-center gap-2 text-xs mb-2">
-                <span
-                  style="color: var(--clr-text-secondary);"
-                  class="inline-flex items-center gap-1 flex-shrink-0"
+                <button
+                  class="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer"
+                  on:click={() => toggleGroup(group.name)}
+                  title={expandedGroups[group.name] ? "Collapse" : "Expand"}
                 >
-                  <LinkIcon size={13} />
-                  Source
-                </span>
-                {#if editingUrlGroup === group.name}
-                  <input
-                    type="url"
-                    bind:value={editUrlInputValue}
-                    on:keydown={(e) => handleSourceUrlKeydown(e, group)}
-                    class="flex-1 min-w-0 text-xs px-2 py-1 rounded border"
-                    style="color: var(--clr-text); background: var(--clr-surface); border-color: var(--clr-primary-300);"
-                    placeholder="https://www.nexusmods.com/..."
-                    use:focus
-                  />
-                  <button
-                    class="btn primary btn-sm"
-                    on:click={() => {
-                      void saveSourceUrl(group);
-                    }}
-                  >
-                    Save
-                  </button>
-                  <button class="btn btn-sm" on:click={cancelEditingSourceUrl}>
-                    Cancel
-                  </button>
-                {:else}
-                  <div class="flex items-center gap-2 flex-1 min-w-0">
-                    {#if group.sourceUrl}
-                      <a
-                        href={group.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        style="color: var(--clr-primary-300);"
-                        class="truncate inline-flex items-center gap-1 flex-1 min-w-0"
-                        title={group.sourceUrl}
-                      >
-                        <span class="truncate">{group.sourceUrl}</span>
-                        <ExternalLink size={12} class="flex-shrink-0" />
-                      </a>
-                    {:else}
-                      <span
-                        style="color: var(--clr-text-secondary);"
-                        class="truncate">No source URL saved</span
-                      >
-                    {/if}
-                  </div>
-                  <button
-                    class="btn btn-sm flex-shrink-0"
-                    on:click={() => startEditingSourceUrl(group)}
-                    title="Edit source URL"
-                  >
-                    {group.sourceUrl ? "Edit Link" : "Add link"}
-                  </button>
-                  <button
-                    class="btn btn-sm flex-shrink-0"
-                    on:click={() => openAddOnsModal(group.name)}
-                    title="Manage add-ons for this mod"
-                  >
-                    Manage Add-ons
-                  </button>
-                {/if}
-              </div>
-
-              {#if group.installedAt}
-                <div class="flex items-center gap-2 text-xs mb-2">
                   <span
                     style="color: var(--clr-text-secondary);"
-                    class="inline-flex items-center gap-1 flex-shrink-0"
+                    class="text-xs w-4 text-center cursor-pointer"
                   >
-                    <Calendar size={13} />
-                    Added
+                    {expandedGroups[group.name] ? "v" : ">"}
                   </span>
-                  <span style="color: var(--clr-text-secondary);">
-                    {new Date(group.installedAt * 1000).toLocaleString()}
-                  </span>
-                </div>
-              {/if}
+                  <div class="min-w-0">
+                    {#if editingGroup === group.name}
+                      <input
+                        type="text"
+                        bind:value={editInputValue}
+                        on:blur={() => {
+                          void saveEditedName(group);
+                        }}
+                        on:keydown={(e) => handleNameKeydown(e, group)}
+                        class="text-sm font-medium px-1 py-0.5 rounded border"
+                        style="color: var(--clr-text); background: var(--clr-surface); border-color: var(--clr-primary-300);"
+                        use:focus
+                      />
+                    {:else}
+                      <div class="group/name flex items-center gap-1.5">
+                        <SourceIcon
+                          source={getModSource(group.sourceUrl)}
+                          size={16}
+                        />
+                        <p
+                          style="color: var(--clr-text);"
+                          class="text-sm font-medium truncate"
+                        >
+                          {group.displayName || group.name}
+                        </p>
+                        {#if group.sourceUrl}
+                          <a
+                            href={group.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="ml-1 flex items-center"
+                            title="Open mod page in browser"
+                            tabindex="-1"
+                            style="color: var(--clr-primary-300);"
+                          >
+                            <Globe size={15} />
+                          </a>
+                        {/if}
+                        {#if missingSavMapMods.has(group.name)}
+                          <span
+                            title="No world generation data"
+                            class="flex items-center"
+                          >
+                            <AlertTriangle
+                              size={14}
+                              style="color: #f59e0b; flex-shrink: 0;"
+                            />
+                          </span>
+                        {/if}
+                        {#if brokenModsMap[group.name] !== undefined}
+                          <span
+                            title={brokenModsMap[group.name] ||
+                              "Marked as broken"}
+                            class="flex items-center"
+                            style="color: var(--clr-danger-300);"
+                          >
+                            <AlertTriangle size={14} style="flex-shrink: 0;" />
+                          </span>
+                        {/if}
+                        {#if group.hasOverrideFiles}
+                          <span
+                            title="Contains game file overrides"
+                            class="flex items-center"
+                          >
+                            <Shield
+                              size={14}
+                              style="color: #f59e0b; flex-shrink: 0;"
+                            />
+                          </span>
+                        {/if}
+                        {#if effectiveModUpdates[group.name] && group.sourceUrl}
+                          <span
+                            role="button"
+                            tabindex="0"
+                            title={`Update available${effectiveModUpdates[group.name].latestVersion ? `: ${effectiveModUpdates[group.name].currentVersion ?? "?"} -> ${effectiveModUpdates[group.name].latestVersion}` : ""}`}
+                            class="flex items-center gap-0.5 cursor-pointer text-xs rounded px-1.5 border"
+                            style="color: #f59e0b; border-color: #f59e0b;"
+                            on:click|stopPropagation={() => {
+                              autoSubmitEntries = [
+                                {
+                                  url: group.sourceUrl ?? "",
+                                  replacing: group.name,
+                                  displayName: group.displayName ?? group.name,
+                                },
+                              ];
+                              showAddModModal = true;
+                            }}
+                            on:keydown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                autoSubmitEntries = [
+                                  {
+                                    url: group.sourceUrl ?? "",
+                                    replacing: group.name,
+                                    displayName:
+                                      group.displayName ?? group.name,
+                                  },
+                                ];
+                                showAddModModal = true;
+                              }
+                            }}
+                          >
+                            <ArrowUpCircle size={12} style="flex-shrink: 0;" />
+                            {effectiveModUpdates[group.name].latestVersion
+                              ? `v${stripVersionPrefix(effectiveModUpdates[group.name].latestVersion ?? "")}`
+                              : "Update"}
+                          </span>
+                        {/if}
+                        <span
+                          role="button"
+                          tabindex="0"
+                          on:click|stopPropagation={() =>
+                            startEditingName(group)}
+                          on:keydown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              startEditingName(group);
+                            }
+                          }}
+                          class="opacity-0 group-hover/name:opacity-100 transition-opacity cursor-pointer"
+                          title="Edit display name"
+                        >
+                          <Pencil
+                            size={14}
+                            style="color: var(--clr-text-secondary);"
+                          />
+                        </span>
+                      </div>
+                    {/if}
+                    <p
+                      style="color: var(--clr-text-secondary);"
+                      class="text-xs"
+                    >
+                      {group.files.length + (group.addonFiles?.length || 0)} installed
+                      file{group.files.length +
+                        (group.addonFiles?.length || 0) ===
+                      1
+                        ? ""
+                        : "s"}
+                      {#if group.installedVersion}
+                        <span class="mx-1">·</span><span
+                          >v{stripVersionPrefix(group.installedVersion)}</span
+                        >
+                      {/if}
+                      {#if group.addonFiles?.length}
+                        <span style="color: var(--clr-primary-300);">
+                          (+{group.addonFiles.length} add-on)</span
+                        >
+                      {/if}
+                      {#if group.installedAt}
+                        <span class="mx-1">·</span><span
+                          title={new Date(
+                            group.installedAt * 1000,
+                          ).toLocaleString()}
+                          >added {formatDistanceToNow(
+                            new Date(group.installedAt * 1000),
+                            { addSuffix: true },
+                          )}</span
+                        >
+                      {/if}
+                    </p>
+                  </div>
+                </button>
 
-              {#each group.files as file (file.path)}
-                <div class="flex items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-2">
+                  {#if (modToCollectionsMap[group.name] ?? []).length > 0 || (modToTagsMap[group.name] ?? []).length > 0}
+                    <div class="flex items-center gap-1 flex-wrap">
+                      {#each modToCollectionsMap[group.name] ?? [] as col (col)}
+                        {@const colColor =
+                          effectiveCollectionColors[col] ?? null}
+                        {@const isColActive = activeCollectionFilters.has(col)}
+                        <button
+                          on:click|stopPropagation={() => {
+                            if (isColActive) {
+                              activeCollectionFilters.delete(col);
+                            } else {
+                              activeCollectionFilters.add(col);
+                            }
+                            activeCollectionFilters = activeCollectionFilters;
+                          }}
+                          style={colColor
+                            ? `background: color-mix(in srgb, ${colColor} ${isColActive ? 20 : 12}%, transparent); border-color: color-mix(in srgb, ${colColor} ${isColActive ? 100 : 40}%, transparent); color: ${colColor};`
+                            : "background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
+                          class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none cursor-pointer"
+                          title="Filter by collection: {col}"
+                        >
+                          <Layers size={10} />
+                          {col}
+                        </button>
+                      {/each}
+                      {#each modToTagsMap[group.name] ?? [] as tag (tag)}
+                        {@const isTagActive = activeTagFilters.has(tag)}
+                        <button
+                          on:click|stopPropagation={() => {
+                            if (isTagActive) {
+                              activeTagFilters.delete(tag);
+                            } else {
+                              activeTagFilters.add(tag);
+                            }
+                            activeTagFilters = activeTagFilters;
+                          }}
+                          style="background: color-mix(in srgb, var(--clr-success-300) {isTagActive
+                            ? 20
+                            : 12}%, transparent); border-color: color-mix(in srgb, var(--clr-success-300) {isTagActive
+                            ? 100
+                            : 40}%, transparent); color: var(--clr-success-300);"
+                          class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none cursor-pointer"
+                          title="Filter by tag: {tag}"
+                        >
+                          <Tag size={10} />
+                          {tag}
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
+                  <label
+                    class="gale-switch"
+                    class:opacity-50={!!brokenModsMap[group.name]}
+                    title={brokenModsMap[group.name] !== undefined
+                      ? `Broken: ${brokenModsMap[group.name] || "no note"}`
+                      : `${effectiveProfileMods.includes(group.name) ? "Disable" : "Enable"} ${group.displayName ?? group.name}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={effectiveProfileMods.includes(group.name)}
+                      on:change={() => toggleGroupState(group.name)}
+                      disabled={!activeProfileName ||
+                        !!brokenModsMap[group.name] ||
+                        $incognitoMode}
+                    />
+                    <span class="gale-switch-track"></span>
+                  </label>
+
                   <button
-                    style="color: var(--clr-text);"
-                    class="truncate text-left hover:underline"
-                    title={file.path}
+                    class="icon-btn-danger"
+                    title={`Uninstall ${group.displayName ?? group.name}`}
                     on:click={() => {
-                      void openInstalledFile(file.path, file.exists);
+                      void handleUninstallArchive(group);
                     }}
                   >
-                    {file.name}
+                    <Trash2 size={14} aria-hidden="true" />
                   </button>
-                  <span
-                    style="color: {file.exists
-                      ? 'var(--clr-success-300)'
-                      : 'var(--clr-danger-300)'};"
-                    class="flex-shrink-0"
-                    title={file.path}
-                  >
-                    {file.exists ? "installed" : "missing"}
-                  </span>
                 </div>
-              {/each}
-              {#if group.addonFiles?.length}
+              </div>
+
+              {#if expandedGroups[group.name]}
                 <div
-                  class="mt-2 text-xs font-semibold"
-                  style="color: var(--clr-primary-300);"
+                  style="border-color: var(--adw-border-color);"
+                  class="border-t px-3 py-2 space-y-1"
                 >
-                  Add-ons:
-                </div>
-                {#each group.addonFiles as file (file.path)}
-                  <div class="flex items-center justify-between gap-3 text-xs">
-                    <button
-                      style="color: var(--clr-text);"
-                      class="truncate text-left hover:underline"
-                      title={file.path}
-                      on:click={() => {
-                        void openInstalledFile(file.path, file.exists);
-                      }}
-                    >
-                      {file.name}
-                    </button>
+                  <div class="flex items-center gap-2 text-xs mb-2">
                     <span
-                      style="color: {file.exists
-                        ? 'var(--clr-success-300)'
-                        : 'var(--clr-danger-300)'};"
-                      class="flex-shrink-0"
-                      title={file.path}
+                      style="color: var(--clr-text-secondary);"
+                      class="inline-flex items-center gap-1 flex-shrink-0"
                     >
-                      {file.exists ? "installed" : "missing"}
+                      <LinkIcon size={13} />
+                      Source
                     </span>
+                    {#if editingUrlGroup === group.name}
+                      <input
+                        type="url"
+                        bind:value={editUrlInputValue}
+                        on:keydown={(e) => handleSourceUrlKeydown(e, group)}
+                        class="flex-1 min-w-0 text-xs px-2 py-1 rounded border"
+                        style="color: var(--clr-text); background: var(--clr-surface); border-color: var(--clr-primary-300);"
+                        placeholder="https://www.nexusmods.com/..."
+                        use:focus
+                      />
+                      <button
+                        class="btn primary btn-sm"
+                        on:click={() => {
+                          void saveSourceUrl(group);
+                        }}
+                      >
+                        Save
+                      </button>
+                      <button
+                        class="btn btn-sm"
+                        on:click={cancelEditingSourceUrl}
+                      >
+                        Cancel
+                      </button>
+                    {:else}
+                      <div class="flex items-center gap-2 flex-1 min-w-0">
+                        {#if group.sourceUrl}
+                          <a
+                            href={group.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style="color: var(--clr-primary-300);"
+                            class="truncate inline-flex items-center gap-1 flex-1 min-w-0"
+                            title={group.sourceUrl}
+                          >
+                            <span class="truncate">{group.sourceUrl}</span>
+                            <ExternalLink size={12} class="flex-shrink-0" />
+                          </a>
+                        {:else}
+                          <span
+                            style="color: var(--clr-text-secondary);"
+                            class="truncate">No source URL saved</span
+                          >
+                        {/if}
+                      </div>
+                      <button
+                        class="btn btn-sm flex-shrink-0"
+                        on:click={() => startEditingSourceUrl(group)}
+                        title="Edit source URL"
+                      >
+                        {group.sourceUrl ? "Edit Link" : "Add link"}
+                      </button>
+                      <button
+                        class="btn btn-sm flex-shrink-0"
+                        on:click={() => openAddOnsModal(group.name)}
+                        title="Manage add-ons for this mod"
+                      >
+                        Manage Add-ons
+                      </button>
+                    {/if}
                   </div>
-                {/each}
+
+                  {#if group.installedAt}
+                    <div class="flex items-center gap-2 text-xs mb-2">
+                      <span
+                        style="color: var(--clr-text-secondary);"
+                        class="inline-flex items-center gap-1 flex-shrink-0"
+                      >
+                        <Calendar size={13} />
+                        Added
+                      </span>
+                      <span style="color: var(--clr-text-secondary);">
+                        {new Date(group.installedAt * 1000).toLocaleString()}
+                      </span>
+                    </div>
+                  {/if}
+
+                  {#each group.files as file (file.path)}
+                    <div
+                      class="flex items-center justify-between gap-3 text-xs"
+                    >
+                      <button
+                        style="color: var(--clr-text);"
+                        class="truncate text-left hover:underline"
+                        title={file.path}
+                        on:click={() => {
+                          void openInstalledFile(file.path, file.exists);
+                        }}
+                      >
+                        {file.name}
+                      </button>
+                      <span
+                        style="color: {file.exists
+                          ? 'var(--clr-success-300)'
+                          : 'var(--clr-danger-300)'};"
+                        class="flex-shrink-0"
+                        title={file.path}
+                      >
+                        {file.exists ? "installed" : "missing"}
+                      </span>
+                    </div>
+                  {/each}
+                  {#if group.addonFiles?.length}
+                    <div
+                      class="mt-2 text-xs font-semibold"
+                      style="color: var(--clr-primary-300);"
+                    >
+                      Add-ons:
+                    </div>
+                    {#each group.addonFiles as file (file.path)}
+                      <div
+                        class="flex items-center justify-between gap-3 text-xs"
+                      >
+                        <button
+                          style="color: var(--clr-text);"
+                          class="truncate text-left hover:underline"
+                          title={file.path}
+                          on:click={() => {
+                            void openInstalledFile(file.path, file.exists);
+                          }}
+                        >
+                          {file.name}
+                        </button>
+                        <span
+                          style="color: {file.exists
+                            ? 'var(--clr-success-300)'
+                            : 'var(--clr-danger-300)'};"
+                          class="flex-shrink-0"
+                          title={file.path}
+                        >
+                          {file.exists ? "installed" : "missing"}
+                        </span>
+                      </div>
+                    {/each}
+                  {/if}
+                </div>
               {/if}
-            </div>
-          {/if}
-        </li>
-      {/each}
-    </ul>
-  {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
 
-  <ManageAddOnsModal
-    isVisible={showAddOnsModal}
-    modName={selectedModName}
-    displayName={modGroups.find((g) => g.name === selectedModName)
-      ?.displayName || selectedModName}
-    addOns={selectedAddOns}
-    noWorldGen={noWorldGenSet.has(selectedModName)}
-    on:close={closeAddOnsModal}
-    on:addAddOns={handleAddAddOns}
-    on:removeAddOn={handleRemoveAddOn}
-    on:toggleNoWorldGen={async (e) => {
-      try {
-        if (e.detail.exempt) {
-          await setModNoWorldGen(selectedModName);
-        } else {
-          await clearModNoWorldGen(selectedModName);
+    <ManageAddOnsModal
+      isVisible={showAddOnsModal}
+      modName={selectedModName}
+      displayName={modGroups.find((g) => g.name === selectedModName)
+        ?.displayName || selectedModName}
+      addOns={selectedAddOns}
+      noWorldGen={noWorldGenSet.has(selectedModName)}
+      on:close={closeAddOnsModal}
+      on:addAddOns={handleAddAddOns}
+      on:removeAddOn={handleRemoveAddOn}
+      on:toggleNoWorldGen={async (e) => {
+        try {
+          if (e.detail.exempt) {
+            await setModNoWorldGen(selectedModName);
+          } else {
+            await clearModNoWorldGen(selectedModName);
+          }
+          noWorldGenSet = new Set(await getNoWorldGenMods());
+        } catch (err) {
+          toastStore.error(
+            `Failed to update world gen setting: ${String(err)}`,
+          );
         }
-        noWorldGenSet = new Set(await getNoWorldGenMods());
-      } catch (err) {
-        toastStore.error(`Failed to update world gen setting: ${String(err)}`);
-      }
-    }}
-  />
+      }}
+    />
 
-  <BrokenModModal
-    isVisible={showBrokenModal}
-    modLabel={brokenModalModLabel}
-    existingNote={brokenModsMap[brokenModalModName] ?? ""}
-    isAlreadyBroken={brokenModsMap[brokenModalModName] !== undefined}
-    on:close={() => (showBrokenModal = false)}
-    on:save={async (e) => {
-      try {
-        await setModBroken(brokenModalModName, e.detail.note);
-        showBrokenModal = false;
-        await refresh();
-      } catch (err) {
-        toastStore.error(`Failed to mark mod as broken: ${String(err)}`);
-      }
-    }}
-    on:clear={async () => {
-      try {
-        await clearModBroken(brokenModalModName);
-        showBrokenModal = false;
-        await refresh();
-      } catch (err) {
-        toastStore.error(`Failed to clear broken flag: ${String(err)}`);
-      }
-    }}
-  />
+    <BrokenModModal
+      isVisible={showBrokenModal}
+      modLabel={brokenModalModLabel}
+      existingNote={brokenModsMap[brokenModalModName] ?? ""}
+      isAlreadyBroken={brokenModsMap[brokenModalModName] !== undefined}
+      on:close={() => (showBrokenModal = false)}
+      on:save={async (e) => {
+        try {
+          await setModBroken(brokenModalModName, e.detail.note);
+          showBrokenModal = false;
+          await refresh();
+        } catch (err) {
+          toastStore.error(`Failed to mark mod as broken: ${String(err)}`);
+        }
+      }}
+      on:clear={async () => {
+        try {
+          await clearModBroken(brokenModalModName);
+          showBrokenModal = false;
+          await refresh();
+        } catch (err) {
+          toastStore.error(`Failed to clear broken flag: ${String(err)}`);
+        }
+      }}
+    />
+  </div>
 </div>
 
 {#if showScrollTop}
