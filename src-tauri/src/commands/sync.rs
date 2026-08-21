@@ -146,6 +146,11 @@ pub async fn sync_modpack_to_remote(
         }
     });
 
+    let total_mods = sorted_files
+        .iter()
+        .filter(|(p, _)| p.starts_with("mods/"))
+        .count();
+    let mut mod_num: usize = 0;
     let mut skipped: usize = 0;
 
     for (done, (rel_path, local_size)) in sorted_files.iter().enumerate() {
@@ -153,6 +158,15 @@ pub async fn sync_modpack_to_remote(
         let needs_upload = remote_size != Some(*local_size);
         let pct = 10.0 + (done as f32 / total.max(1) as f32) * 80.0;
         let display = rel_path.strip_prefix("mods/").unwrap_or(rel_path.as_str());
+        let is_mod = rel_path.starts_with("mods/");
+        if is_mod {
+            mod_num += 1;
+        }
+        let counter_str = if is_mod {
+            format!(" [{mod_num} / {total_mods}]")
+        } else {
+            String::new()
+        };
 
         if needs_upload {
             let local_full = export_dir.join(rel_path.as_str());
@@ -198,7 +212,7 @@ pub async fn sync_modpack_to_remote(
                         operation: "sync_uploading".to_string(),
                         file: rel_path.clone(),
                         percent: pct,
-                        message: format!("Uploading {display}{speed_str}"),
+                        message: format!("Uploading{counter_str} {display}{speed_str}"),
                         total_bytes: Some(*local_size),
                         processed_bytes: Some(bytes_written),
                     },
@@ -220,7 +234,7 @@ pub async fn sync_modpack_to_remote(
                     operation: "sync_upload".to_string(),
                     file: rel_path.clone(),
                     percent: pct,
-                    message: format!("Uploaded {display}{speed_str}"),
+                    message: format!("Uploaded{counter_str} {display}{speed_str}"),
                     total_bytes: Some(*local_size),
                     processed_bytes: Some(*local_size),
                 },
