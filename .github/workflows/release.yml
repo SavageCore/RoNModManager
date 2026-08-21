@@ -146,7 +146,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder appstream-compose
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.node24//25.08 org.freedesktop.Sdk.Extension.rust-stable//25.08
+          for attempt in 1 2 3; do
+            flatpak install --user -y --no-static-deltas flathub \
+              org.gnome.Platform//50 org.gnome.Sdk//50 \
+              org.freedesktop.Sdk.Extension.node24//25.08 \
+              org.freedesktop.Sdk.Extension.rust-stable//25.08 && break
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            echo "::warning::Flathub pull failed (attempt $attempt), retrying..."
+            sleep 30
+          done
       - name: Import Flatpak GPG key
         run: |
           if [ -z "${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}" ]; then
