@@ -65,18 +65,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder appstream-compose
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          for attempt in 1 2 3; do
-            flatpak install --user -y --no-static-deltas flathub \
-              org.gnome.Platform//50 org.gnome.Sdk//50 \
-              org.freedesktop.Sdk.Extension.node24//25.08 \
-              org.freedesktop.Sdk.Extension.rust-stable//25.08 && break
-            if [ "$attempt" = 3 ]; then exit 1; fi
-            echo "::warning::Flathub pull failed (attempt $attempt), retrying..."
-            sleep 30
-          done
+          flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.node24//25.08
+          # org.freedesktop.Sdk.Extension.rust-stable//25.08 HEAD is currently broken upstream
+          # (missing objects -> HTTP 404 on pull); fall back to last known good publish.
+          GOOD_COMMIT=385427f6dabe6d297cced114496cfa6e38bb93fe4c6fbee7fdabb97dd141d29a
+          if flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//25.08; then
+            exit 0
+          fi
+          echo "::warning::Flathub pull failed; installing rust-stable//25.08 from known good commit ${GOOD_COMMIT}"
+          sudo apt-get install -y ostree
+          ostree --repo=rust-stable-repo init --mode=archive-z2
+          ostree --repo=rust-stable-repo remote add --no-gpg-verify origin https://dl.flathub.org/repo/
+          ostree --repo=rust-stable-repo pull origin "${GOOD_COMMIT}"
+          ostree --repo=rust-stable-repo refs --create=runtime/org.freedesktop.Sdk.Extension.rust-stable/x86_64/25.08 "${GOOD_COMMIT}"
+          flatpak build-bundle --runtime rust-stable-repo rust-stable.flatpak org.freedesktop.Sdk.Extension.rust-stable 25.08
+          flatpak install --user -y --bundle rust-stable.flatpak
       - name: Build Flatpak
         run: |
-          flatpak-builder --force-clean --user --install-deps-from=flathub --repo=flatpak-repo build-dir packaging/flatpak/uk.savagecore.ronmodmanager.yml
+          flatpak-builder --force-clean --user --repo=flatpak-repo build-dir packaging/flatpak/uk.savagecore.ronmodmanager.yml
           flatpak build-bundle flatpak-repo ronmodmanager.flatpak uk.savagecore.ronmodmanager master
       - uses: actions/upload-artifact@v7
         with:
