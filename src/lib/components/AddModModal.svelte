@@ -340,6 +340,7 @@
                     );
                   }
                   download.failed = true;
+                  plan.failed = true;
                   return;
                 }
                 try {
@@ -422,13 +423,16 @@
         const completions = plans.map((plan) =>
           Promise.all(plan.installFutures).then(() => {
             if (plan.failed) return;
-            const installedCount = plan.downloads.filter(
+            const succeeded = plan.downloads.filter(
               (d) => d.result && !d.failed,
-            ).length;
-            modAddQueueStore.markDone(
-              plan.entry.queueId,
-              `Installed ${installedCount} file${installedCount === 1 ? "" : "s"}`,
             );
+            if (succeeded.length === 0) return;
+            const total = plan.downloads.length;
+            const message =
+              succeeded.length === total
+                ? `Installed ${total} file${total === 1 ? "" : "s"}`
+                : `Installed ${succeeded.length} of ${total} files`;
+            modAddQueueStore.markDone(plan.entry.queueId, message);
             addModpackPanelStore.notifyModInstalled();
           }),
         );

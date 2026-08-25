@@ -101,7 +101,7 @@ pub fn find_in_downloads<F>(
     filename: &str,
     expected_size: Option<u64>,
     expected_md5: Option<&str>,
-    on_progress: F,
+    mut on_progress: F,
 ) -> Option<PathBuf>
 where
     F: FnMut(u64, u64),
@@ -111,66 +111,103 @@ where
     let download_dir = dirs::download_dir()?;
     let partial_exts = ["part", "crdownload", "tmp"];
 
-    // Fast path: exact name match
-    let candidate = {
-        let exact = download_dir.join(filename);
-        if exact.is_file() {
-            exact
-        } else {
-            // Tolerant scan: normalised name match, skip in-progress files
-            let mut found = None;
-            for entry in std::fs::read_dir(&download_dir).ok()?.flatten() {
-                let path = entry.path();
-                if !path.is_file() {
-                    continue;
-                }
-                if path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| partial_exts.contains(&e))
-                    .unwrap_or(false)
-                {
-                    continue;
-                }
-                if let Some(fname) = path.file_name().and_then(|n| n.to_str()) {
-                    if download_names_match(fname, filename) {
-                        found = Some(path);
-                        break;
-                    }
-                }
-            }
-            found?
+    // Exact name match first, then every tolerant-scan match, so a stale
+    // same-named file can't shadow a freshly completed download: each
+    // candidate is validated below and the first passing one wins.
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    let exact = download_dir.join(filename);
+    if exact.is_file() {
+        candidates.push(exact);
+    }
+    for entry in std::fs::read_dir(&download_dir).ok()?.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
         }
-    };
-
-    if let Some(md5) = expected_md5 {
-        // Cheap reject before hashing when we already know the expected size differs.
-        if let Some(size) = expected_size {
-            if size > 0 && std::fs::metadata(&candidate).map(|m| m.len()).ok() != Some(size) {
-                return None;
+        if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| partial_exts.contains(&e))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        if let Some(fname) = path.file_name().and_then(|n| n.to_str()) {
+            if download_names_match(fname, filename) && !candidates.contains(&path) {
+                candidates.push(path);
             }
         }
-        return match hasher::md5_file_with_progress(&candidate, on_progress) {
-            Ok(actual) if actual.eq_ignore_ascii_case(md5) => Some(candidate),
-            _ => None,
-        };
     }
 
-    if let Some(size) = expected_size {
-        if size > 0 && std::fs::metadata(&candidate).map(|m| m.len()).ok() == Some(size) {
+    for candidate in candidates {
+        let size_on_disk = std::fs::metadata(&candidate).map(|m| m.len()).ok();
+        if let Some(md5) = expected_md5 {
+            // Cheap reject before hashing when we already know the expected size differs.
+            if let Some(size) = expected_size {
+                if size > 0 && size_on_disk != Some(size) {
+                    continue;
+                }
+            }
+            if let Ok(actual) = hasher::md5_file_with_progress(&candidate, &mut on_progress) {
+                if actual.eq_ignore_ascii_case(md5) {
+                    return Some(candidate);
+                }
+            }
+        } else if let Some(size) = expected_size {
+            if size > 0 && size_on_disk == Some(size) {
+                return Some(candidate);
+            }
+        } else if size_on_disk.unwrap_or(0) > 0 {
+            // No MD5 or size to validate against — accept any non-empty
+            // candidate (caller must run a stability check before trusting it).
             return Some(candidate);
         }
-        // Size known but doesn't match — file is still downloading or wrong file
-        return None;
     }
+    None
+}
 
-    // No MD5 or size to validate against — accept if non-empty.
-    // ponytail: caller must run a stability check before trusting this.
-    if std::fs::metadata(&candidate).map(|m| m.len()).unwrap_or(0) > 0 {
-        Some(candidate)
-    } else {
-        None
+/// True when `file_name` looks like an in-progress download of `expected`:
+/// carries a browser partial extension (`.part`, `.crdownload`, `.tmp`) and
+/// the remainder of the name matches tolerantly (see `download_names_match`).
+fn is_partial_for(file_name: &str, expected: &str) -> bool {
+    const PARTIAL_EXTS: [&str; 3] = ["part", "crdownload", "tmp"];
+    let Some((inner, ext)) = file_name.rsplit_once('.') else {
+        return false;
+    };
+    if !PARTIAL_EXTS.contains(&ext.to_ascii_lowercase().as_str()) {
+        return false;
     }
+    download_names_match(inner, expected)
+}
+
+/// Look for an in-progress browser download in the Downloads folder that refers
+/// to `filename`. Returns the path and current byte size of the largest
+/// matching partial (`.part`, `.crdownload`, `.tmp`), so callers polling for a
+/// finished download can tell that the transfer is still growing.
+pub fn find_partial_download(filename: &str) -> Option<(PathBuf, u64)> {
+    let download_dir = dirs::download_dir()?;
+    let mut best: Option<(PathBuf, u64)> = None;
+    for entry in std::fs::read_dir(&download_dir).ok()?.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(fname) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !is_partial_for(fname, filename) {
+            continue;
+        }
+        let len = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        let take = match &best {
+            None => true,
+            Some((_, best_len)) => len > *best_len,
+        };
+        if take {
+            best = Some((path, len));
+        }
+    }
+    best
 }
 
 /// Download a file from a URL to a destination path, returning its MD5 hash.
@@ -281,6 +318,26 @@ mod tests {
         // Prefix must end on a dash-digit boundary - a longer mod name that
         // merely starts with the expected stem is not a suffix match
         assert!(!download_names_match("HK416D-6603-6-2-X.zip", expected));
+    }
+
+    #[test]
+    fn is_partial_for_matches_browser_partials() {
+        let expected = "HK416D-6603-6-2.zip";
+        // Firefox and Chrome partial names for this download
+        assert!(is_partial_for("HK416D-6603-6-2.zip.part", expected));
+        assert!(is_partial_for(
+            "HK416D-6603-6-2-1778691223.zip.crdownload",
+            expected
+        ));
+        assert!(is_partial_for("hk416d-6603-6-2.zip.tmp", expected));
+        // Completed file or unrelated name with a partial extension
+        assert!(!is_partial_for("HK416D-6603-6-2.zip", expected));
+        // Bare stem with partial extension but no archive extension: the
+        // inner name "HK416D-6603-6-2" has no extension to match against
+        assert!(!is_partial_for("HK416D-6603-6-2.part", expected));
+        assert!(!is_partial_for("SomeOtherMod.zip.part", expected));
+        // No extension at all
+        assert!(!is_partial_for("HK416D-6603-6-2", expected));
     }
 
     #[tokio::test]

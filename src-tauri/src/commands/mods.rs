@@ -1643,9 +1643,15 @@ pub async fn add_nexus_mod(
         let downloads_dir = dirs::download_dir()
             .ok_or_else(|| AppError::Validation("Cannot locate Downloads directory".to_string()))?;
 
-        let timeout = std::time::Duration::from_secs(1800);
+        // Base deadline of 2h, extended by another hour each time the matching
+        // browser partial (.part/.crdownload/.tmp) grows - a slow download is
+        // never abandoned while it is visibly still making progress.
+        let base_timeout = std::time::Duration::from_secs(7200);
+        let activity_extension = std::time::Duration::from_secs(3600);
         let poll_interval = std::time::Duration::from_secs(2);
         let started = std::time::Instant::now();
+        let mut deadline = started + base_timeout;
+        let mut last_partial_size: Option<u64> = None;
 
         let mut found_path: Option<PathBuf> = None;
 
@@ -1726,7 +1732,7 @@ pub async fn add_nexus_mod(
                     ));
                 }
 
-                if started.elapsed() >= timeout {
+                if std::time::Instant::now() >= deadline {
                     return Err(AppError::Validation(format!(
                         "Timed out waiting for {} in Downloads. Download the file manually and use 'Local File' to install it.",
                         expected_filename
@@ -1753,6 +1759,44 @@ pub async fn add_nexus_mod(
                         break;
                     }
                 } else {
+                    // Track partial-download growth: each observed increase
+                    // pushes the deadline out and reports liveness to the UI.
+                    if let Some((_, partial_size)) =
+                        downloader::find_partial_download(&expected_filename)
+                    {
+                        let grew = match last_partial_size {
+                            Some(prev) => partial_size > prev,
+                            None => false,
+                        };
+                        if grew {
+                            deadline = std::cmp::max(
+                                deadline,
+                                std::time::Instant::now() + activity_extension,
+                            );
+                            let percent = match expected_size {
+                                Some(total) if total > 0 => {
+                                    10.0 + ((partial_size as f32 / total as f32) * 35.0)
+                                }
+                                _ => 10.0,
+                            };
+                            let _ = app.emit(
+                                "install_progress",
+                                &ProgressEvent {
+                                    operation: "download".to_string(),
+                                    file: expected_filename.clone(),
+                                    percent,
+                                    message: format!(
+                                        "Downloading {}... {:.0} MiB",
+                                        expected_filename,
+                                        partial_size as f64 / (1024.0 * 1024.0)
+                                    ),
+                                    total_bytes: expected_size,
+                                    processed_bytes: Some(partial_size),
+                                },
+                            );
+                        }
+                        last_partial_size = Some(partial_size);
+                    }
                     tokio::time::sleep(poll_interval).await;
                 }
             }
