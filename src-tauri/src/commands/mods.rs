@@ -2121,44 +2121,64 @@ pub async fn replace_mod_archive(
     let config = state.get_config()?;
     let active_profile_name = config.active_profile.clone();
 
-    let mut tags_to_apply: Vec<String> = Vec::new();
-    let mut collections_to_apply: Vec<String> = Vec::new();
-    if let Some(ref profile_name) = active_profile_name {
-        if let Some(profile) = profiles::get_profile(profile_name)? {
-            for (tag, members) in &profile.tags {
-                if members.iter().any(|m| m == &old_archive_name) {
-                    tags_to_apply.push(tag.clone());
-                }
+    // Replace across ALL profiles so inactive profiles don't keep the old
+    // archive alive (which caused `is_mod_used_by_any_profile` to prevent
+    // deletion, leaving a disabled duplicate in the UI).
+    let mut was_enabled_in_active = false;
+    if let Some(ref pn) = active_profile_name {
+        if let Some(p) = profiles::get_profile(pn)? {
+            was_enabled_in_active = p.installed_mod_names.contains(&old_archive_name);
+        }
+    }
+    // Migrate every profile: installed_mod_names, tags, collections
+    for mut profile in profiles::list_profiles()? {
+        let mut dirty = false;
+        if profile.installed_mod_names.contains(&old_archive_name) {
+            profile
+                .installed_mod_names
+                .retain(|m| m != &old_archive_name);
+            if !profile.installed_mod_names.contains(&new_archive_name) {
+                profile.installed_mod_names.push(new_archive_name.clone());
             }
-            for (collection, members) in &profile.collections {
-                if members.iter().any(|m| m == &old_archive_name) {
-                    collections_to_apply.push(collection.clone());
+            dirty = true;
+        }
+        for members in profile.tags.values_mut() {
+            if members.contains(&old_archive_name) {
+                members.retain(|m| m != &old_archive_name);
+                if !members.contains(&new_archive_name) {
+                    members.push(new_archive_name.clone());
+                }
+                dirty = true;
+            }
+        }
+        for members in profile.collections.values_mut() {
+            if members.contains(&old_archive_name) {
+                members.retain(|m| m != &old_archive_name);
+                if !members.contains(&new_archive_name) {
+                    members.push(new_archive_name.clone());
+                }
+                dirty = true;
+            }
+        }
+        if dirty {
+            profiles::save_profile(&profile)?;
+        }
+    }
+    // Preserve enabled state: new was auto-enabled by install_local_mod;
+    // if old was disabled in active profile, disable new too.
+    if !was_enabled_in_active {
+        if let Some(ref pn) = active_profile_name {
+            if let Some(mut p) = profiles::get_profile(pn)? {
+                let before = p.installed_mod_names.len();
+                p.installed_mod_names.retain(|m| m != &new_archive_name);
+                if p.installed_mod_names.len() != before {
+                    profiles::save_profile(&p)?;
                 }
             }
         }
     }
 
     uninstall_archive(state, old_archive_name).await?;
-
-    if let Some(profile_name) = active_profile_name {
-        if !tags_to_apply.is_empty() || !collections_to_apply.is_empty() {
-            if let Some(mut profile) = profiles::get_profile(&profile_name)? {
-                for tag in tags_to_apply {
-                    let members = profile.tags.entry(tag).or_default();
-                    if !members.contains(&new_archive_name) {
-                        members.push(new_archive_name.clone());
-                    }
-                }
-                for collection in collections_to_apply {
-                    let members = profile.collections.entry(collection).or_default();
-                    if !members.contains(&new_archive_name) {
-                        members.push(new_archive_name.clone());
-                    }
-                }
-                profiles::save_profile(&profile)?;
-            }
-        }
-    }
 
     Ok(())
 }
