@@ -747,15 +747,16 @@
       <div class="prefs-row">
         <div class="prefs-row-text">
           <div class="prefs-row-title">Game Path</div>
-          <div class="prefs-row-subtitle">ReadyOrNot installation folder</div>
+          <div class="prefs-row-subtitle">Ready or Not installation folder</div>
+          {#if gamePath}<div
+              class="text-xs mt-1 truncate"
+              style="color:var(--clr-text-secondary);"
+              title={gamePath}
+            >
+              {gamePath}
+            </div>{/if}
         </div>
-        <div class="prefs-row-suffix flex gap-2 flex-1 max-w-[420px]">
-          <input
-            class="input flex-1"
-            value={gamePath}
-            readonly
-            placeholder="No folder selected"
-          />
+        <div class="prefs-row-suffix flex gap-2">
           <button class="btn btn-sm" on:click={browseGamePath}>Browse…</button>
           <button class="btn btn-sm" on:click={autodetect}>Auto Detect</button>
         </div>
