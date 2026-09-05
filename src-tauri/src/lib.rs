@@ -117,6 +117,7 @@ pub fn run() {
             config::get_gpu_profiles,
             config::detect_gpu_profile,
             config::apply_optimization,
+            config::get_applied_optimization_profile,
             config::disable_optimization,
             game::detect_game_path,
             game::set_game_path,

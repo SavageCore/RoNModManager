@@ -4,6 +4,7 @@
     applyOptimization,
     detectGpuProfile,
     disableOptimization,
+    getAppliedOptimizationProfile,
     getGpuProfiles,
     buildModpackFromInstalled,
     checkForUpdate,
@@ -108,7 +109,10 @@
   let detectedGpu: string | null = null;
   let optimizationProfile: string | null = null;
   let optimizationEnabled = false;
+  let appliedProfile: string | null = null;
   let applyingOpt = false;
+  $: isCurrentApplied =
+    !!appliedProfile && !!selectedGpu && appliedProfile === selectedGpu;
   let runningInFlatpak = false;
   let currentVersion = "";
   let updateCheckInProgress = false;
@@ -222,6 +226,12 @@
     introSkipApplied = await isIntroSkipApplied().catch(() => false);
     optimizationEnabled = config.optimization_enabled ?? false;
     optimizationProfile = config.optimization_profile ?? null;
+    appliedProfile = await getAppliedOptimizationProfile().catch(() => null);
+    // If file on disk matches a profile, treat as enabled regardless of config flag
+    if (appliedProfile) {
+      optimizationEnabled = true;
+      optimizationProfile = appliedProfile;
+    }
     selectedGpu = optimizationProfile ?? "";
     gpuProfiles = await getGpuProfiles().catch(() => []);
     detectedGpu = await detectGpuProfile().catch(() => null);
@@ -998,14 +1008,14 @@
             >{#each gpuProfiles as p}<option value={p}
                 >{p.replace(/_/g, " ").replace(/-/g, " / ")}</option
               >{/each}</select
-          ><button
-            class="btn btn-sm primary"
-            disabled={!selectedGpu || applyingOpt}
-            on:click={applyOpt}>{applyingOpt ? "…" : "Apply"}</button
-          >{#if optimizationEnabled}<button
+          >{#if isCurrentApplied}<button
               class="btn btn-sm"
               disabled={applyingOpt}
-              on:click={removeOpt}>Restore</button
+              on:click={removeOpt}>{applyingOpt ? "…" : "Restore"}</button
+            >{:else}<button
+              class="btn btn-sm primary"
+              disabled={!selectedGpu || applyingOpt}
+              on:click={applyOpt}>{applyingOpt ? "…" : "Apply"}</button
             >{/if}
         </div>
       </div>

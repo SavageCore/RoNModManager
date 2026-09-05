@@ -230,6 +230,36 @@ pub fn apply_optimization(profile: &str) -> Result<()> {
     Ok(())
 }
 
+fn normalize_bytes(b: &[u8]) -> Vec<u8> {
+    // Normalize CRLF -> LF for comparison
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'\r' && i + 1 < b.len() && b[i + 1] == b'\n' {
+            out.push(b'\n');
+            i += 2;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+pub fn detect_applied_profile() -> Option<String> {
+    let ini = get_engine_ini_path().ok()?;
+    let data = fs::read(&ini).ok()?;
+    let normalized = normalize_bytes(&data);
+    for p in available_gpu_profiles() {
+        if let Some(b) = profile_bytes(&p) {
+            if normalize_bytes(b) == normalized {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
 pub fn restore_optimization() -> Result<()> {
     let ini = get_engine_ini_path()?;
     let backup = backup_path(&ini);
@@ -242,7 +272,7 @@ pub fn restore_optimization() -> Result<()> {
 }
 
 fn normalize_gpu_name(s: &str) -> String {
-    s.to_lowercase().replace('_', " ").replace('-', " ")
+    s.to_lowercase().replace(['_', '-'], " ")
 }
 
 fn gpu_string() -> Option<String> {

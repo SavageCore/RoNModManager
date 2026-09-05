@@ -54,6 +54,8 @@ export const detectGpuProfile = () =>
 export const applyOptimization = (profile: string) =>
   invoke<void>("apply_optimization", { profile });
 export const disableOptimization = () => invoke<void>("disable_optimization");
+export const getAppliedOptimizationProfile = () =>
+  invoke<string | null>("get_applied_optimization_profile");
 
 export const detectGamePath = () => invoke<string | null>("detect_game_path");
 export const setGamePath = (path: string) =>

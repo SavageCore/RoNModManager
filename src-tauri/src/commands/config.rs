@@ -199,6 +199,11 @@ pub async fn apply_optimization(state: State<'_, AppState>, profile: String) -> 
 }
 
 #[tauri::command]
+pub async fn get_applied_optimization_profile() -> Result<Option<String>> {
+    Ok(crate::services::config_tweaks::detect_applied_profile())
+}
+
+#[tauri::command]
 pub async fn disable_optimization(state: State<'_, AppState>) -> Result<()> {
     crate::services::config_tweaks::restore_optimization()?;
     state.update_config(|c| {
