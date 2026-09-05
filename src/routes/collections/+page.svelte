@@ -261,7 +261,7 @@
       style="color: var(--clr-text-secondary);"
       class="text-xs mt-1"
     >
-      No active profile — create/select a profile first.
+      No active profile - create/select a profile first.
     </p>{/if}
 
   <div class="prefs-group">

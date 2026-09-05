@@ -50,7 +50,7 @@ struct NexusFilesResponse {
 /// - Returns all MAIN (category_id=1) files, or all active files if none are MAIN
 /// - Sorted: is_primary first, then newest-first by uploaded_timestamp
 ///
-/// `is_primary` is a pre-selection hint, not a filter — callers that show a picker
+/// `is_primary` is a pre-selection hint, not a filter - callers that show a picker
 /// should pre-select `result[0]` but still show all options. Callers that need a
 /// single automatic choice (premium auto-download) use `pick_primary_file`.
 pub fn get_file_options(files: &[NexusModFile]) -> Vec<&NexusModFile> {
@@ -73,7 +73,7 @@ pub fn get_file_options(files: &[NexusModFile]) -> Vec<&NexusModFile> {
         &mut mains
     } else {
         let mut all = active;
-        // sort inline and return — can't use the same reference trick, so handle separately
+        // sort inline and return - can't use the same reference trick, so handle separately
         all.sort_by_key(|f| {
             (
                 if f.is_primary == Some(true) { 0u8 } else { 1u8 },

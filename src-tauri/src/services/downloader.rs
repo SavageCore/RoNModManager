@@ -52,7 +52,7 @@ fn normalise_download_name(name: &str) -> String {
 }
 
 /// True when a file in Downloads refers to the same download as `expected`.
-/// Beyond normalised equality this tolerates Nexus CDN suffixes — the browser
+/// Beyond normalised equality this tolerates Nexus CDN suffixes - the browser
 /// often saves `Mod-6603-6-2.zip` as `Mod-6603-6-2-1778691223.zip`. Callers
 /// still validate the candidate by size/hash, so a suffix match alone can't
 /// pair the wrong file.
@@ -90,7 +90,7 @@ fn download_names_match(candidate: &str, expected: &str) -> bool {
 /// Look for a file the user has already downloaded in their Downloads folder that
 /// matches what we were about to fetch. Tries an exact name match first, then
 /// falls back to a tolerant scan (normalised whitespace/case, browser dedup
-/// suffixes like ` (1)`, Nexus CDN suffixes like `-1778691223`) — skipping any
+/// suffixes like ` (1)`, Nexus CDN suffixes like `-1778691223`) - skipping any
 /// in-progress partials.
 ///
 /// When an MD5 is provided the candidate is validated by hash (reporting progress
@@ -158,7 +158,7 @@ where
                 return Some(candidate);
             }
         } else if size_on_disk.unwrap_or(0) > 0 {
-            // No MD5 or size to validate against — accept any non-empty
+            // No MD5 or size to validate against - accept any non-empty
             // candidate (caller must run a stability check before trusting it).
             return Some(candidate);
         }

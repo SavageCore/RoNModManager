@@ -908,7 +908,7 @@ where
     let mut output = fs::File::create(destination).map_err(|e| {
         if e.raw_os_error() == Some(17) || e.kind() == std::io::ErrorKind::AlreadyExists {
             AppError::Validation(format!(
-                "Failed to write '{}' — file is in use (is the game still running? Close the game and try again): {}",
+                "Failed to write '{}' - file is in use (is the game still running? Close the game and try again): {}",
                 destination.display(),
                 e
             ))

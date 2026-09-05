@@ -228,7 +228,7 @@
       {effectiveProfiles.length} profile{effectiveProfiles.length === 1
         ? ""
         : "s"}{#if !showForm}
-        — create and switch between configurations{/if}
+        {" "} - create and switch between configurations{/if}
     </div>
     <div class="prefs-boxed-list">
       {#if loading && !$incognitoMode}

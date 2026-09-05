@@ -48,7 +48,7 @@
     </p>
 
     <p style="color: var(--clr-text-secondary);" class="text-xs mb-2">
-      Select one or more files — mods shipped as multiple parts (e.g. Part 1 +
+      Select one or more files - mods shipped as multiple parts (e.g. Part 1 +
       Part 2) require all of them.
     </p>
 

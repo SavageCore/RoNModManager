@@ -32,7 +32,7 @@ fn create_file_link(src: &Path, dst: &Path) -> Result<(), String> {
                 || e.kind() == std::io::ErrorKind::AlreadyExists
             {
                 format!(
-                    "Failed to replace '{}' — file is in use (close the game and try again): {}",
+                    "Failed to replace '{}' - file is in use (close the game and try again): {}",
                     dst.display(),
                     e
                 )
