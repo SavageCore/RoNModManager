@@ -1027,12 +1027,15 @@
           >
         </div>
       </div>
-      <div class="prefs-row" style="flex-direction:column;align-items:stretch;">
-        <div class="prefs-row-title">
-          Remote Sync <span
-            style="color:var(--clr-text-secondary);font-weight:400;font-size:0.8rem;"
-            >— SFTP</span
-          >
+      <div
+        class="prefs-row"
+        style="flex-direction:column;align-items:stretch;gap:0.25rem;"
+      >
+        <div>
+          <div class="prefs-row-title">Remote Sync</div>
+          <div class="prefs-row-subtitle">
+            Sync modpack to a remote server via SFTP
+          </div>
         </div>
         <div class="mt-2 flex flex-col gap-2">
           <input
