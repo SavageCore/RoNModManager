@@ -1093,6 +1093,24 @@
       </div>
     </div>
   </div>
+  <ExportModpackModal
+    isVisible={showExportModal}
+    initialName={exportMeta.name || ""}
+    initialVersion={exportMeta.version || "1.0.0"}
+    initialDescription={exportMeta.description || ""}
+    initialAuthor={exportMeta.author || ""}
+    on:close={() => (showExportModal = false)}
+    on:submit={(e) => handleExportModpack(e.detail)}
+  />
+
+  <SyncAuthModal
+    isVisible={showSyncAuthModal}
+    description={syncAuthPurpose === "fallback"
+      ? "Auto-discovery found no usable key. Provide credentials to continue."
+      : "Choose how to authenticate with the remote server. Sync Now will try your SSH keys automatically if you skip this."}
+    on:close={() => (showSyncAuthModal = false)}
+    on:submit={(e) => handleSyncAuthSubmit(e.detail)}
+  />
 </section>
 
 {#if showTokenModal}
