@@ -54,6 +54,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { downloadDir } from "@tauri-apps/api/path";
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { onDestroy, onMount } from "svelte";
   // Persist modpack export metadata per-profile (backend), not localStorage
   let showExportModal = false;
@@ -304,6 +305,23 @@
     gamePath = detected;
     await setGamePath(detected);
     toastStore.success("Auto-detected game path.");
+  }
+
+  async function browseGamePath() {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: gamePath || undefined,
+    });
+    if (typeof selected === "string") {
+      gamePath = selected;
+      try {
+        await setGamePath(gamePath.trim());
+        toastStore.success("Game path updated.");
+      } catch (e) {
+        toastStore.error(String(e));
+      }
+    }
   }
 
   async function persistThemeChoice() {
@@ -734,16 +752,12 @@
         <div class="prefs-row-suffix flex gap-2 flex-1 max-w-[420px]">
           <input
             class="input flex-1"
-            bind:value={gamePath}
-            on:blur={async () => {
-              try {
-                await setGamePath(gamePath.trim());
-              } catch (e) {
-                toastStore.error(`Game path: ${String(e)}`);
-              }
-            }}
-          /><button class="btn btn-sm" on:click={autodetect}>Auto Detect</button
-          >
+            value={gamePath}
+            readonly
+            placeholder="No folder selected"
+          />
+          <button class="btn btn-sm" on:click={browseGamePath}>Browse…</button>
+          <button class="btn btn-sm" on:click={autodetect}>Auto Detect</button>
         </div>
       </div>
       <div class="prefs-row">
