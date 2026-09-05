@@ -164,6 +164,65 @@ body {
   padding: 1rem;
 }
 
+/* Libadwaita preferences page */
+.prefs-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding-bottom: 2rem;
+}
+.prefs-group {
+  margin-top: 1.5rem;
+}
+.prefs-group-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--clr-text);
+  margin-bottom: 0.35rem;
+  padding: 0 0.25rem;
+}
+.prefs-group-desc {
+  font-size: 0.8rem;
+  color: var(--clr-text-secondary);
+  margin-bottom: 0.5rem;
+  padding: 0 0.25rem;
+}
+.prefs-boxed-list {
+  background: var(--clr-surface);
+  border: 1px solid var(--adw-border-color);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.prefs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+}
+.prefs-row + .prefs-row {
+  border-top: 1px solid var(--adw-border-color);
+}
+.prefs-row-text {
+  flex: 1;
+  min-width: 0;
+}
+.prefs-row-title {
+  font-weight: 600;
+  color: var(--clr-text);
+  font-size: 0.9rem;
+}
+.prefs-row-subtitle {
+  font-size: 0.8rem;
+  color: var(--clr-text-secondary);
+  margin-top: 2px;
+}
+.prefs-row-suffix {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 /* ADWaveCSS provides .btn, .btn.primary, .btn.danger, .btn.flat */
 /* Add minimal size utilities without overriding ADWave styles */
 
@@ -244,18 +303,17 @@ body {
   opacity: 0.5;
 }
 
-/* Input and select styling */
+/* Input and select styling - libadwaita flat */
 .input,
-.select,
 .textarea {
   font-family: var(--adw-font-family);
   appearance: none;
   -webkit-appearance: none;
   background: var(--clr-surface);
   color: var(--clr-text);
-  border: 2px solid var(--adw-border-color);
-  border-radius: 6px;
-  padding: calc(0.5rem - 1px) calc(0.75rem - 1px);
+  border: 1px solid var(--adw-border-color);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
   font-size: 0.9375rem;
   line-height: 1.25rem;
   width: 100%;
@@ -263,7 +321,29 @@ body {
   box-shadow: none;
   transition:
     border-color 120ms ease,
-    box-shadow 120ms ease;
+    outline-color 120ms ease;
+}
+.select {
+  font-family: var(--adw-font-family);
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--clr-surface);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23606366' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  color: var(--clr-text);
+  border: 1px solid var(--adw-border-color);
+  border-radius: 8px;
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: none;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    outline-color 120ms ease;
 }
 
 .input:focus,
@@ -273,9 +353,9 @@ body {
 .textarea:focus,
 .textarea:focus-visible {
   border-color: var(--clr-primary-300);
-  outline: none;
-  box-shadow: inset 0 0 0 1px
-    color-mix(in srgb, var(--clr-primary-300) 55%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--clr-primary-300) 30%, transparent);
+  outline-offset: -1px;
+  box-shadow: none;
 }
 
 /* Toast notification styling */

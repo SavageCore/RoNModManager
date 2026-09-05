@@ -294,6 +294,29 @@ pub async fn sync_modpack_to_remote(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn test_sync_auth(state: State<'_, AppState>, auth: SyncAuth) -> Result<()> {
+    let config = state.get_config()?;
+    let remote_host = config
+        .sync_remote_host
+        .as_deref()
+        .ok_or_else(|| AppError::Validation("No remote host configured.".into()))?;
+    let (username, hostname) = parse_user_host(remote_host)?;
+    let cfg = Arc::new(client::Config {
+        window_size: 16 * 1024 * 1024,
+        maximum_packet_size: 64 * 1024,
+        ..client::Config::default()
+    });
+    let mut session = client::connect(cfg, (hostname.as_str(), 22u16), SshClientHandler)
+        .await
+        .map_err(|e| AppError::Validation(format!("SSH connect failed: {e}")))?;
+    let ok = authenticate(&mut session, &username, Some(auth)).await?;
+    if !ok {
+        return Err(AppError::Validation("Authentication failed".into()));
+    }
+    Ok(())
+}
+
 async fn authenticate(
     session: &mut client::Handle<SshClientHandler>,
     username: &str,

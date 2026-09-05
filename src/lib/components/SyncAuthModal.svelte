@@ -1,6 +1,9 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { homeDir } from "@tauri-apps/api/path";
+  import { testSyncAuth } from "$lib/api/commands";
+  import { toastStore } from "$lib/stores/toast";
 
   export let isVisible = false;
   export let description =
@@ -17,24 +20,69 @@
   let password = "";
   let keyFilePath = "";
   let passphrase = "";
+  let testing = false;
+  let lastTested = false;
 
   async function browseKeyFile() {
-    const selected = await open({ multiple: false, directory: false });
+    const opts: any = { multiple: false, directory: false };
+    try {
+      if (keyFilePath) {
+        let p = keyFilePath;
+        if (p.startsWith("~/")) {
+          const home = await homeDir();
+          p = p.replace(/^~\//, home);
+        }
+        opts.defaultPath = p;
+      } else {
+        const home = await homeDir();
+        opts.defaultPath = home.replace(/\/$/, "") + "/.ssh";
+      }
+    } catch {}
+    const selected = await open(opts);
     if (typeof selected === "string") {
       keyFilePath = selected;
     }
   }
 
-  function handleSubmit() {
-    if (activeTab === "password") {
-      dispatch("submit", { type: "Password", password });
-    } else {
-      dispatch("submit", {
-        type: "KeyFile",
-        path: keyFilePath,
-        passphrase: passphrase.trim() || null,
-      });
+  function buildAuth():
+    | { type: "Password"; password: string }
+    | { type: "KeyFile"; path: string; passphrase: string | null } {
+    if (activeTab === "password") return { type: "Password", password };
+    return {
+      type: "KeyFile",
+      path: keyFilePath,
+      passphrase: passphrase.trim() || null,
+    };
+  }
+
+  async function handleTest() {
+    testing = true;
+    lastTested = false;
+    try {
+      await testSyncAuth(buildAuth() as any);
+      lastTested = true;
+      toastStore.success("Connection successful!");
+    } catch (e) {
+      toastStore.error(`Test failed: ${String(e)}`);
+    } finally {
+      testing = false;
     }
+  }
+
+  async function handleSave() {
+    if (!lastTested) {
+      testing = true;
+      try {
+        await testSyncAuth(buildAuth() as any);
+        lastTested = true;
+      } catch (e) {
+        toastStore.error(`Test failed: ${String(e)}`);
+        testing = false;
+        return;
+      }
+      testing = false;
+    }
+    dispatch("submit", buildAuth());
   }
 
   function handleClose() {
@@ -43,6 +91,7 @@
 
   $: canSubmit =
     activeTab === "password" ? password.length > 0 : keyFilePath.length > 0;
+  $: if (password || keyFilePath || passphrase) lastTested = false;
 </script>
 
 {#if isVisible}
@@ -95,8 +144,7 @@
               class="input w-full"
               bind:value={password}
               placeholder="SSH password"
-              on:keydown={(e) =>
-                e.key === "Enter" && canSubmit && handleSubmit()}
+              on:keydown={(e) => e.key === "Enter" && canSubmit && handleTest()}
             />
           </div>
         </div>
@@ -144,9 +192,15 @@
       <div class="flex justify-end gap-2 mt-6">
         <button class="btn" on:click={handleClose}>Cancel</button>
         <button
+          class="btn"
+          on:click={handleTest}
+          disabled={!canSubmit || testing}
+          >{testing ? "Testing…" : "Test"}</button
+        >
+        <button
           class="btn primary"
-          on:click={handleSubmit}
-          disabled={!canSubmit}>Connect</button
+          on:click={handleSave}
+          disabled={!canSubmit || testing}>Save</button
         >
       </div>
     </div>
