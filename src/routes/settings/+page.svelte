@@ -955,7 +955,12 @@
         <div class="prefs-row-text" style="flex:1">
           <div class="prefs-row-title">Engine.ini Optimization</div>
           <div class="prefs-row-subtitle">
-            UE5 Performance Overhaul by AlexRenderX
+            UE5 Performance Overhaul by <a
+              href="https://www.nexusmods.com/readyornot/mods/5845"
+              target="_blank"
+              style="color:var(--clr-primary-300);text-decoration:underline;"
+              >AlexRenderX</a
+            >
           </div>
         </div>
         <div class="prefs-row-suffix">
