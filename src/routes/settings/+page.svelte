@@ -54,7 +54,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { downloadDir } from "@tauri-apps/api/path";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { ArrowUp } from "lucide-svelte";
+  import { ArrowUp, ArrowUpCircle } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { onDestroy, onMount } from "svelte";
   // Persist modpack export metadata per-profile (backend), not localStorage
@@ -1107,9 +1107,15 @@
         <div class="prefs-row-text">
           <div class="prefs-row-title">Updates</div>
           <div class="prefs-row-subtitle">
-            {#if currentVersion}Version {currentVersion}{/if}{#if runningInFlatpak}
-              · Managed by Flatpak (flatpak update){:else if updateVersion}
-              · Update ready: {updateVersion}{/if}
+            {#if currentVersion}Version {currentVersion}{/if}{#if runningInFlatpak}{" "}·
+              Managed by Flatpak (flatpak update){:else if updateVersion}{" "}·
+              <span style="color:var(--clr-success-300);"
+                ><ArrowUpCircle
+                  size={12}
+                  style="display:inline;vertical-align:-1px;"
+                />
+                {updateVersion}</span
+              >{/if}
           </div>
           {#if updateLastChecked && !runningInFlatpak}<div
               class="text-xs mt-1"
