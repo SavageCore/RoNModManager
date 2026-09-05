@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { homeDir } from "@tauri-apps/api/path";
   import { testSyncAuth } from "$lib/api/commands";
   import { toastStore } from "$lib/stores/toast";
 
@@ -24,10 +25,19 @@
 
   async function browseKeyFile() {
     const opts: any = { multiple: false, directory: false };
-    if (keyFilePath) {
-      const slash = keyFilePath.lastIndexOf("/");
-      if (slash > 0) opts.defaultPath = keyFilePath.slice(0, slash);
-    }
+    try {
+      if (keyFilePath) {
+        let p = keyFilePath;
+        if (p.startsWith("~/")) {
+          const home = await homeDir();
+          p = p.replace(/^~\//, home);
+        }
+        opts.defaultPath = p;
+      } else {
+        const home = await homeDir();
+        opts.defaultPath = home.replace(/\/$/, "") + "/.ssh";
+      }
+    } catch {}
     const selected = await open(opts);
     if (typeof selected === "string") {
       keyFilePath = selected;
