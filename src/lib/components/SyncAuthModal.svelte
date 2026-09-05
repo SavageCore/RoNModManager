@@ -23,7 +23,12 @@
   let lastTested = false;
 
   async function browseKeyFile() {
-    const selected = await open({ multiple: false, directory: false });
+    const opts: any = { multiple: false, directory: false };
+    if (keyFilePath) {
+      const slash = keyFilePath.lastIndexOf("/");
+      if (slash > 0) opts.defaultPath = keyFilePath.slice(0, slash);
+    }
+    const selected = await open(opts);
     if (typeof selected === "string") {
       keyFilePath = selected;
     }
