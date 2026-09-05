@@ -177,3 +177,32 @@ pub async fn is_intro_skip_applied(state: State<'_, AppState>) -> Result<bool> {
     let config = state.get_config()?;
     Ok(config.intro_skip_enabled)
 }
+
+#[tauri::command]
+pub async fn get_gpu_profiles() -> Result<Vec<String>> {
+    Ok(crate::services::config_tweaks::available_gpu_profiles())
+}
+
+#[tauri::command]
+pub async fn detect_gpu_profile() -> Result<Option<String>> {
+    Ok(crate::services::config_tweaks::detect_gpu())
+}
+
+#[tauri::command]
+pub async fn apply_optimization(state: State<'_, AppState>, profile: String) -> Result<()> {
+    crate::services::config_tweaks::apply_optimization(&profile)?;
+    state.update_config(|c| {
+        c.optimization_enabled = true;
+        c.optimization_profile = Some(profile);
+    })?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn disable_optimization(state: State<'_, AppState>) -> Result<()> {
+    crate::services::config_tweaks::restore_optimization()?;
+    state.update_config(|c| {
+        c.optimization_enabled = false;
+    })?;
+    Ok(())
+}

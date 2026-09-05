@@ -72,6 +72,10 @@ A userscript is available to add a one-click "Install via RoN Mod Manager" butto
 
 > **Note:** The userscript will auto-update when installed from the official GitHub Releases link, thanks to the included `@updateURL` metadata.
 
+## Credits
+
+- Engine.ini optimization presets bundled from [UE5 Performance Overhaul - Optimization Pack](https://www.nexusmods.com/readyornot/mods/5845) by AlexRenderX on Nexus Mods.
+
 ## Stack
 
 - Tauri v2 (Rust backend)

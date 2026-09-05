@@ -195,3 +195,7 @@ pub fn save_config_to_path(path: &PathBuf, config: &AppConfig) -> Result<()> {
 fn default_config_path() -> Result<PathBuf> {
     Ok(app_config_root()?.join("config.json"))
 }
+
+pub fn load_config_fallback() -> Result<AppConfig> {
+    load_config_from_path(&default_config_path()?)
+}

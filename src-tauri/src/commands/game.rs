@@ -26,7 +26,20 @@ fn create_file_link(src: &Path, dst: &Path) -> Result<(), String> {
     // Remove any existing file or symlink at the destination so re-installing
     // the same mod doesn't fail with "File exists (os error 17)".
     if dst.exists() || dst.is_symlink() {
-        fs::remove_file(dst).map_err(|e| format!("Failed to remove existing link: {}", e))?;
+        fs::remove_file(dst).map_err(|e| {
+            if e.raw_os_error() == Some(17)
+                || e.raw_os_error() == Some(26) // ETXTBSY - text file busy while game has it open
+                || e.kind() == std::io::ErrorKind::AlreadyExists
+            {
+                format!(
+                    "Failed to replace '{}' — file is in use (close the game and try again): {}",
+                    dst.display(),
+                    e
+                )
+            } else {
+                format!("Failed to remove existing link: {}", e)
+            }
+        })?;
     }
 
     #[cfg(unix)]
@@ -107,6 +120,10 @@ fn launch_game_internal(game_path: &Path, intro_skip_enabled: bool) -> Result<()
     // Re-apply intro skip if enabled in config, in case a game update restored the files
     if intro_skip_enabled {
         let _ = crate::services::config_tweaks::apply_intro_skip(game_path);
+    }
+    // Re-apply Engine.ini optimization if enabled
+    if let Ok(cfg) = crate::state::load_config_fallback() {
+        if cfg.optimization_enabled { if let Some(p) = cfg.optimization_profile { let _ = crate::services::config_tweaks::apply_optimization(&p); } }
     }
 
     #[cfg(target_os = "windows")]

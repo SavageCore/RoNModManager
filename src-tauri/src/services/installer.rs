@@ -895,12 +895,27 @@ where
     }
 
     if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent).map_err(|e| {
+            AppError::Io(std::io::Error::new(
+                e.kind(),
+                format!("failed to create directory {}: {}", parent.display(), e),
+            ))
+        })?;
     }
 
     let verify_crc32 = matches!(source, ZipEntrySource::Lzma(_));
     let mut crc32 = crc32fast::Hasher::new();
-    let mut output = fs::File::create(destination)?;
+    let mut output = fs::File::create(destination).map_err(|e| {
+        if e.raw_os_error() == Some(17) || e.kind() == std::io::ErrorKind::AlreadyExists {
+            AppError::Validation(format!(
+                "Failed to write '{}' — file is in use (is the game still running? Close the game and try again): {}",
+                destination.display(),
+                e
+            ))
+        } else {
+            AppError::Io(e)
+        }
+    })?;
     let mut buffer = [0u8; 64 * 1024];
     loop {
         let read = source.read(&mut buffer).map_err(|error| {

@@ -1,6 +1,10 @@
 <script lang="ts">
   import {
     applyIntroSkip,
+    applyOptimization,
+    detectGpuProfile,
+    disableOptimization,
+    getGpuProfiles,
     buildModpackFromInstalled,
     checkForUpdate,
     detectGamePath,
@@ -97,6 +101,12 @@
   let introSkipApplied = false;
   let applyingIntroSkip = false;
   let undoingIntroSkip = false;
+  let gpuProfiles: string[] = [];
+  let selectedGpu = "";
+  let detectedGpu: string | null = null;
+  let optimizationProfile: string | null = null;
+  let optimizationEnabled = false;
+  let applyingOpt = false;
   let runningInFlatpak = false;
   let currentVersion = "";
   let updateCheckInProgress = false;
@@ -206,6 +216,12 @@
     }
 
     introSkipApplied = await isIntroSkipApplied().catch(() => false);
+    optimizationEnabled = config.optimization_enabled ?? false;
+    optimizationProfile = config.optimization_profile ?? null;
+    selectedGpu = optimizationProfile ?? "";
+    gpuProfiles = await getGpuProfiles().catch(() => []);
+    detectedGpu = await detectGpuProfile().catch(() => null);
+    if (!selectedGpu && detectedGpu) selectedGpu = detectedGpu;
     gamePath = config.game_path ?? "";
     theme = config.theme;
     if (!$screenshotMode) applyThemeClass(theme);
@@ -452,6 +468,22 @@
       undoingIntroSkip = false;
       await refresh();
     }
+  }
+
+  async function applyOpt() {
+    if (!selectedGpu) return;
+    applyingOpt = true;
+    try {
+      await applyOptimization(selectedGpu);
+      toastStore.success(`Optimization applied: ${selectedGpu}`);
+      await refresh();
+    } catch (e) { toastStore.error(String(e)); }
+    finally { applyingOpt = false; }
+  }
+  async function removeOpt() {
+    applyingOpt = true;
+    try { await disableOptimization(); toastStore.success("Optimization removed"); await refresh(); }
+    catch(e){ toastStore.error(String(e)); } finally { applyingOpt=false; }
   }
 
   async function exportInstalledMods() {
@@ -1046,6 +1078,25 @@
           <span class="gale-switch-track"></span>
         </label>
       </div>
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 style="color: var(--clr-text);" class="font-semibold">Engine.ini Optimization</h3>
+        <p style="color: var(--clr-text-secondary);" class="text-sm">
+          UE5 Performance Overhaul - per-GPU Engine.ini by <a href="https://www.nexusmods.com/readyornot/mods/5845" target="_blank" style="text-decoration:underline">AlexRenderX on Nexus Mods</a>
+        </p>
+      </div>
+    </div>
+    <div class="mt-3 flex gap-2 items-center">
+      <select class="select flex-1" bind:value={selectedGpu}>
+        <option value="">Select GPU…</option>
+        {#each gpuProfiles as p}<option value={p}>{p.replace(/_/g,' ').replace(/-/g,' / ')}</option>{/each}
+      </select>
+      <button class="btn btn-sm primary" disabled={!selectedGpu || applyingOpt} on:click={applyOpt}>{applyingOpt ? '…' : 'Apply'}</button>
+      {#if optimizationEnabled}<button class="btn btn-sm" disabled={applyingOpt} on:click={removeOpt}>Restore backup</button>{/if}
     </div>
   </div>
 

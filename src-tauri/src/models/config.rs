@@ -85,6 +85,10 @@ pub struct AppConfig {
     pub asked_close_preference: bool,
     #[serde(default)]
     pub setup_wizard_complete: bool,
+    #[serde(default)]
+    pub optimization_enabled: bool,
+    #[serde(default)]
+    pub optimization_profile: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -113,6 +117,8 @@ impl Default for AppConfig {
             minimize_target: MinimizeTarget::Taskbar,
             asked_close_preference: false,
             setup_wizard_complete: false,
+            optimization_enabled: false,
+            optimization_profile: None,
         }
     }
 }

@@ -48,6 +48,12 @@ export const applyIntroSkip = () => invoke<void>("apply_intro_skip");
 export const undoIntroSkip = () => invoke<void>("undo_intro_skip");
 export const isIntroSkipApplied = () =>
   invoke<boolean>("is_intro_skip_applied");
+export const getGpuProfiles = () => invoke<string[]>("get_gpu_profiles");
+export const detectGpuProfile = () =>
+  invoke<string | null>("detect_gpu_profile");
+export const applyOptimization = (profile: string) =>
+  invoke<void>("apply_optimization", { profile });
+export const disableOptimization = () => invoke<void>("disable_optimization");
 
 export const detectGamePath = () => invoke<string | null>("detect_game_path");
 export const setGamePath = (path: string) =>

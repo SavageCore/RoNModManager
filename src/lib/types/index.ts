@@ -25,6 +25,9 @@ export interface AppConfig {
   minimize_target: MinimizeTarget;
   asked_close_preference: boolean;
   setup_wizard_complete: boolean;
+  intro_skip_enabled: boolean;
+  optimization_enabled: boolean;
+  optimization_profile: string | null;
 }
 
 export interface Collection {
