@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import type { InstalledModGroup } from "$lib/types";
+import type { InstalledModGroup, Profile } from "$lib/types";
 import type { ModUpdateInfo } from "$lib/api/commands";
 
 export const incognitoMode = writable<boolean>(false);
@@ -201,6 +201,53 @@ export const DUMMY_TAGS: Record<string, string[]> = {
   map: ["Breach_And_Clear_Maps", "Mission_Pack_Vol1"],
   visual: ["NightVision_Overhaul", "Tactical_HUD"],
 };
+
+export const DUMMY_PROFILES: Profile[] = [
+  {
+    name: "Tactical Realism",
+    description:
+      "Immersive SWAT experience - realistic gear, AI and audio overhaul",
+    installed_mod_names: [
+      "CQB_Tactics_Pack",
+      "Realistic_SWAT_Equipment",
+      "Radio_Comms_Rework",
+      "Suspect_AI_Overhaul",
+    ],
+    enabled_collections: [],
+    collections: {},
+    tags: {},
+    collection_colors: {},
+    created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14).toISOString(),
+  },
+  {
+    name: "Night Ops",
+    description: "Low-light operations with night vision and tactical HUD",
+    installed_mod_names: [
+      "NightVision_Overhaul",
+      "Tactical_HUD",
+      "Modular_Gear_Pack",
+    ],
+    enabled_collections: [],
+    collections: {},
+    tags: {},
+    collection_colors: {},
+    created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
+  },
+  {
+    name: "Campaign Extended",
+    description: "Extra missions and maps for extended playthroughs",
+    installed_mod_names: [
+      "Breach_And_Clear_Maps",
+      "Mission_Pack_Vol1",
+      "Urban_Warfare_Bundle",
+    ],
+    enabled_collections: [],
+    collections: {},
+    tags: {},
+    collection_colors: {},
+    created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
+  },
+];
 
 export const DUMMY_MOD_UPDATES: Record<string, ModUpdateInfo> = {
   CQB_Tactics_Pack: {

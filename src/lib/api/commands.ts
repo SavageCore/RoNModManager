@@ -278,6 +278,20 @@ export const saveProfile = (
   });
 export const deleteProfile = (name: string) =>
   invoke<void>("delete_profile", { name });
+export const renameProfile = (
+  oldName: string,
+  newName: string,
+  description: string | null,
+  installedModNames: string[],
+) =>
+  invoke<Profile>("rename_profile", {
+    oldName,
+    newName,
+    description,
+    installedModNames,
+  });
+export const duplicateProfile = (oldName: string, newName: string) =>
+  invoke<Profile>("duplicate_profile", { oldName, newName });
 export const applyProfile = (name: string) =>
   invoke<Profile>("apply_profile", { name });
 export const getModpackMeta = () =>

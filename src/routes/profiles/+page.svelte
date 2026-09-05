@@ -1,15 +1,14 @@
 <script lang="ts">
   import * as commands from "$lib/api/commands";
   import { toastStore } from "$lib/stores/toast";
-  import type { Profile, InstalledModFile } from "$lib/types";
+  import type { Profile } from "$lib/types";
+  import { get } from "svelte/store";
   import { onMount } from "svelte";
-  // import ManageAddOnsModal from "$lib/components/ManageAddOnsModal.svelte";
-  // import { goto } from "$app/navigation";
+  import { incognitoMode, DUMMY_PROFILES } from "$lib/stores/incognitoMode";
+
+  $: effectiveProfiles = $incognitoMode ? DUMMY_PROFILES : profiles;
 
   let profiles: Profile[] = [];
-  let showAddOnsModal = false;
-  let selectedModName = "";
-  let selectedAddOns: InstalledModFile[] = [];
   let loading = false;
   let error: string | null = null;
   let showForm = false;
@@ -26,6 +25,7 @@
     try {
       loading = true;
       error = null;
+      if (get(incognitoMode)) return;
       profiles = await commands.listProfiles();
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -60,38 +60,44 @@
   async function handleSubmit() {
     try {
       error = null;
-      if (!formName.trim()) {
+      const name = formName.trim();
+      if (!name) {
         error = "Profile name is required";
         return;
       }
-
-      const isNewProfile = !editingProfile;
-      await commands.saveProfile(
-        formName,
-        formDescription || null,
-        formEnabledGroups,
-      );
-
-      if (isNewProfile) {
-        const profile = await commands.applyProfile(formName);
-        const config = await commands.getConfig();
-        if (config.game_path) {
-          await commands.syncModLinks(profile.installed_mod_names);
-        }
-
+      if (editingProfile) {
+        // Renaming an existing profile
+        await commands.renameProfile(
+          editingProfile.name,
+          name,
+          formDescription || null,
+          formEnabledGroups,
+        );
+        // If the renamed profile was the active one, the backend already updated the active profile
         window.dispatchEvent(
-          new CustomEvent("ron:profile-changed", {
-            detail: { name: formName },
-          }),
+          new CustomEvent("ron:profile-changed", { detail: { name } }),
+        );
+      } else {
+        // Creating a new profile
+        await commands.saveProfile(
+          name,
+          formDescription || null,
+          formEnabledGroups,
+        );
+        const profile = await commands.applyProfile(name);
+        const config = await commands.getConfig();
+        if (config.game_path)
+          await commands.syncModLinks(profile.installed_mod_names);
+        window.dispatchEvent(
+          new CustomEvent("ron:profile-changed", { detail: { name } }),
         );
       }
-
       await loadProfiles();
       closeForm();
       toastStore.success(
-        isNewProfile
-          ? `Profile created and switched: ${formName}`
-          : "Profile updated successfully.",
+        editingProfile
+          ? `Profile renamed: ${name}`
+          : `Profile created and switched: ${name}`,
       );
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -115,16 +121,12 @@
     try {
       error = null;
       const profile = await commands.applyProfile(name);
-
       const config = await commands.getConfig();
-      if (config.game_path) {
+      if (config.game_path)
         await commands.syncModLinks(profile.installed_mod_names);
-      }
-
       window.dispatchEvent(
         new CustomEvent("ron:profile-changed", { detail: { name } }),
       );
-
       toastStore.success(
         `Applied profile: ${name} (${profile.installed_mod_names.length} mod group${profile.installed_mod_names.length === 1 ? "" : "s"} enabled)`,
       );
@@ -132,133 +134,156 @@
       error = err instanceof Error ? err.message : String(err);
     }
   }
+
+  async function handleDuplicate(name: string) {
+    let newName = `${name} Copy`;
+    let i = 2;
+    while (profiles.some((p) => p.name === newName))
+      newName = `${name} Copy ${i++}`;
+    const input = prompt(`Duplicate "${name}" as:`, newName);
+    if (input === null) return;
+    const trimmed = input.trim();
+    if (!trimmed) {
+      error = "Profile name is required";
+      return;
+    }
+    try {
+      error = null;
+      await commands.duplicateProfile(name, trimmed);
+      await loadProfiles();
+      toastStore.success(`Profile duplicated: ${trimmed}`);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+  }
 </script>
 
-<div class="mx-auto max-w-3xl px-4 py-8">
-  <div class="mb-6">
-    <h1 style="color: var(--clr-text);" class="text-3xl font-bold mb-2">
-      Mod Profiles
-    </h1>
-    <p style="color: var(--clr-text-secondary);">
-      Save and load different installed-mod configurations.
-    </p>
-    <p style="color: var(--clr-text-secondary);" class="text-sm mt-1">
-      Profiles share one mod archive/file store, so switching profiles does not
-      duplicate data.
-    </p>
-  </div>
+<section class="prefs-page">
+  <h1 style="color: var(--clr-text);" class="text-2xl font-bold">
+    Mod Profiles
+  </h1>
+  <p style="color: var(--clr-text-secondary);" class="text-sm mt-1">
+    Save and load different installed-mod configurations. Profiles share one mod
+    store, so switching does not duplicate data.
+  </p>
 
   {#if error}
-    <div class="message-box mb-4 rounded-lg px-4 py-3">
-      {error}
-    </div>
-  {/if}
-
-  {#if !showForm}
-    <button on:click={() => openForm()} class="btn primary mb-6">
-      + Create New Profile
-    </button>
+    <div class="message-box mt-4 rounded-lg px-4 py-3">{error}</div>
   {/if}
 
   {#if showForm}
-    <div
-      style="background: var(--clr-surface); border-color: var(--adw-border-color);"
-      class="card mb-6 rounded-lg border p-6"
-    >
-      <h2 style="color: var(--clr-text);" class="text-2xl font-bold mb-4">
-        {editingProfile ? "Edit Profile" : "Create New Profile"}
-      </h2>
-
-      <div class="mb-4">
-        <label
-          for="profile-name"
-          style="color: var(--clr-text);"
-          class="mb-2 block font-semibold">Name</label
-        >
-        <input
-          id="profile-name"
-          type="text"
-          bind:value={formName}
-          class="input"
-          placeholder="Profile name"
-        />
+    <div class="prefs-group">
+      <div class="prefs-group-title">
+        {editingProfile ? "Edit Profile" : "Create Profile"}
       </div>
-
-      <div class="mb-4">
-        <label
-          for="profile-description"
-          style="color: var(--clr-text);"
-          class="mb-2 block font-semibold"
-        >
-          Description (optional)
-        </label>
-        <textarea
-          id="profile-description"
-          bind:value={formDescription}
-          class="textarea"
-          placeholder="Profile description"
-          rows="3"></textarea>
-      </div>
-
-      <div class="flex gap-2">
-        <button on:click={handleSubmit} class="btn primary">
-          Save Profile
-        </button>
-        <button on:click={closeForm} class="btn"> Cancel </button>
+      <div class="prefs-boxed-list">
+        <div class="prefs-row">
+          <div class="prefs-row-text">
+            <div class="prefs-row-title">Name</div>
+          </div>
+          <div class="prefs-row-suffix" style="flex:1; max-width: 280px;">
+            <input
+              id="profile-name"
+              type="text"
+              bind:value={formName}
+              class="input"
+              placeholder="Profile name"
+            />
+          </div>
+        </div>
+        <div class="prefs-row">
+          <div class="prefs-row-text">
+            <div class="prefs-row-title">Description</div>
+            <div class="prefs-row-subtitle">Optional</div>
+          </div>
+          <div class="prefs-row-suffix" style="flex:1; max-width: 280px;">
+            <textarea
+              id="profile-description"
+              bind:value={formDescription}
+              class="textarea"
+              placeholder="Profile description"
+              rows="2"></textarea>
+          </div>
+        </div>
+        <div class="prefs-row">
+          <div class="prefs-row-text">
+            <div class="prefs-row-subtitle">
+              {editingProfile ? "" : "New profile will be applied immediately"}
+            </div>
+          </div>
+          <div class="prefs-row-suffix">
+            <button on:click={handleSubmit} class="btn primary btn-sm"
+              >Save</button
+            >
+            <button on:click={closeForm} class="btn btn-sm">Cancel</button>
+          </div>
+        </div>
       </div>
     </div>
   {/if}
 
-  <div class="space-y-3">
-    {#if loading}
-      <p style="color: var(--clr-text-secondary);">Loading profiles...</p>
-    {:else if profiles.length === 0}
-      <p style="color: var(--clr-text-secondary);">
-        No profiles created yet. Create one to get started!
-      </p>
-    {:else}
-      {#each profiles as profile (profile.name)}
-        <div
-          style="background: var(--clr-surface); border-color: var(--adw-border-color);color:var(--clr-text);"
-          class="card rounded-lg border p-4"
-        >
-          <div class="flex justify-between items-start mb-2">
-            <div>
-              <h3 style="color: var(--clr-text);" class="text-lg font-bold">
-                {profile.name}
-              </h3>
-              {#if profile.description}
-                <p style="color: var(--clr-text-secondary);" class="text-sm">
-                  {profile.description}
-                </p>
-              {/if}
-            </div>
-            <span style="color: var(--clr-text-secondary);" class="text-xs">
-              {new Date(profile.created_at).toLocaleDateString()}
-            </span>
-          </div>
-
-          <div class="flex gap-2">
-            <button
-              on:click={() => handleApply(profile.name)}
-              class="btn btn-sm primary"
-            >
-              Apply
-            </button>
-            <button on:click={() => openForm(profile)} class="btn btn-sm">
-              Edit
-            </button>
-            <button
-              on:click={() => handleDelete(profile.name)}
-              class="btn btn-sm danger"
-            >
-              Delete
-            </button>
-            <!-- Manage Add-ons button removed: add-ons are managed per-mod, not per-profile -->
-          </div>
+  <div class="prefs-group">
+    <div class="prefs-group-title">Profiles</div>
+    <div class="prefs-group-desc">
+      {effectiveProfiles.length} profile{effectiveProfiles.length === 1
+        ? ""
+        : "s"}{#if !showForm}
+        — create and switch between configurations{/if}
+    </div>
+    <div class="prefs-boxed-list">
+      {#if loading && !$incognitoMode}
+        <div class="prefs-row">
+          <span class="prefs-row-subtitle">Loading profiles…</span>
         </div>
-      {/each}
-      <!-- ManageAddOnsModal removed: add-ons are managed per-mod, not per-profile -->
+      {:else if effectiveProfiles.length === 0}
+        <div class="prefs-row">
+          <span class="prefs-row-subtitle"
+            >No profiles yet. Create one to get started.</span
+          >
+        </div>
+      {:else}
+        {#each effectiveProfiles as profile (profile.name)}
+          <div class="prefs-row">
+            <div class="prefs-row-text">
+              <div class="prefs-row-title">{profile.name}</div>
+              {#if profile.description}<div class="prefs-row-subtitle">
+                  {profile.description}
+                </div>{/if}
+              <div class="prefs-row-subtitle">
+                {new Date(profile.created_at).toLocaleDateString()} · {profile
+                  .installed_mod_names.length} mod group{profile
+                  .installed_mod_names.length === 1
+                  ? ""
+                  : "s"}
+              </div>
+            </div>
+            <div class="prefs-row-suffix">
+              <button
+                on:click={() => handleApply(profile.name)}
+                class="btn btn-sm primary">Apply</button
+              >
+              <button
+                on:click={() => handleDuplicate(profile.name)}
+                class="btn btn-sm">Duplicate</button
+              >
+              <button on:click={() => openForm(profile)} class="btn btn-sm"
+                >Edit</button
+              >
+              <button
+                on:click={() => handleDelete(profile.name)}
+                class="btn btn-sm danger">Delete</button
+              >
+            </div>
+          </div>
+        {/each}
+      {/if}
+    </div>
+    {#if !showForm}
+      <div style="margin-top: 0.75rem;">
+        <button on:click={() => openForm()} class="btn primary btn-sm"
+          >+ Create New Profile</button
+        >
+      </div>
     {/if}
   </div>
-</div>
+</section>

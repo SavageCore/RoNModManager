@@ -29,7 +29,6 @@
   let rawCollections: Record<string, boolean> = {};
   let rawCollectionColors: Record<string, string> = {};
   let rawModDisplayNames: Record<string, string> = {};
-
   $: collectionMods = $incognitoMode ? DUMMY_COLLECTIONS : rawCollectionMods;
   $: collections = $incognitoMode
     ? Object.fromEntries(Object.keys(DUMMY_COLLECTIONS).map((k) => [k, true]))
@@ -48,11 +47,11 @@
   let newCollectionName = "";
   let loading = false;
   let hasLoadedOnce = false;
-  let editModal: {
-    isVisible: boolean;
-    name: string;
-    color: string | null;
-  } = { isVisible: false, name: "", color: null };
+  let editModal: { isVisible: boolean; name: string; color: string | null } = {
+    isVisible: false,
+    name: "",
+    color: null,
+  };
   let confirmModal: {
     isVisible: boolean;
     title: string;
@@ -72,7 +71,6 @@
   $: sortedCollectionEntries = Object.entries(collectionMods).sort((a, b) =>
     a[0].localeCompare(b[0], undefined, { sensitivity: "base" }),
   );
-
   function sortedMods(mods: string[]): string[] {
     return [...mods].sort((a, b) =>
       resolveModName(a).localeCompare(resolveModName(b), undefined, {
@@ -80,19 +78,17 @@
       }),
     );
   }
-
-  function escapeHtml(value: string): string {
-    return value
+  function escapeHtml(v: string): string {
+    return v
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#39;");
   }
-
   function renderDeleteModList(mods: string[]): string {
     return sortedMods(mods)
-      .map((modName) => escapeHtml(resolveModName(modName)))
+      .map((m) => escapeHtml(resolveModName(m)))
       .join("<br>");
   }
 
@@ -112,31 +108,24 @@
         getInstalledModGroups().catch(() => []),
         getCollectionColors(),
       ]);
-
       rawCollectionMods = profileCollectionMods;
       rawCollectionColors = colors;
       activeProfileName = config.active_profile;
       rawModDisplayNames = Object.fromEntries(
-        installedGroups.map((group) => [
-          group.name,
-          group.displayName?.trim() || group.name,
-        ]),
+        installedGroups.map((g) => [g.name, g.displayName?.trim() || g.name]),
       );
-
       if (activeProfileName) {
         const profile = await getProfile(activeProfileName);
         activeProfileEnabledCount = profile?.installed_mod_names.length ?? 0;
-
-        // A collection whose mods are all individually enabled should appear enabled
-        // even if it was never toggled through the collection UI.
         const enabledSet = new Set(profile?.installed_mod_names ?? []);
         rawCollections = Object.fromEntries(
           Object.entries(collectionState).map(([name, enabled]) => {
             const mods = profileCollectionMods[name] ?? [];
-            const effectivelyEnabled =
+            return [
+              name,
               enabled ||
-              (mods.length > 0 && mods.every((mod) => enabledSet.has(mod)));
-            return [name, effectivelyEnabled];
+                (mods.length > 0 && mods.every((m) => enabledSet.has(m))),
+            ];
           }),
         );
       } else {
@@ -150,11 +139,9 @@
       hasLoadedOnce = true;
     }
   }
-
   function resolveModName(modName: string): string {
     return modDisplayNames[modName] ?? modName;
   }
-
   async function onCreateCollection() {
     const name = newCollectionName.trim();
     if (!name) {
@@ -170,7 +157,6 @@
       toastStore.error(`Failed to create collection: ${String(error)}`);
     }
   }
-
   async function onDeleteCollection(name: string) {
     const mods = collectionMods[name] ?? [];
     const modCount = mods.length;
@@ -178,7 +164,7 @@
     confirmModal = {
       isVisible: true,
       title: "Delete collection?",
-      message: `Are you sure you want to delete <strong>${escapeHtml(name)}</strong>? This will remove the collection grouping${modCount > 0 ? ` for ${modCount} mod${modCount === 1 ? "" : "s"}` : ""}.${modCount > 0 ? `<div style="margin-top: 0.75rem; color: var(--clr-text-secondary);">${modListMarkup}</div>` : ""}`,
+      message: `Are you sure you want to delete <strong>${escapeHtml(name)}</strong>? This will remove the collection grouping${modCount > 0 ? ` for ${modCount} mod${modCount === 1 ? "" : "s"}` : ""}.${modCount > 0 ? `<div style="margin-top:0.75rem;color:var(--clr-text-secondary);">${modListMarkup}</div>` : ""}`,
       detail: "",
       confirmLabel: "Delete",
       onConfirm: async () => {
@@ -192,7 +178,6 @@
       },
     };
   }
-
   async function onRemoveMod(collectionName: string, modName: string) {
     try {
       await removeModFromCollection(collectionName, modName);
@@ -202,7 +187,6 @@
       toastStore.error(`Failed to remove mod: ${String(error)}`);
     }
   }
-
   async function onToggle(name: string, enabled: boolean) {
     try {
       await toggleCollection(name, enabled);
@@ -215,7 +199,6 @@
       toastStore.error(`Failed to update collection: ${String(error)}`);
     }
   }
-
   function openEditModal(name: string) {
     editModal = {
       isVisible: true,
@@ -223,41 +206,31 @@
       color: collectionColors[name] ?? null,
     };
   }
-
   async function onSaveEdit(newName: string, newColor: string | null) {
     const oldName = editModal.name;
     const oldColor = collectionColors[oldName] ?? null;
-
     try {
-      if (newName !== oldName) {
-        await renameCollection(oldName, newName);
-      }
+      if (newName !== oldName) await renameCollection(oldName, newName);
       const effectiveName = newName !== oldName ? newName : oldName;
-      if (newColor !== oldColor) {
+      if (newColor !== oldColor)
         await setCollectionColor(effectiveName, newColor);
-      }
       await refresh();
       toastStore.success(`Updated collection.`);
     } catch (error) {
       toastStore.error(`Failed to update collection: ${String(error)}`);
     }
   }
-
   onMount(() => {
     void refresh();
-
     const onCollectionsChanged = () => {
       void refresh();
     };
-
     window.addEventListener("ron:collections-changed", onCollectionsChanged);
-
-    return () => {
+    return () =>
       window.removeEventListener(
         "ron:collections-changed",
         onCollectionsChanged,
       );
-    };
   });
 </script>
 
@@ -269,7 +242,6 @@
   confirmLabel={confirmModal.confirmLabel}
   onConfirm={confirmModal.onConfirm}
 />
-
 <EditCollectionModal
   bind:isVisible={editModal.isVisible}
   initialName={editModal.name}
@@ -277,144 +249,150 @@
   onSave={onSaveEdit}
 />
 
-<section class="card">
-  <h1 style="color: var(--clr-text);" class="mb-4 text-2xl font-semibold">
+<section class="prefs-page">
+  <h1 style="color: var(--clr-text);" class="text-2xl font-bold">
     Collections
   </h1>
-  <p style="color: var(--clr-text-secondary);" class="text-sm">
+  <p style="color: var(--clr-text-secondary);" class="text-sm mt-1">
     Group installed mods and toggle whole collections for the active profile.
+    Right-click a mod in Mods to add it to a collection.
   </p>
-
-  <div class="mt-4 flex items-center gap-2">
-    <input
-      class="input"
-      type="text"
-      bind:value={newCollectionName}
-      placeholder="New collection name"
-      disabled={!activeProfileName}
-      on:keydown={(event) => {
-        if (event.key === "Enter") {
-          void onCreateCollection();
-        }
-      }}
-    />
-    <button
-      class="btn primary"
-      on:click={onCreateCollection}
-      disabled={!activeProfileName}
+  {#if !activeProfileName && hasLoadedOnce}<p
+      style="color: var(--clr-text-secondary);"
+      class="text-xs mt-1"
     >
-      Create
-    </button>
-  </div>
+      No active profile — create/select a profile first.
+    </p>{/if}
 
-  {#if loading && !hasLoadedOnce}
-    <p style="color: var(--clr-text-secondary);" class="mt-4 text-sm">
-      Loading collections...
-    </p>
-  {:else if Object.keys(collectionMods).length === 0}
-    <p style="color: var(--clr-text-secondary);" class="mt-4 text-sm">
-      No collections yet. Create one here or right-click a mod in Mods and add
-      it to a collection.
-    </p>
-  {:else}
-    <ul class="mt-4 space-y-2">
-      {#each sortedCollectionEntries as [name, mods] (name)}
-        {@const color = collectionColors[name] ?? null}
-        <li
-          style="background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text);"
-          class="rounded-lg border px-3 py-2 text-sm"
-        >
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0 flex-1">
-              {#if color}
-                <span
-                  class="collection-pill font-medium"
-                  style="
-                    background: color-mix(in srgb, {color} 15%, transparent);
-                    border-color: {color};
-                    color: {color};
-                  "
-                >
-                  {name}
-                </span>
-              {:else}
-                <p class="font-medium">{name}</p>
-              {/if}
-              <p
-                style="color: var(--clr-text-secondary);"
-                class="text-xs mt-0.5"
-              >
-                {mods.length} mod{mods.length === 1 ? "" : "s"}
-              </p>
-              {#if mods.length > 0}
-                <div class="mt-2 flex flex-wrap gap-1">
-                  {#each sortedMods(mods) as modName (modName)}
-                    <span
-                      style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
-                      class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs"
-                    >
-                      <span class="truncate max-w-[16rem]" title={modName}
-                        >{resolveModName(modName)}</span
-                      >
-                      <button
-                        class="chip-remove-btn"
-                        on:click={() => {
-                          void onRemoveMod(name, modName);
-                        }}
-                        title={`Remove ${resolveModName(modName)} from ${name}`}
-                        aria-label={`Remove ${resolveModName(modName)} from ${name}`}
-                      >
-                        <X size={12} aria-hidden="true" />
-                      </button>
-                    </span>
-                  {/each}
+  <div class="prefs-group">
+    <div class="prefs-group-title">Collections</div>
+    <div class="prefs-group-desc">
+      {Object.keys(collectionMods).length} collection{Object.keys(
+        collectionMods,
+      ).length === 1
+        ? ""
+        : "s"}
+    </div>
+    <div class="prefs-boxed-list">
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">New collection</div>
+          <div class="prefs-row-subtitle">Create an empty collection</div>
+        </div>
+        <div class="prefs-row-suffix" style="flex:1; max-width: 320px;">
+          <input
+            class="input"
+            type="text"
+            bind:value={newCollectionName}
+            placeholder="Name"
+            disabled={!activeProfileName}
+            on:keydown={(e) => {
+              if (e.key === "Enter") void onCreateCollection();
+            }}
+          />
+          <button
+            class="btn primary btn-sm"
+            on:click={onCreateCollection}
+            disabled={!activeProfileName}>Create</button
+          >
+        </div>
+      </div>
+
+      {#if loading && !hasLoadedOnce}
+        <div class="prefs-row">
+          <span class="prefs-row-subtitle">Loading collections…</span>
+        </div>
+      {:else if Object.keys(collectionMods).length === 0}
+        <div class="prefs-row">
+          <span class="prefs-row-subtitle">No collections yet.</span>
+        </div>
+      {:else}
+        {#each sortedCollectionEntries as [name, mods] (name)}
+          {@const color = collectionColors[name] ?? null}
+          <div class="prefs-row prefs-row--collection">
+            <div class="prefs-row-main">
+              <div class="prefs-row-text">
+                {#if color}<span
+                    class="collection-pill font-medium"
+                    style="background: color-mix(in srgb, {color} 15%, transparent); border-color: {color}; color: {color};"
+                    >{name}</span
+                  >{:else}<div class="prefs-row-title">{name}</div>{/if}
+                <div class="prefs-row-subtitle">
+                  {mods.length} mod{mods.length === 1 ? "" : "s"}
                 </div>
-              {/if}
+              </div>
+              <div class="prefs-row-suffix">
+                <label
+                  class="gale-switch"
+                  title={`${(collections[name] ?? false) ? "Disable" : "Enable"} ${name}`}
+                  aria-label={`${(collections[name] ?? false) ? "Disable" : "Enable"} ${name}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={collections[name] ?? false}
+                    on:change={(e) => onToggle(name, e.currentTarget.checked)}
+                    disabled={!activeProfileName}
+                  />
+                  <span class="gale-switch-track"></span>
+                </label>
+                <button
+                  class="btn btn-sm"
+                  on:click={() => openEditModal(name)}
+                  disabled={!activeProfileName}>Edit</button
+                >
+                <button
+                  class="btn btn-sm danger"
+                  on:click={() => void onDeleteCollection(name)}
+                  disabled={!activeProfileName}>Delete</button
+                >
+              </div>
             </div>
-            <div class="flex items-center gap-2">
-              <label
-                class="gale-switch"
-                title={`${(collections[name] ?? false) ? "Disable" : "Enable"} collection ${name}`}
-                aria-label={`${(collections[name] ?? false) ? "Disable" : "Enable"} collection ${name}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={collections[name] ?? false}
-                  aria-label={`${(collections[name] ?? false) ? "Disable" : "Enable"} collection ${name}`}
-                  on:change={(event) =>
-                    onToggle(
-                      name,
-                      (event.currentTarget as HTMLInputElement).checked,
-                    )}
-                  disabled={!activeProfileName}
-                />
-                <span class="gale-switch-track"></span>
-              </label>
-              <button
-                class="btn btn-sm"
-                on:click={() => openEditModal(name)}
-                disabled={!activeProfileName}
-              >
-                Edit
-              </button>
-              <button
-                class="btn btn-sm danger"
-                on:click={() => {
-                  void onDeleteCollection(name);
-                }}
-                disabled={!activeProfileName}
-              >
-                Delete
-              </button>
-            </div>
+            {#if mods.length > 0}
+              <div class="collection-chips">
+                {#each sortedMods(mods) as modName (modName)}
+                  <span
+                    style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
+                    class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs"
+                  >
+                    <span class="truncate max-w-[16rem]" title={modName}
+                      >{resolveModName(modName)}</span
+                    >
+                    <button
+                      class="chip-remove-btn"
+                      on:click={() => void onRemoveMod(name, modName)}
+                      title={`Remove ${resolveModName(modName)} from ${name}`}
+                      aria-label={`Remove ${resolveModName(modName)} from ${name}`}
+                      ><X size={12} aria-hidden="true" /></button
+                    >
+                  </span>
+                {/each}
+              </div>
+            {/if}
           </div>
-        </li>
-      {/each}
-    </ul>
-  {/if}
+        {/each}
+      {/if}
+    </div>
+  </div>
 </section>
 
 <style>
+  .prefs-row--collection {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .prefs-row-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    width: 100%;
+  }
+  .collection-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
   .collection-pill {
     display: inline-block;
     padding: 0.125rem 0.5rem;
@@ -423,7 +401,6 @@
     font-size: 0.875rem;
     line-height: 1.5;
   }
-
   .chip-remove-btn {
     display: inline-flex;
     align-items: center;
@@ -439,12 +416,10 @@
       background-color 120ms ease,
       color 120ms ease;
   }
-
   .chip-remove-btn:hover {
     background: color-mix(in srgb, var(--clr-danger-300) 18%, transparent);
     color: var(--clr-danger-300);
   }
-
   .chip-remove-btn:focus-visible {
     outline: 2px solid var(--clr-primary-300);
     outline-offset: 1px;

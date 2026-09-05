@@ -86,6 +86,8 @@ test: test-frontend test-backend ## Run all tests (frontend + backend)
 
 # ── Screenshots ───────────────────────────────────────────────────────────────
 
+screenshot: screenshots ## Take light + dark screenshots
+
 screenshots: ## Take light + dark screenshots (rebuild with make screenshots-build if Rust changed)
 	SCREENSHOT_THEME=light node scripts/take-screenshots.mjs
 	SCREENSHOT_THEME=dark  node scripts/take-screenshots.mjs

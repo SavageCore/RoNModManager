@@ -184,6 +184,8 @@ pub fn run() {
             profiles::get_profile,
             profiles::save_profile,
             profiles::delete_profile,
+            profiles::rename_profile,
+            profiles::duplicate_profile,
             profiles::apply_profile,
             profiles::get_modpack_meta,
             profiles::set_modpack_meta,

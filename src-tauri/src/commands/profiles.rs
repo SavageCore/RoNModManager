@@ -82,6 +82,75 @@ pub async fn delete_profile(name: String) -> Result<()> {
 }
 
 #[tauri::command]
+pub async fn rename_profile(
+    old_name: String,
+    new_name: String,
+    description: Option<String>,
+    installed_mod_names: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<Profile> {
+    let old_name = old_name.trim().to_string();
+    let new_name = new_name.trim().to_string();
+    if old_name.is_empty() || new_name.is_empty() {
+        return Err(AppError::Validation("Profile name is required".to_string()));
+    }
+    if old_name == new_name {
+        return Err(AppError::Validation(
+            "New name must be different".to_string(),
+        ));
+    }
+    if services::profiles::get_profile(&new_name)?.is_some() {
+        return Err(AppError::Validation(format!(
+            "Profile '{}' already exists",
+            new_name
+        )));
+    }
+    let mut profile = services::profiles::get_profile(&old_name)?
+        .ok_or_else(|| AppError::Validation(format!("Profile '{}' not found", old_name)))?;
+    profile.name = new_name.clone();
+    profile.description = description;
+    profile.installed_mod_names = installed_mod_names;
+    // Save the profile under the new name
+    services::profiles::save_profile(&profile)?;
+    // Delete the old profile file
+    services::profiles::delete_profile(&old_name)?;
+    // If the renamed profile was the active one, update the active profile in config
+    let config = state.get_config()?;
+    if config.active_profile.as_deref() == Some(old_name.as_str()) {
+        let _ = state.update_config(|cfg| {
+            cfg.active_profile = Some(new_name.clone());
+        })?;
+    }
+    Ok(profile)
+}
+
+#[tauri::command]
+pub async fn duplicate_profile(old_name: String, new_name: String) -> Result<Profile> {
+    let old_name = old_name.trim().to_string();
+    let new_name = new_name.trim().to_string();
+    if old_name.is_empty() || new_name.is_empty() {
+        return Err(AppError::Validation("Profile name is required".to_string()));
+    }
+    if old_name == new_name {
+        return Err(AppError::Validation(
+            "New name must be different".to_string(),
+        ));
+    }
+    if services::profiles::get_profile(&new_name)?.is_some() {
+        return Err(AppError::Validation(format!(
+            "Profile '{}' already exists",
+            new_name
+        )));
+    }
+    let mut profile = services::profiles::get_profile(&old_name)?
+        .ok_or_else(|| AppError::Validation(format!("Profile '{}' not found", old_name)))?;
+    profile.name = new_name;
+    profile.created_at = chrono::Utc::now().to_rfc3339();
+    services::profiles::save_profile(&profile)?;
+    Ok(profile)
+}
+
+#[tauri::command]
 pub async fn get_modpack_meta(
     state: State<'_, AppState>,
 ) -> Result<Option<crate::models::ModpackMeta>> {
