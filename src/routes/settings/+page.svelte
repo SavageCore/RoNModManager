@@ -54,6 +54,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { downloadDir } from "@tauri-apps/api/path";
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import { ArrowUp } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { onDestroy, onMount } from "svelte";
   // Persist modpack export metadata per-profile (backend), not localStorage
@@ -122,6 +123,8 @@
   let onGameLaunch: OnGameLaunchAction = "nothing";
   let closeAction: CloseAction = "quit";
   let minimizeTarget: MinimizeTarget = "taskbar";
+  let scrollEl: HTMLElement | null = null;
+  let showScrollTop = false;
 
   $: updateLastChecked = $updateCheckStore ? new Date($updateCheckStore) : null;
 
@@ -580,6 +583,12 @@
   function handleProfileChanged() {
     void loadSyncDetails();
   }
+  function updateScrollTopVisibility() {
+    showScrollTop = !!scrollEl && scrollEl.scrollTop > 300;
+  }
+  function scrollToTop() {
+    scrollEl?.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   async function handleExportModpack({
     name,
@@ -724,6 +733,10 @@
 
   onMount(async () => {
     window.addEventListener("ron:profile-changed", handleProfileChanged);
+    scrollEl = document.querySelector("main") as HTMLElement | null;
+    scrollEl?.addEventListener("scroll", updateScrollTopVisibility, {
+      passive: true,
+    });
     runningInFlatpak = await isRunningInFlatpak();
     currentVersion = await getVersion();
     void migrateLegacyModpackMeta();
@@ -732,6 +745,7 @@
 
   onDestroy(() => {
     window.removeEventListener("ron:profile-changed", handleProfileChanged);
+    scrollEl?.removeEventListener("scroll", updateScrollTopVisibility);
   });
 </script>
 
@@ -1127,6 +1141,15 @@
     on:submit={(e) => handleSyncAuthSubmit(e.detail)}
   />
 </section>
+{#if showScrollTop}
+  <button
+    class="fixed right-6 z-[800] flex h-10 w-10 items-center justify-center rounded-full border shadow-lg hover:scale-105 cursor-pointer"
+    style="bottom: calc(2.25rem + 1rem); background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text);"
+    on:click={scrollToTop}
+    aria-label="Scroll to top"
+    title="Back to top"><ArrowUp size={18} /></button
+  >
+{/if}
 
 {#if showTokenModal}
   <div
