@@ -304,7 +304,6 @@ body {
 
 /* Input and select styling - libadwaita flat */
 .input,
-.select,
 .textarea {
   font-family: var(--adw-font-family);
   appearance: none;
@@ -319,6 +318,28 @@ body {
   width: 100%;
   box-sizing: border-box;
   box-shadow: none;
+  transition:
+    border-color 120ms ease,
+    outline-color 120ms ease;
+}
+.select {
+  font-family: var(--adw-font-family);
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--clr-surface);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23606366' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  color: var(--clr-text);
+  border: 1px solid var(--adw-border-color);
+  border-radius: 8px;
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: none;
+  cursor: pointer;
   transition:
     border-color 120ms ease,
     outline-color 120ms ease;
