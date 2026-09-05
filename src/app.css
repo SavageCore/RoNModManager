@@ -168,6 +168,7 @@ body {
 .prefs-page {
   max-width: 720px;
   margin: 0 auto;
+  padding-bottom: 2rem;
 }
 .prefs-group {
   margin-top: 1.5rem;
