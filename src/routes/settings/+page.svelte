@@ -1107,11 +1107,16 @@
         <div class="prefs-row-text">
           <div class="prefs-row-title">Updates</div>
           <div class="prefs-row-subtitle">
-            {#if currentVersion}Version {currentVersion} ·
-            {/if}{#if runningInFlatpak}Managed by Flatpak — flatpak update{:else if updateVersion}Update
-              ready: {updateVersion}{:else}Check for updates{/if}{#if updateLastChecked && !runningInFlatpak}
-              · Last checked {updateLastChecked.toLocaleString()}{/if}
+            {#if currentVersion}Version {currentVersion}{/if}{#if runningInFlatpak}
+              · Managed by Flatpak (flatpak update){:else if updateVersion}
+              · Update ready: {updateVersion}{/if}
           </div>
+          {#if updateLastChecked && !runningInFlatpak}<div
+              class="text-xs mt-1"
+              style="color:var(--clr-text-secondary);opacity:0.7;"
+            >
+              Last checked {updateLastChecked.toLocaleString()}
+            </div>{/if}
         </div>
         {#if !runningInFlatpak}<div class="prefs-row-suffix">
             <button
