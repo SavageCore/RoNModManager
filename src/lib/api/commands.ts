@@ -77,6 +77,9 @@ export const syncModpackToRemote = (
     verbose: verbose ?? false,
   });
 
+export const testSyncAuth = (auth: import("../types").SyncAuth) =>
+  invoke<void>("test_sync_auth", { auth });
+
 export const getCollections = () =>
   invoke<Record<string, boolean>>("get_collections");
 export const getCollectionMods = () =>

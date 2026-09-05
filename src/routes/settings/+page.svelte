@@ -548,9 +548,9 @@
     showSyncAuthModal = true;
   }
 
-  function handleSyncAuthSubmit(auth: SyncAuth) {
+  function handleSyncAuthSubmit(_auth: SyncAuth) {
     showSyncAuthModal = false;
-    void runSync(auth);
+    toastStore.success("Credentials saved (tested). Use Sync Now to sync.");
   }
 
   async function loadSyncDetails() {

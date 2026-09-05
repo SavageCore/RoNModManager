@@ -123,7 +123,11 @@ fn launch_game_internal(game_path: &Path, intro_skip_enabled: bool) -> Result<()
     }
     // Re-apply Engine.ini optimization if enabled
     if let Ok(cfg) = crate::state::load_config_fallback() {
-        if cfg.optimization_enabled { if let Some(p) = cfg.optimization_profile { let _ = crate::services::config_tweaks::apply_optimization(&p); } }
+        if cfg.optimization_enabled {
+            if let Some(p) = cfg.optimization_profile {
+                let _ = crate::services::config_tweaks::apply_optimization(&p);
+            }
+        }
     }
 
     #[cfg(target_os = "windows")]

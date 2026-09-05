@@ -130,6 +130,7 @@ pub fn run() {
             modpack::export_modpack_to_file,
             modpack::apply_modpack_profile_metadata,
             sync::sync_modpack_to_remote,
+            sync::test_sync_auth,
             collections::get_collections,
             collections::get_collection_mods,
             collections::create_collection,
