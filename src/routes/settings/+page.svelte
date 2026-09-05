@@ -836,7 +836,16 @@
       <div class="prefs-row">
         <div class="prefs-row-text">
           <div class="prefs-row-title">Nexus Mods API Key</div>
-          <div class="prefs-row-subtitle">
+          <div
+            class="prefs-row-subtitle"
+            style="color:{hasNexusKey
+              ? nexusKeyValid === true
+                ? 'var(--clr-success-300)'
+                : nexusKeyValid === false
+                  ? 'var(--clr-danger-300)'
+                  : 'var(--clr-text-secondary)'
+              : 'var(--clr-danger-300)'}"
+          >
             {hasNexusKey
               ? nexusKeyValid === true
                 ? "✓ Configured"
@@ -861,7 +870,16 @@
       <div class="prefs-row">
         <div class="prefs-row-text">
           <div class="prefs-row-title">mod.io OAuth Access</div>
-          <div class="prefs-row-subtitle">
+          <div
+            class="prefs-row-subtitle"
+            style="color:{hasSavedToken
+              ? modioTokenValid === true
+                ? 'var(--clr-success-300)'
+                : modioTokenValid === false
+                  ? 'var(--clr-danger-300)'
+                  : 'var(--clr-text-secondary)'
+              : 'var(--clr-danger-300)'}"
+          >
             {hasSavedToken
               ? modioTokenValid === true
                 ? "✓ Configured"
@@ -884,7 +902,12 @@
       <div class="prefs-row">
         <div class="prefs-row-text">
           <div class="prefs-row-title">mod.io API Access</div>
-          <div class="prefs-row-subtitle">
+          <div
+            class="prefs-row-subtitle"
+            style="color:{hasModioApiKey
+              ? 'var(--clr-success-300)'
+              : 'var(--clr-danger-300)'}"
+          >
             {hasModioApiKey ? "✓ Configured" : "✗ Not configured"}
           </div>
         </div>
