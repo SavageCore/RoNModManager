@@ -477,13 +477,23 @@
       await applyOptimization(selectedGpu);
       toastStore.success(`Optimization applied: ${selectedGpu}`);
       await refresh();
-    } catch (e) { toastStore.error(String(e)); }
-    finally { applyingOpt = false; }
+    } catch (e) {
+      toastStore.error(String(e));
+    } finally {
+      applyingOpt = false;
+    }
   }
   async function removeOpt() {
     applyingOpt = true;
-    try { await disableOptimization(); toastStore.success("Optimization removed"); await refresh(); }
-    catch(e){ toastStore.error(String(e)); } finally { applyingOpt=false; }
+    try {
+      await disableOptimization();
+      toastStore.success("Optimization removed");
+      await refresh();
+    } catch (e) {
+      toastStore.error(String(e));
+    } finally {
+      applyingOpt = false;
+    }
   }
 
   async function exportInstalledMods() {
@@ -707,550 +717,352 @@
   });
 </script>
 
-<section class="card">
-  <h1 style="color: var(--clr-text);" class="mb-4 text-2xl font-semibold">
+<section class="prefs-page">
+  <h1 style="color: var(--clr-text);" class="mb-2 text-2xl font-semibold">
     Settings
   </h1>
 
-  <div class="mt-4 grid gap-4 md:grid-cols-2">
-    <label class="block text-sm">
-      <span style="color: var(--clr-text-secondary);" class="mb-1 block"
-        >Game Path</span
+  <!-- General -->
+  <div class="prefs-group">
+    <div class="prefs-group-title">General</div>
+    <div class="prefs-boxed-list">
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">Game Path</div>
+          <div class="prefs-row-subtitle">ReadyOrNot installation folder</div>
+        </div>
+        <div class="prefs-row-suffix flex gap-2 flex-1 max-w-[420px]">
+          <input
+            class="input flex-1"
+            bind:value={gamePath}
+            on:blur={async () => {
+              try {
+                await setGamePath(gamePath.trim());
+              } catch (e) {
+                toastStore.error(`Game path: ${String(e)}`);
+              }
+            }}
+          /><button class="btn btn-sm" on:click={autodetect}>Auto Detect</button
+          >
+        </div>
+      </div>
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">Theme</div>
+        </div>
+        <div class="prefs-row-suffix">
+          <select
+            class="select w-40"
+            bind:value={theme}
+            on:change={() => {
+              applyThemeClass(theme);
+              void persistThemeChoice();
+            }}
+            ><option value="system">System</option><option value="light"
+              >Light</option
+            ><option value="dark">Dark</option></select
+          >
+        </div>
+      </div>
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">When launching game</div>
+        </div>
+        <div class="prefs-row-suffix">
+          <select
+            class="select w-40"
+            bind:value={onGameLaunch}
+            on:change={() =>
+              void updateConfig({ on_game_launch: onGameLaunch })}
+            ><option value="nothing">Do nothing</option><option value="minimize"
+              >Minimise</option
+            ><option value="close">Quit</option></select
+          >
+        </div>
+      </div>
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">When closing window</div>
+        </div>
+        <div class="prefs-row-suffix">
+          <select
+            class="select w-40"
+            bind:value={closeAction}
+            on:change={() =>
+              void updateConfig({
+                close_action: closeAction,
+                asked_close_preference: true,
+              })}
+            ><option value="quit">Quit</option><option value="minimize"
+              >Minimise</option
+            ></select
+          >
+        </div>
+      </div>
+      <div
+        class="prefs-row"
+        class:opacity-50={onGameLaunch === "nothing" && closeAction === "quit"}
       >
-      <input
-        class="input w-full"
-        bind:value={gamePath}
-        on:blur={async () => {
-          try {
-            await setGamePath(gamePath.trim());
-          } catch (error) {
-            toastStore.error(`Game path: ${String(error)}`);
-          }
-        }}
-      />
-      <button class="btn btn-sm mt-2" on:click={autodetect}>Auto Detect</button>
-    </label>
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">Minimise to</div>
+        </div>
+        <div class="prefs-row-suffix">
+          <select
+            class="select w-40"
+            bind:value={minimizeTarget}
+            disabled={onGameLaunch === "nothing" && closeAction === "quit"}
+            on:change={() =>
+              void updateConfig({
+                minimize_target: minimizeTarget,
+                asked_close_preference: true,
+              })}
+            ><option value="taskbar">Taskbar</option><option value="tray"
+              >System tray</option
+            ></select
+          >
+        </div>
+      </div>
+    </div>
   </div>
 
-  <div class="card mt-4">
-    <div class="flex items-center justify-between gap-3">
-      <div>
-        <h3 style="color: var(--clr-text);" class="font-semibold">
-          Nexus Mods API Key
-        </h3>
-        <p style="color: var(--clr-text-secondary);" class="text-sm mb-2">
-          <strong>Optional:</strong> Configure your Nexus Mods API key to fetch mod
-          metadata (name, description) when adding Nexus mods. Without a key, you
-          can still add mods manually.
-        </p>
-        <p style="color: var(--clr-text-secondary);" class="text-sm">
-          Status:
-          <span
-            style="color: {hasNexusKey
-              ? nexusKeyValid === false
-                ? 'var(--clr-danger-300)'
-                : nexusKeyValid === true
-                  ? 'var(--clr-success-300)'
-                  : 'var(--clr-primary-300)'
-              : 'var(--clr-danger-300)'};"
-            class="font-medium"
-          >
+  <!-- Accounts -->
+  <div class="prefs-group">
+    <div class="prefs-group-title">Accounts & API Keys</div>
+    <div class="prefs-group-desc">
+      Optional keys for fetching mod metadata. OAuth is required to
+      subscribe/download.
+    </div>
+    <div class="prefs-boxed-list">
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">Nexus Mods API Key</div>
+          <div class="prefs-row-subtitle">
             {hasNexusKey
               ? nexusKeyValid === true
                 ? "✓ Configured"
                 : nexusKeyValid === false
-                  ? "⚠ Configured, validation failed"
-                  : "⚠ Configured, pending check"
+                  ? "⚠ Validation failed"
+                  : "⚠ Pending check"
               : "✗ Not configured"}
-          </span>
-        </p>
+          </div>
+        </div>
+        <div class="prefs-row-suffix">
+          <button class="btn btn-sm primary" on:click={openNexusKeyModal}
+            >{hasNexusKey ? "Update Key" : "Set Key"}</button
+          >{#if hasNexusKey}<button
+              class="btn btn-sm danger"
+              on:click={async () => {
+                nexusKeyInput = "";
+                await saveNexusKey();
+              }}>Remove</button
+            >{/if}
+        </div>
       </div>
-      <div class="flex gap-2">
-        <button class="btn btn-sm primary" on:click={openNexusKeyModal}>
-          {hasNexusKey ? "Update Key" : "Set Key"}
-        </button>
-        {#if hasNexusKey}
-          <button
-            class="btn btn-sm danger"
-            on:click={async () => {
-              nexusKeyInput = "";
-              await saveNexusKey();
-            }}
-          >
-            Remove Key
-          </button>
-        {/if}
-      </div>
-    </div>
-  </div>
-
-  <div class="card mt-4">
-    <label class="block text-sm">
-      <span style="color: var(--clr-text-secondary);" class="mb-1 block"
-        >Theme</span
-      >
-      <select
-        class="select w-full"
-        bind:value={theme}
-        on:change={() => {
-          applyThemeClass(theme);
-          void persistThemeChoice();
-        }}
-      >
-        <option value="system">System</option>
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
-      </select>
-    </label>
-  </div>
-
-  <div class="card mt-4">
-    <h3 style="color: var(--clr-text);" class="font-semibold mb-3">
-      App Behaviour
-    </h3>
-    <div class="flex flex-col gap-4">
-      <label class="block text-sm">
-        <span style="color: var(--clr-text-secondary);" class="mb-1 block"
-          >When launching game</span
-        >
-        <select
-          class="select w-full"
-          bind:value={onGameLaunch}
-          on:change={() => {
-            void updateConfig({ on_game_launch: onGameLaunch });
-          }}
-        >
-          <option value="nothing">Do nothing</option>
-          <option value="minimize">Minimise</option>
-          <option value="close">Quit</option>
-        </select>
-      </label>
-
-      <label class="block text-sm">
-        <span style="color: var(--clr-text-secondary);" class="mb-1 block"
-          >When closing window</span
-        >
-        <select
-          class="select w-full"
-          bind:value={closeAction}
-          on:change={() => {
-            void updateConfig({
-              close_action: closeAction,
-              asked_close_preference: true,
-            });
-          }}
-        >
-          <option value="quit">Quit</option>
-          <option value="minimize">Minimise</option>
-        </select>
-      </label>
-
-      <label
-        class="block text-sm"
-        class:opacity-50={onGameLaunch === "nothing" && closeAction === "quit"}
-      >
-        <span style="color: var(--clr-text-secondary);" class="mb-1 block"
-          >Minimise to</span
-        >
-        <select
-          class="select w-full"
-          bind:value={minimizeTarget}
-          disabled={onGameLaunch === "nothing" && closeAction === "quit"}
-          on:change={() => {
-            void updateConfig({
-              minimize_target: minimizeTarget,
-              asked_close_preference: true,
-            });
-          }}
-        >
-          <option value="taskbar">Taskbar</option>
-          <option value="tray">System tray</option>
-        </select>
-      </label>
-    </div>
-  </div>
-
-  <div class="card mt-4">
-    <div class="flex items-center justify-between gap-3">
-      <div>
-        <h3 style="color: var(--clr-text);" class="font-semibold">
-          mod.io OAuth Access
-        </h3>
-        <p style="color: var(--clr-text-secondary);" class="text-sm mb-2">
-          <strong
-            >Required for subscribing and downloading mods as a user.</strong
-          >
-          This is your <b>OAuth Access</b> token from the
-          <a
-            href="https://mod.io/me/access"
-            target="_blank"
-            style="color: var(--clr-primary-300);text-decoration:underline;"
-            >mod.io Access page</a
-          >. Must have <b>Read</b> and <b>Write</b> permissions.
-        </p>
-        <p style="color: var(--clr-text-secondary);" class="text-sm">
-          Status:
-          <span
-            style="color: {hasSavedToken
-              ? modioTokenValid === false
-                ? 'var(--clr-danger-300)'
-                : modioTokenValid === true
-                  ? 'var(--clr-success-300)'
-                  : 'var(--clr-primary-300)'
-              : 'var(--clr-danger-300)'};"
-            class="font-medium"
-          >
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">mod.io OAuth Access</div>
+          <div class="prefs-row-subtitle">
             {hasSavedToken
               ? modioTokenValid === true
                 ? "✓ Configured"
                 : modioTokenValid === false
-                  ? "⚠ Configured, validation failed"
-                  : "⚠ Configured, pending check"
+                  ? "⚠ Validation failed"
+                  : "⚠ Pending check"
               : "✗ Not configured"}
-          </span>
-        </p>
-      </div>
-      <div class="flex gap-2">
-        <button class="btn btn-sm primary" on:click={openTokenSetupModal}
-          >Set OAuth Access</button
-        >
-        <button
-          class="btn btn-sm danger"
-          disabled={!hasSavedToken}
-          on:click={disconnect}>Remove OAuth</button
-        >
-      </div>
-    </div>
-  </div>
-
-  <div class="card mt-4">
-    <div class="flex items-center justify-between gap-3">
-      <div>
-        <h3 style="color: var(--clr-text);" class="font-semibold">
-          mod.io API Access
-        </h3>
-        <p style="color: var(--clr-text-secondary);" class="text-sm mb-2">
-          <strong>Required for looking up mod IDs from slugs.</strong> This is
-          your <b>API Access</b> key from the
-          <a
-            href="https://mod.io/me/access"
-            target="_blank"
-            style="color: var(--clr-primary-300);text-decoration:underline;"
-            >mod.io Access page</a
-          >. Use the <b>API Access</b> key (not OAuth) for public API requests.
-        </p>
-        <p style="color: var(--clr-text-secondary);" class="text-sm">
-          Status:
-          <span
-            style="color: {hasModioApiKey
-              ? 'var(--clr-success-300)'
-              : 'var(--clr-danger-300)'};"
-            class="font-medium"
-          >
-            {hasModioApiKey ? "✓ Configured" : "✗ Not configured"}
-          </span>
-        </p>
-      </div>
-      <div class="flex gap-2">
-        <button class="btn btn-sm primary" on:click={openModioApiKeyModal}>
-          {hasModioApiKey ? "Update API Key" : "Set API Key"}
-        </button>
-        {#if hasModioApiKey}
-          <button
-            class="btn btn-sm danger"
-            on:click={async () => {
-              modioApiKeyInput = "";
-              await saveModioApiKey();
-            }}
-          >
-            Remove API Key
-          </button>
-        {/if}
-      </div>
-    </div>
-  </div>
-  {#if showModioApiKeyModal}
-    <div
-      class="fixed inset-0 z-[1200] flex items-center justify-center p-4"
-      style="background: rgba(0, 0, 0, 0.65);"
-    >
-      <div class="card w-full max-w-xl">
-        <h2 style="color: var(--clr-text);" class="text-lg font-semibold">
-          Set mod.io API Access Key
-        </h2>
-        <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
-          Get your <strong>API Access</strong> key from the
-          <a
-            href="https://mod.io/me/access"
-            target="_blank"
-            style="color: var(--clr-primary-300);text-decoration:underline;"
-            >mod.io Access page</a
-          > (not OAuth). This is used for public API requests, such as looking up
-          mod IDs from slugs.
-        </p>
-
-        <div class="mt-4 flex flex-wrap gap-2">
-          <button class="btn btn-sm" on:click={openModioApiKeyPage}
-            >Open API Access Page</button
-          >
-        </div>
-
-        <label class="mt-4 block text-sm">
-          <span style="color: var(--clr-text-secondary);" class="mb-1 block"
-            >Paste API Access key</span
-          >
-          <div class="flex gap-2">
-            <input
-              class="input w-full"
-              bind:value={modioApiKeyInput}
-              on:input={() => (modioApiKeyModalError = "")}
-              placeholder="Paste your mod.io API Access key"
-              type={showModioApiKeyText ? "text" : "password"}
-              aria-invalid={Boolean(modioApiKeyModalError)}
-            />
-            <button
-              type="button"
-              class="btn btn-sm"
-              on:click={() => (showModioApiKeyText = !showModioApiKeyText)}
-              title={showModioApiKeyText ? "Hide key" : "Show key"}
-            >
-              {showModioApiKeyText ? "👁️" : "👁️‍🗨️"}
-            </button>
           </div>
-        </label>
-
-        {#if modioApiKeyModalError}
-          <p class="mt-3 text-sm" style="color: var(--clr-danger-300);">
-            {modioApiKeyModalError}
-          </p>
-        {/if}
-
-        <div class="mt-5 flex justify-end gap-2">
-          <button
-            class="btn btn-sm"
-            on:click={closeModioApiKeyModal}
-            disabled={validatingModioApiKey}>Cancel</button
+        </div>
+        <div class="prefs-row-suffix">
+          <button class="btn btn-sm primary" on:click={openTokenSetupModal}
+            >Set OAuth</button
+          ><button
+            class="btn btn-sm danger"
+            disabled={!hasSavedToken}
+            on:click={disconnect}>Remove</button
           >
-          <button
-            class="btn btn-sm primary"
-            on:click={saveModioApiKey}
-            disabled={validatingModioApiKey}
-          >
-            {validatingModioApiKey ? "Saving..." : "Save"}
-          </button>
+        </div>
+      </div>
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">mod.io API Access</div>
+          <div class="prefs-row-subtitle">
+            {hasModioApiKey ? "✓ Configured" : "✗ Not configured"}
+          </div>
+        </div>
+        <div class="prefs-row-suffix">
+          <button class="btn btn-sm primary" on:click={openModioApiKeyModal}
+            >{hasModioApiKey ? "Update" : "Set Key"}</button
+          >{#if hasModioApiKey}<button
+              class="btn btn-sm danger"
+              on:click={async () => {
+                modioApiKeyInput = "";
+                await saveModioApiKey();
+              }}>Remove</button
+            >{/if}
         </div>
       </div>
     </div>
-  {/if}
+  </div>
 
-  <div class="card mt-4">
-    <div class="flex items-center justify-between">
-      <div>
-        <h3 style="color: var(--clr-text);" class="font-semibold">
-          Intro Skip
-        </h3>
-        <p style="color: var(--clr-text-secondary);" class="text-sm">
-          Removes startup movie files to skip intro video
-        </p>
-      </div>
-      <div class="flex items-center gap-2">
-        {#if applyingIntroSkip || undoingIntroSkip}
-          <span style="color: var(--clr-text-secondary);" class="text-xs"
-            >{applyingIntroSkip ? "Applying..." : "Undoing..."}</span
+  <!-- Tweaks -->
+  <div class="prefs-group">
+    <div class="prefs-group-title">Game Tweaks</div>
+    <div class="prefs-boxed-list">
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">Intro Skip</div>
+          <div class="prefs-row-subtitle">Removes startup movies</div>
+        </div>
+        <div class="prefs-row-suffix">
+          <label
+            class="gale-switch"
+            class:opacity-50={applyingIntroSkip || undoingIntroSkip}
+            ><input
+              type="checkbox"
+              checked={introSkipApplied}
+              disabled={applyingIntroSkip || undoingIntroSkip}
+              on:change={() => {
+                if (introSkipApplied) void undoIntroSkipConfig();
+                else void applyIntroSkipConfig();
+              }}
+            /><span class="gale-switch-track"></span></label
           >
-        {/if}
-        <label
-          class="gale-switch"
-          class:opacity-50={applyingIntroSkip || undoingIntroSkip}
-        >
+        </div>
+      </div>
+      <div class="prefs-row">
+        <div class="prefs-row-text" style="flex:1">
+          <div class="prefs-row-title">Engine.ini Optimization</div>
+          <div class="prefs-row-subtitle">
+            UE5 Performance Overhaul by AlexRenderX
+          </div>
+        </div>
+        <div class="prefs-row-suffix">
+          <select class="select w-48" bind:value={selectedGpu}
+            ><option value="">Select GPU…</option
+            >{#each gpuProfiles as p}<option value={p}
+                >{p.replace(/_/g, " ").replace(/-/g, " / ")}</option
+              >{/each}</select
+          ><button
+            class="btn btn-sm primary"
+            disabled={!selectedGpu || applyingOpt}
+            on:click={applyOpt}>{applyingOpt ? "…" : "Apply"}</button
+          >{#if optimizationEnabled}<button
+              class="btn btn-sm"
+              disabled={applyingOpt}
+              on:click={removeOpt}>Restore</button
+            >{/if}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sync & Export -->
+  <div class="prefs-group">
+    <div class="prefs-group-title">Sync & Export</div>
+    <div class="prefs-boxed-list">
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">Export Modpack</div>
+          <div class="prefs-row-subtitle">Export installed mods as modpack</div>
+        </div>
+        <div class="prefs-row-suffix">
+          <button class="btn btn-sm primary" on:click={exportInstalledMods}
+            >Export</button
+          >
+        </div>
+      </div>
+      <div class="prefs-row" style="flex-direction:column;align-items:stretch;">
+        <div class="prefs-row-title">
+          Remote Sync <span
+            style="color:var(--clr-text-secondary);font-weight:400;font-size:0.8rem;"
+            >— SFTP</span
+          >
+        </div>
+        <div class="mt-2 flex flex-col gap-2">
           <input
-            type="checkbox"
-            checked={introSkipApplied}
-            disabled={applyingIntroSkip || undoingIntroSkip}
-            on:change={() => {
-              if (introSkipApplied) {
-                void undoIntroSkipConfig();
-              } else {
-                void applyIntroSkipConfig();
+            class="input w-full"
+            placeholder="user@host"
+            bind:value={syncRemoteHost}
+            on:blur={async () => {
+              try {
+                await setSyncDetails(
+                  syncRemoteHost.trim(),
+                  syncRemotePath.trim(),
+                );
+              } catch (e) {
+                toastStore.error(`Sync: ${String(e)}`);
+              }
+            }}
+          /><input
+            class="input w-full"
+            placeholder="/remote/path"
+            bind:value={syncRemotePath}
+            on:blur={async () => {
+              try {
+                await setSyncDetails(
+                  syncRemoteHost.trim(),
+                  syncRemotePath.trim(),
+                );
+              } catch (e) {
+                toastStore.error(`Sync: ${String(e)}`);
               }
             }}
           />
-          <span class="gale-switch-track"></span>
-        </label>
-      </div>
-    </div>
-  </div>
-
-  <div class="card mt-4">
-    <div class="flex items-center justify-between">
-      <div>
-        <h3 style="color: var(--clr-text);" class="font-semibold">Engine.ini Optimization</h3>
-        <p style="color: var(--clr-text-secondary);" class="text-sm">
-          UE5 Performance Overhaul - per-GPU Engine.ini by <a href="https://www.nexusmods.com/readyornot/mods/5845" target="_blank" style="text-decoration:underline">AlexRenderX on Nexus Mods</a>
-        </p>
-      </div>
-    </div>
-    <div class="mt-3 flex gap-2 items-center">
-      <select class="select flex-1" bind:value={selectedGpu}>
-        <option value="">Select GPU…</option>
-        {#each gpuProfiles as p}<option value={p}>{p.replace(/_/g,' ').replace(/-/g,' / ')}</option>{/each}
-      </select>
-      <button class="btn btn-sm primary" disabled={!selectedGpu || applyingOpt} on:click={applyOpt}>{applyingOpt ? '…' : 'Apply'}</button>
-      {#if optimizationEnabled}<button class="btn btn-sm" disabled={applyingOpt} on:click={removeOpt}>Restore backup</button>{/if}
-    </div>
-  </div>
-
-  <div class="card mt-6">
-    <div class="flex items-center justify-between">
-      <div>
-        <h3 style="color: var(--clr-text);" class="font-semibold">
-          Export Modpack
-        </h3>
-        <p style="color: var(--clr-text-secondary);" class="text-sm">
-          Export currently installed mods as a modpack file
-        </p>
-      </div>
-      <button class="btn btn-sm primary" on:click={exportInstalledMods}>
-        Export
-      </button>
-    </div>
-  </div>
-
-  <ExportModpackModal
-    isVisible={showExportModal}
-    initialName={exportMeta.name || ""}
-    initialVersion={exportMeta.version || "1.0.0"}
-    initialDescription={exportMeta.description || ""}
-    initialAuthor={exportMeta.author || ""}
-    on:close={() => (showExportModal = false)}
-    on:submit={(e) => handleExportModpack(e.detail)}
-  />
-
-  <div class="card mt-6">
-    <h3 style="color: var(--clr-text);" class="font-semibold">Remote Sync</h3>
-    <p style="color: var(--clr-text-secondary);" class="text-sm">
-      Sync last export to a remote server via SFTP
-    </p>
-    <div class="mt-3 space-y-2">
-      <input
-        class="input w-full"
-        placeholder="user@host (e.g. root@seedbox.example.com)"
-        bind:value={syncRemoteHost}
-        on:blur={async () => {
-          try {
-            await setSyncDetails(syncRemoteHost.trim(), syncRemotePath.trim());
-          } catch (error) {
-            toastStore.error(`Sync settings: ${String(error)}`);
-          }
-        }}
-      />
-      <input
-        class="input w-full"
-        placeholder="/remote/path"
-        bind:value={syncRemotePath}
-        on:blur={async () => {
-          try {
-            await setSyncDetails(syncRemoteHost.trim(), syncRemotePath.trim());
-          } catch (error) {
-            toastStore.error(`Sync settings: ${String(error)}`);
-          }
-        }}
-      />
-    </div>
-    <div class="flex items-center justify-between mt-3">
-      <label
-        class="flex items-center gap-2 text-sm cursor-pointer"
-        style="color: var(--clr-text-secondary);"
-      >
-        <span class="gale-switch">
-          <input type="checkbox" bind:checked={syncVerbose} />
-          <span class="gale-switch-track"></span>
-        </span>
-        Verbose log
-      </label>
-      <div class="flex gap-2">
-        <button
-          class="btn btn-sm"
-          disabled={$syncLogStore.isBusy ||
-            !syncRemoteHost.trim() ||
-            !syncRemotePath.trim()}
-          on:click={openSyncAuthManual}
-        >
-          Credentials...
-        </button>
-        <button
-          class="btn btn-sm primary"
-          disabled={$syncLogStore.isBusy ||
-            !syncRemoteHost.trim() ||
-            !syncRemotePath.trim()}
-          on:click={handleSync}
-        >
-          {$syncLogStore.isBusy ? "Syncing..." : "Sync Now"}
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <SyncAuthModal
-    isVisible={showSyncAuthModal}
-    description={syncAuthPurpose === "fallback"
-      ? "Auto-discovery found no usable key. Provide credentials to continue."
-      : "Choose how to authenticate with the remote server. Sync Now will try your SSH keys automatically if you skip this."}
-    on:close={() => (showSyncAuthModal = false)}
-    on:submit={(e) => handleSyncAuthSubmit(e.detail)}
-  />
-
-  <div class="card mt-6">
-    <div class="flex items-center justify-between gap-3">
-      <div>
-        <h3 style="color: var(--clr-text);" class="font-semibold">
-          App Updates
-        </h3>
-        {#if currentVersion}
-          <p style="color: var(--clr-text-secondary);" class="text-xs">
-            Version {currentVersion}
-          </p>
-        {/if}
-        {#if runningInFlatpak}
-          <p style="color: var(--clr-text-secondary);" class="text-sm">
-            Updates are managed by Flatpak. Run <code>flatpak update</code> in a terminal
-            to update.
-          </p>
-        {:else}
-          <p style="color: var(--clr-text-secondary);" class="text-sm">
-            {#if updateVersion}
-              Update ready: {updateVersion}
-            {:else}
-              Check for updates
-            {/if}
-          </p>
-          {#if updateLastChecked}
-            <p style="color: var(--clr-text-secondary);" class="text-xs">
-              Last checked: {updateLastChecked.toLocaleString()}
-            </p>
-          {/if}
-        {/if}
-      </div>
-      {#if !runningInFlatpak}
-        <div class="flex gap-2">
-          <button
-            class="btn btn-sm primary"
-            class:disabled={updateCheckInProgress || updateInstallInProgress}
-            disabled={updateCheckInProgress || updateInstallInProgress}
-            on:click={updateVersion ? installAvailableUpdate : checkUpdates}
-          >
-            {#if updateCheckInProgress}
-              Checking...
-            {:else if updateInstallInProgress}
-              Installing...
-            {:else if updateVersion}
-              Install Update
-            {:else}
-              Check for Updates
-            {/if}
-          </button>
         </div>
-      {/if}
+        <div class="flex items-center justify-between mt-3">
+          <label
+            class="flex items-center gap-2 text-sm cursor-pointer"
+            style="color:var(--clr-text-secondary);"
+            ><span class="gale-switch"
+              ><input type="checkbox" bind:checked={syncVerbose} /><span
+                class="gale-switch-track"
+              ></span></span
+            >Verbose log</label
+          >
+          <div class="flex gap-2">
+            <button
+              class="btn btn-sm"
+              disabled={$syncLogStore.isBusy ||
+                !syncRemoteHost.trim() ||
+                !syncRemotePath.trim()}
+              on:click={openSyncAuthManual}>Credentials…</button
+            ><button
+              class="btn btn-sm primary"
+              disabled={$syncLogStore.isBusy ||
+                !syncRemoteHost.trim() ||
+                !syncRemotePath.trim()}
+              on:click={handleSync}
+              >{$syncLogStore.isBusy ? "Syncing…" : "Sync Now"}</button
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Updates -->
+  <div class="prefs-group">
+    <div class="prefs-group-title">App Updates</div>
+    <div class="prefs-boxed-list">
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">Updates</div>
+          <div class="prefs-row-subtitle">
+            {#if currentVersion}Version {currentVersion} ·
+            {/if}{#if runningInFlatpak}Managed by Flatpak — flatpak update{:else if updateVersion}Update
+              ready: {updateVersion}{:else}Check for updates{/if}{#if updateLastChecked && !runningInFlatpak}
+              · Last checked {updateLastChecked.toLocaleString()}{/if}
+          </div>
+        </div>
+        {#if !runningInFlatpak}<div class="prefs-row-suffix">
+            <button
+              class="btn btn-sm primary"
+              disabled={updateCheckInProgress || updateInstallInProgress}
+              on:click={updateVersion ? installAvailableUpdate : checkUpdates}
+              >{#if updateCheckInProgress}Checking…{:else if updateInstallInProgress}Installing…{:else if updateVersion}Install
+                Update{:else}Check for Updates{/if}</button
+            >
+          </div>{/if}
+      </div>
     </div>
   </div>
 </section>
