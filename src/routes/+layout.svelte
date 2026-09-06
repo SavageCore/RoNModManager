@@ -57,6 +57,14 @@
   } from "lucide-svelte";
   import semver from "semver";
   import { onMount } from "svelte";
+  // Self-hosted Adwaita fonts (OFL-1.1, via Fontsource) - must load before app.css.
+  // Sans covers body + semibold headings; Mono covers log/code views.
+  import "@fontsource/adwaita-sans/400.css";
+  import "@fontsource/adwaita-sans/500.css";
+  import "@fontsource/adwaita-sans/600.css";
+  import "@fontsource/adwaita-sans/700.css";
+  import "@fontsource/adwaita-mono/400.css";
+  import "@fontsource/adwaita-mono/700.css";
   import "../app.css";
 
   import AddModpackPanel from "$lib/components/AddModpackPanel.svelte";

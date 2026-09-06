@@ -2,9 +2,20 @@
 @import "adwavecss/dist/styles.css";
 @import "$lib/components/toast.css";
 
+/* Tailwind v4 theme: route font-sans/font-mono utilities to Adwaita. */
+@theme {
+  --font-sans:
+    "Adwaita Sans", "Inter", "Cantarell", system-ui, -apple-system, sans-serif;
+  --font-mono:
+    "Adwaita Mono", ui-monospace, "Cascadia Mono", "JetBrains Mono", monospace;
+}
+
 /* ADWaveCSS Color Variables for GNOME/Libadwaita Theme */
 :root {
-  --adw-font-family: "Cantarell", "Inter", system-ui, -apple-system, sans-serif;
+  --adw-font-family:
+    "Adwaita Sans", "Inter", "Cantarell", system-ui, -apple-system, sans-serif;
+  --adw-font-mono:
+    "Adwaita Mono", ui-monospace, "Cascadia Mono", "JetBrains Mono", monospace;
   color-scheme: light;
 
   /* ADWaveCSS button colors */
@@ -154,6 +165,13 @@ body {
   font-family: var(--adw-font-family);
   background: var(--clr-bg);
   color: var(--clr-text);
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--adw-font-mono);
 }
 
 /* Utility classes for compatibility */
