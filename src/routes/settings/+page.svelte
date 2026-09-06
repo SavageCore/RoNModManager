@@ -1198,9 +1198,12 @@
       <strong>User actions</strong>
       under Permissions, enable
       <strong>Write</strong> under Scope (keeping Read checked), and set
-      <strong>Expiry</strong> to 1 Year (or whatever you like). If a token later
-      expires, use the circular-refresh <strong>Regenerate</strong> button beside
-      it in the tokens table, then paste the new value here.
+      <strong>Expiry</strong> to 1 Year (or whatever you like).
+    </p>
+    <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
+      If a token later expires, use the circular-refresh
+      <strong>Regenerate</strong> button beside it in the tokens table, then paste
+      the new value here.
     </p>
 
     <div class="mt-4 flex flex-wrap gap-2">
