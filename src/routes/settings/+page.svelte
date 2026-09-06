@@ -81,9 +81,11 @@
   let gamePath = "";
   let authConnected = false;
   let hasSavedToken = false;
+  let savedToken = "";
   let modioTokenValid: boolean | null = null;
   let showTokenModal = false;
   let tokenInput = "";
+  let showTokenText = false;
   let tokenModalError = "";
   let validatingToken = false;
   let nexusApiKey = "";
@@ -186,6 +188,8 @@
         ? config.modio_api_key.trim()
         : "";
     hasModioApiKey = !!modioApiKey;
+    savedToken =
+      typeof config.oauth_token === "string" ? config.oauth_token.trim() : "";
     hasSavedToken = Boolean(config.oauth_token?.trim());
     authConnected = await getAuthStatus().catch(() => false);
 
@@ -348,13 +352,15 @@
   }
 
   function openTokenSetupModal() {
-    tokenInput = "";
+    tokenInput = savedToken;
+    showTokenText = false;
     tokenModalError = "";
     showTokenModal = true;
   }
 
   function closeTokenSetupModal() {
     tokenInput = "";
+    showTokenText = false;
     tokenModalError = "";
     showTokenModal = false;
   }
@@ -1205,11 +1211,24 @@
       <span style="color: var(--clr-text-secondary);" class="mb-1 block"
         >Paste personal access token</span
       >
-      <input
-        class="input w-full"
-        bind:value={tokenInput}
-        placeholder="Paste your mod.io personal access token"
-      />
+      <div class="flex gap-2">
+        <input
+          class="input w-full"
+          bind:value={tokenInput}
+          on:input={() => (tokenModalError = "")}
+          placeholder="Paste your mod.io personal access token"
+          type={showTokenText ? "text" : "password"}
+          aria-invalid={Boolean(tokenModalError)}
+        />
+        <button
+          type="button"
+          class="btn btn-sm"
+          on:click={() => (showTokenText = !showTokenText)}
+          title={showTokenText ? "Hide token" : "Show token"}
+        >
+          {showTokenText ? "👁️" : "👁️‍🗨️"}
+        </button>
+      </div>
     </label>
 
     {#if tokenModalError}
