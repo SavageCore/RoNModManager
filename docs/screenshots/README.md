@@ -1,5 +1,11 @@
 # Screenshots
 
+## Setup Wizard
+
+| Light                               | Dark                              |
+| ----------------------------------- | --------------------------------- |
+| ![Wizard - Light](light/wizard.png) | ![Wizard - Dark](dark/wizard.png) |
+
 ## Mods
 
 | Light                           | Dark                          |

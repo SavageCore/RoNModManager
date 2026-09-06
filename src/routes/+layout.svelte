@@ -10,6 +10,7 @@
     launchGameWithGroups,
     listProfiles,
     isScreenshotMode,
+    isWizardScreenshotMode,
     screenshotTheme,
     manageWindowGeometry,
     refreshModMetadata,
@@ -321,6 +322,9 @@
     // In screenshot mode we also skip geometry management so the window starts
     // at the default size defined in tauri.conf.json every time.
     const screenshotModePromise = isScreenshotMode().catch(() => false);
+    const wizardScreenshotModePromise = isWizardScreenshotMode().catch(
+      () => false,
+    );
     const manageGeometry = screenshotModePromise.then((sm) =>
       sm ? false : manageWindowGeometry().catch(() => false),
     );
@@ -328,16 +332,23 @@
     // In screenshot mode: auto-activate incognito and wire up number-key
     // page navigation (1=Mods 2=Collections 3=Profiles 4=Settings) so the
     // script can drive the app without relying on coordinate-based clicks.
-    void screenshotModePromise.then((isScreenshot) => {
-      if (!isScreenshot) return;
-      screenshotMode.set(true);
-      incognitoMode.set(true);
-      const ssPages = ["/mods", "/collections", "/profiles", "/settings"];
-      window.addEventListener("keydown", (e) => {
-        const idx = Number(e.key) - 1;
-        if (idx >= 0 && idx < ssPages.length) void goto(ssPages[idx]);
-      });
-    });
+    void Promise.all([screenshotModePromise, wizardScreenshotModePromise]).then(
+      ([isScreenshot, isWizard]) => {
+        if (!isScreenshot) return;
+        // In wizard screenshot mode we still want the theme override and default
+        // window size, but NOT incognito mode - a first-run wizard should show
+        // an empty mods list, not the dummy screenshot data.
+        if (!isWizard) {
+          screenshotMode.set(true);
+          incognitoMode.set(true);
+        }
+        const ssPages = ["/mods", "/collections", "/profiles", "/settings"];
+        window.addEventListener("keydown", (e) => {
+          const idx = Number(e.key) - 1;
+          if (idx >= 0 && idx < ssPages.length) void goto(ssPages[idx]);
+        });
+      },
+    );
 
     const persistCurrentWindowState = async () => {
       if (!(await manageGeometry)) {
@@ -417,8 +428,11 @@
         hasGamePath = config.game_path != null;
         hasSavedToken = Boolean(config.oauth_token?.trim());
 
-        const themeOverride = await screenshotModePromise.then((sm) =>
-          sm ? screenshotTheme().catch(() => null) : null,
+        const themeOverride = await Promise.all([
+          screenshotModePromise,
+          wizardScreenshotModePromise,
+        ]).then(([sm, wm]) =>
+          sm || wm ? screenshotTheme().catch(() => null) : null,
         );
         cleanup = initTheme((themeOverride as ThemeMode) ?? config.theme);
 
@@ -557,6 +571,11 @@
           } else {
             showSetupWizard = true;
           }
+        }
+        // WIZARD_SCREENSHOT forces the setup wizard on even in screenshot mode,
+        // so the welcome page can be captured separately from the main pages.
+        if (await wizardScreenshotModePromise) {
+          showSetupWizard = true;
         }
       }),
       loadProfiles(),

@@ -89,13 +89,11 @@ test: test-frontend test-backend ## Run all tests (frontend + backend)
 screenshot: screenshots ## Take light + dark screenshots
 
 screenshots: ## Take light + dark screenshots (rebuild with make screenshots-build if Rust changed)
-	SCREENSHOT_THEME=light node scripts/take-screenshots.mjs
-	SCREENSHOT_THEME=dark  node scripts/take-screenshots.mjs
+	node scripts/take-screenshots.mjs
 
 screenshots-build: vendor ## Build debug binary then take screenshots (run after Rust changes)
 	cargo build --manifest-path $(CARGO_MANIFEST)
-	SCREENSHOT_THEME=light node scripts/take-screenshots.mjs
-	SCREENSHOT_THEME=dark  node scripts/take-screenshots.mjs
+	node scripts/take-screenshots.mjs
 
 # ── Flatpak ───────────────────────────────────────────────────────────────────
 

@@ -9,7 +9,8 @@
  * when Rust code changes.
  *
  * Usage:
- *   node scripts/take-screenshots.mjs
+ *   node scripts/take-screenshots.mjs            # all pages, light + dark
+ *   WIZARD_PASS=1 node scripts/take-screenshots.mjs  # just the wizard welcome page
  */
 import { spawn, execSync } from "child_process";
 import { fileURLToPath } from "url";
@@ -18,8 +19,7 @@ import fs from "fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
-const THEME = process.env.SCREENSHOT_THEME ?? "light";
-const OUT = path.join(ROOT, "docs", "screenshots", THEME);
+const OUT = path.join(ROOT, "docs", "screenshots");
 
 const appBinary = path.join(
   ROOT,
@@ -65,7 +65,32 @@ if (!display) {
 }
 console.log(`Display: ${display}`);
 
-fs.mkdirSync(OUT, { recursive: true });
+const themes = process.env.SCREENSHOT_THEME
+  ? [process.env.SCREENSHOT_THEME]
+  : ["light", "dark"];
+const wizardOnly = process.env.WIZARD_PASS === "1";
+
+// Config file path
+const configDir = process.env.HOME + "/.config/ronmodmanager-dev";
+const configFile = configDir + "/config.json";
+let originalConfig = null;
+
+// Backup and modify config to show wizard (only needed for wizard pass)
+if (wizardOnly) {
+  try {
+    if (fs.existsSync(configFile)) {
+      originalConfig = fs.readFileSync(configFile, "utf8");
+      const config = JSON.parse(originalConfig);
+      config.game_path = null;
+      config.setup_wizard_complete = false;
+      fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
+      console.log("Modified config to show wizard");
+    }
+  } catch (err) {
+    console.error("Failed to modify config:", err.message);
+    process.exit(1);
+  }
+}
 
 // Start the Vite dev server so the debug binary always loads the latest
 // frontend code without requiring a full Tauri rebuild.
@@ -77,6 +102,7 @@ const vite = spawn("npm", ["run", "dev"], {
 });
 vite.on("error", (e) => {
   console.error(`Vite failed to start: ${e.message}`);
+  if (originalConfig) fs.writeFileSync(configFile, originalConfig);
   process.exit(1);
 });
 
@@ -92,75 +118,116 @@ for (let i = 0; i < 60 && !viteReady; i++) {
 if (!viteReady) {
   vite.kill();
   console.error("Vite dev server did not become ready in time.");
+  if (originalConfig) fs.writeFileSync(configFile, originalConfig);
   process.exit(1);
 }
 console.log("Vite ready.");
-
-// Launch the debug binary - it connects to localhost:1420.
-// SCREENSHOT_MODE suppresses devtools and activates incognito + number-key nav.
-const app = spawn(appBinary, [], {
-  env: {
-    ...process.env,
-    DISPLAY: display,
-    GDK_BACKEND: "x11",
-    SCREENSHOT_MODE: "1",
-    SCREENSHOT_THEME: THEME,
-    WEBKIT_DISABLE_DMABUF_RENDERER: "1",
-    LIBGL_ALWAYS_SOFTWARE: "1",
-  },
-  stdio: "ignore",
-});
-app.on("error", (e) => {
-  vite.kill();
-  console.error(`Failed to start app: ${e.message}`);
-  process.exit(1);
-});
 
 function x(cmd) {
   return execSync(`DISPLAY=${display} ${cmd}`, { encoding: "utf8" });
 }
 
-// Wait for the window to appear (up to 20 s)
-let wid = null;
-for (let i = 0; i < 40 && !wid; i++) {
-  await new Promise((r) => setTimeout(r, 500));
-  try {
-    const ids = x(`xdotool search --name "RoN Mod Manager"`).trim();
-    if (ids) wid = ids.split("\n").at(-1);
-  } catch {}
+function killApp(app) {
+  return new Promise((resolve) => {
+    app.kill();
+    // Give it a moment to release the window
+    setTimeout(resolve, 500);
+  });
 }
-if (!wid) {
-  app.kill();
-  vite.kill();
-  console.error("Window did not appear in time.");
-  process.exit(1);
+
+function waitForWindow(timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const interval = setInterval(() => {
+      try {
+        const ids = x(`xdotool search --name "RoN Mod Manager"`).trim();
+        if (ids) {
+          clearInterval(interval);
+          resolve(ids.split("\n").at(-1));
+        }
+      } catch {
+        // not ready yet
+      }
+      if (Date.now() - start > timeoutMs) {
+        clearInterval(interval);
+        reject(new Error("Window did not appear in time."));
+      }
+    }, 500);
+  });
 }
-console.log(`Window ID: ${wid}`);
 
-x(`xdotool windowsize ${wid} 1280 840`);
-x(`xdotool windowfocus --sync ${wid}`);
-x(`xdotool windowraise ${wid}`);
+async function launchApp(theme, wizardPass) {
+  const app = spawn(appBinary, [], {
+    env: {
+      ...process.env,
+      DISPLAY: display,
+      GDK_BACKEND: "x11",
+      WEBKIT_DISABLE_DMABUF_RENDERER: "1",
+      LIBGL_ALWAYS_SOFTWARE: "1",
+      SCREENSHOT_MODE: "1",
+      SCREENSHOT_THEME: theme,
+      ...(wizardPass ? { WIZARD_SCREENSHOT: "1" } : {}),
+    },
+    stdio: "ignore",
+  });
+  app.on("error", (e) => {
+    vite.kill();
+    console.error(`Failed to start app: ${e.message}`);
+    process.exit(1);
+  });
 
-// Wait for the app to load and auto-activate incognito
-await new Promise((r) => setTimeout(r, 4000));
+  const wid = await waitForWindow();
+  console.log(`Window ID: ${wid}`);
+  x(`xdotool windowsize ${wid} 1280 840`);
+  x(`xdotool windowfocus --sync ${wid}`);
+  x(`xdotool windowraise ${wid}`);
 
-// Navigate each page via number keys wired to goto() in screenshot mode
-const pages = ["mods", "collections", "profiles", "settings"];
+  // Wait for the app to load
+  await new Promise((r) => setTimeout(r, 4000));
 
-for (let i = 0; i < pages.length; i++) {
-  const name = pages[i];
-  x(`xdotool key --window ${wid} --clearmodifiers ${i + 1}`);
-  await new Promise((r) => setTimeout(r, 1200));
+  return { app, wid };
+}
 
-  const file = path.join(OUT, `${name}.png`);
+async function capture(wid, name, theme) {
+  const dir = path.join(OUT, theme);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${name}.png`);
   execSync(`DISPLAY=${display} import -window ${wid} "${file}"`);
-  const borderColor = THEME === "dark" ? "#ffffff" : "#333333";
-  execSync(
-    `convert "${file}" -bordercolor "${borderColor}" -border 40 "${file}"`,
-  );
+  const borderColor = theme === "dark" ? "#ffffff" : "#333333";
+  execSync(`convert "${file}" -bordercolor "${borderColor}" -border 40 "${file}"`);
   console.log(`  ✓  ${name}`);
 }
 
-app.kill();
+// For each theme: capture main pages, then restart the app to capture the wizard.
+// The dev server keeps running across restarts so the frontend is never rebuilt.
+for (const theme of themes) {
+  console.log(`\n── ${theme.toUpperCase()} ──`);
+
+  if (!wizardOnly) {
+    // Main pages pass
+    const { app, wid } = await launchApp(theme, false);
+    const pages = ["mods", "collections", "profiles", "settings"];
+    for (let i = 0; i < pages.length; i++) {
+      const name = pages[i];
+      x(`xdotool key --window ${wid} --clearmodifiers ${i + 1}`);
+      await new Promise((r) => setTimeout(r, 1200));
+      await capture(wid, name, theme);
+    }
+    await killApp(app);
+  }
+
+  // Wizard pass: restart the app with the wizard forced on
+  const { app, wid } = await launchApp(theme, true);
+  await capture(wid, "wizard", theme);
+  await killApp(app);
+}
+
 vite.kill();
+
+// Restore original config
+if (originalConfig) {
+  fs.writeFileSync(configFile, originalConfig);
+  console.log("Restored original config");
+}
+
 console.log(`\nSaved to ${path.relative(ROOT, OUT)}/`);

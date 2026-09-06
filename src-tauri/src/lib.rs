@@ -34,7 +34,9 @@ pub fn run() {
     let builder = tauri::Builder::default().setup(|app| {
         #[cfg(debug_assertions)]
         {
-            if std::env::var("SCREENSHOT_MODE").is_err() {
+            if std::env::var("SCREENSHOT_MODE").is_err()
+                && std::env::var("WIZARD_SCREENSHOT").is_err()
+            {
                 let window = app.get_webview_window("main").unwrap();
                 window.open_devtools();
             }
@@ -203,6 +205,7 @@ pub fn run() {
             window::get_window_state,
             window::manage_window_geometry,
             window::is_screenshot_mode,
+            window::is_wizard_screenshot_mode,
             window::screenshot_theme,
             commands::fetch::fetch_modpack_json,
             commands::fetch_archive::download_mod_archive,

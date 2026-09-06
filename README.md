@@ -136,7 +136,7 @@ Then retake screenshots any time - frontend changes are picked up automatically 
 make screenshots
 ```
 
-The script starts the Vite dev server, launches the debug binary (which connects to it), and runs twice - once for light mode and once for dark - saving to `docs/screenshots/light/` and `docs/screenshots/dark/`. The app launches with `SCREENSHOT_MODE=1` (incognito auto-activated, no setup wizard, no geometry restore) and each sidebar page is navigated and captured via xdotool + ImageMagick.
+The script starts the Vite dev server, launches the debug binary (which connects to it), and runs twice - once for light mode and once for dark - saving to `docs/screenshots/light/` and `docs/screenshots/dark/`. The app launches with `SCREENSHOT_MODE=1` (incognito auto-activated, no setup wizard, no geometry restore) and each sidebar page is navigated and captured via xdotool + ImageMagick. A separate `WIZARD_PASS=1` pass forces the setup wizard on (with an empty mods list, not the incognito dummy data) so the welcome screen can be captured.
 
 ## Keyboard Shortcuts
 

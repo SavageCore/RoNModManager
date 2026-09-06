@@ -17,6 +17,13 @@ pub fn is_screenshot_mode() -> bool {
     std::env::var("SCREENSHOT_MODE").is_ok()
 }
 
+/// When set, forces the setup wizard to show even in screenshot mode, so the
+/// welcome page can be captured separately from the main pages.
+#[tauri::command]
+pub fn is_wizard_screenshot_mode() -> bool {
+    std::env::var("WIZARD_SCREENSHOT").is_ok()
+}
+
 #[tauri::command]
 pub fn screenshot_theme() -> Option<String> {
     std::env::var("SCREENSHOT_THEME").ok()

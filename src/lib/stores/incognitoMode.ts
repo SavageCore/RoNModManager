@@ -4,6 +4,9 @@ import type { ModUpdateInfo } from "$lib/api/commands";
 
 export const incognitoMode = writable<boolean>(false);
 export const screenshotMode = writable<boolean>(false);
+/// When true, the mods page shows an empty mod list (no real mods, no dummy
+/// incognito data) - appropriate for a first-run setup wizard screenshot.
+export const wizardScreenshotMode = writable<boolean>(false);
 
 export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
   {
