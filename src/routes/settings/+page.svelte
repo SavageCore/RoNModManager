@@ -361,7 +361,7 @@
 
   async function openModioTokenPage() {
     try {
-      await openUrl("https://mod.io/me/access");
+      await openUrl("https://mod.io/me/access#tokens");
     } catch (error) {
       toastStore.error(`Failed to open mod.io token page: ${String(error)}`);
     }
@@ -869,8 +869,8 @@
   <div class="prefs-group">
     <div class="prefs-group-title">Accounts & API Keys</div>
     <div class="prefs-group-desc">
-      Optional keys for fetching mod metadata. OAuth is required to
-      subscribe/download.
+      Optional keys for fetching mod metadata. A personal access token is
+      required to subscribe/download.
     </div>
     <div class="prefs-boxed-list">
       <div class="prefs-row">
@@ -909,7 +909,7 @@
       </div>
       <div class="prefs-row">
         <div class="prefs-row-text">
-          <div class="prefs-row-title">mod.io OAuth Access</div>
+          <div class="prefs-row-title">mod.io Personal Access Token</div>
           <div
             class="prefs-row-subtitle"
             style="color:{hasSavedToken
@@ -1179,7 +1179,7 @@
 {#if showTokenModal}
   <ModalShell
     isVisible={showTokenModal}
-    title="Set mod.io OAuth Token"
+    title="Set mod.io Personal Access Token"
     width="w-full max-w-xl"
     zIndex="z-[1200]"
     overlayExtra="p-4"
@@ -1187,25 +1187,28 @@
     on:close={closeTokenSetupModal}
   >
     <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
-      On your mod.io access page, open the <strong>OAuth Access</strong> section
-      (not API Access) and create a token with any name. Enable both
-      <strong>Read</strong> and <strong>Write</strong> permissions.
+      mod.io is phasing out OAuth clients. On your access page, open the
+      <strong>Personal access tokens</strong> tab and click
+      <strong>Generate token</strong>. Name it e.g. RoNModManager, enable
+      <strong>User actions</strong> under Permissions, enable
+      <strong>Write</strong> under Scope (keeping Read checked), and set
+      <strong>Expiry</strong> to 1 Year (or whatever you like).
     </p>
 
     <div class="mt-4 flex flex-wrap gap-2">
       <button class="btn btn-sm" on:click={openModioTokenPage}
-        >Open OAuth Access Page</button
+        >Open Personal Access Tokens Page</button
       >
     </div>
 
     <label class="mt-4 block text-sm">
       <span style="color: var(--clr-text-secondary);" class="mb-1 block"
-        >Paste OAuth token</span
+        >Paste personal access token</span
       >
       <input
         class="input w-full"
         bind:value={tokenInput}
-        placeholder="Paste your mod.io OAuth token"
+        placeholder="Paste your mod.io personal access token"
       />
     </label>
 
@@ -1322,7 +1325,8 @@
   >
     <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
       On your mod.io access page, copy your key from the
-      <strong>API Access</strong> section (not OAuth Access) to enable direct downloads.
+      <strong>API Access</strong> section (not Personal Access Tokens) to enable direct
+      downloads.
     </p>
 
     <div class="mt-4 flex flex-wrap gap-2">

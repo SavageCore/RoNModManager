@@ -40,7 +40,7 @@
       return;
     }
     if (!token) {
-      modioError = "Please enter your mod.io OAuth token.";
+      modioError = "Please enter your mod.io personal access token.";
       return;
     }
 
@@ -57,7 +57,7 @@
         await logout();
         tokenStore.set(false);
         modioError =
-          "OAuth token is invalid or expired. Please generate a new one and try again.";
+          "Personal access token is invalid or expired. Please generate a new one and try again.";
         return;
       }
 
@@ -95,7 +95,7 @@
 
   async function openModioPage() {
     try {
-      await openUrl("https://mod.io/me/access");
+      await openUrl("https://mod.io/me/access#tokens");
     } catch {
       // Non-fatal
     }
@@ -197,10 +197,13 @@
             class="block text-sm font-medium mb-1"
             style="color: var(--clr-text);"
           >
-            OAuth Token
+            Personal Access Token
           </label>
           <p class="text-xs mb-2" style="color: var(--clr-text-secondary);">
-            Used to download mods you're subscribed to.
+            Used to download mods you're subscribed to. On your mod.io access
+            page, open the Personal access tokens tab and click Generate token
+            (name it e.g. RoNModManager, enable User actions, enable Write under
+            Scope keeping Read checked).
           </p>
           <div class="flex gap-2">
             <input
@@ -208,7 +211,7 @@
               class="input w-full"
               bind:value={modioTokenInput}
               type={showModioTokenText ? "text" : "password"}
-              placeholder="Paste your OAuth token"
+              placeholder="Paste your personal access token"
               on:input={() => (modioError = "")}
             />
             <button
