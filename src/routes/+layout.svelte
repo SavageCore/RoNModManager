@@ -66,6 +66,7 @@
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import { importLogStore } from "$lib/stores/importLogStore";
   import { infoLogStore } from "$lib/stores/infoLogStore";
+  import { metadataRefreshDetailsStore } from "$lib/stores/metadataRefreshDetailsStore";
   import { incognitoMode, screenshotMode } from "$lib/stores/incognitoMode";
 
   const APP_NAME = "RoN Mod Manager";
@@ -205,6 +206,10 @@
       infoLogStore.start();
       infoLogStore.addLine("Refreshing mod metadata from source links...");
       const result = await refreshModMetadata();
+      metadataRefreshDetailsStore.setDetails(
+        result.skippedMods ?? [],
+        result.failedMods ?? [],
+      );
       const tone = result.failed > 0 ? "error" : "success";
       infoLogStore.addLine(
         `Metadata refresh complete: checked ${result.checked}, refreshed ${result.refreshed}, skipped ${result.skipped}, failed ${result.failed}.`,

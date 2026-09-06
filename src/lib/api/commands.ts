@@ -201,6 +201,8 @@ export const refreshModMetadata = (archiveNames?: string[]) =>
     refreshed: number;
     skipped: number;
     failed: number;
+    skippedMods?: { name: string; reason: string }[];
+    failedMods?: { name: string; reason: string }[];
   }>("refresh_mod_metadata", { archiveNames });
 
 export interface ModUpdateInfo {
@@ -332,6 +334,8 @@ export const saveWindowState = (
     x,
     y,
   });
+export const writeTextFile = (path: string, contents: string) =>
+  invoke<void>("write_text_file", { path, contents });
 export const getWindowState = () => invoke<WindowState>("get_window_state");
 export const manageWindowGeometry = () =>
   invoke<boolean>("manage_window_geometry");

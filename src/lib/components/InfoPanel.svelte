@@ -1,6 +1,18 @@
 <script lang="ts">
   import { infoLogStore } from "$lib/stores/infoLogStore";
+  import {
+    buildMetadataRefreshDetailText,
+    metadataRefreshDetailsStore,
+  } from "$lib/stores/metadataRefreshDetailsStore";
   import LogPanel from "./LogPanel.svelte";
+  import MetadataRefreshDetailsModal from "./MetadataRefreshDetailsModal.svelte";
+
+  let showDetails = false;
+
+  function handleShowDetails() {
+    showDetails = true;
+    infoLogStore.close();
+  }
 
   $: lineColor =
     $infoLogStore.tone === "error"
@@ -8,6 +20,16 @@
       : $infoLogStore.tone === "success"
         ? "var(--clr-success)"
         : "var(--clr-text)";
+
+  $: detailText = buildMetadataRefreshDetailText(
+    $metadataRefreshDetailsStore.skipped,
+    $metadataRefreshDetailsStore.failed,
+  );
+  $: hasDetails = detailText.length > 0;
+  $: fullText =
+    $infoLogStore.lines.length > 0 && hasDetails
+      ? `${$infoLogStore.lines.join("\n")}\n\n${detailText}`
+      : $infoLogStore.lines.join("\n");
 </script>
 
 <LogPanel
@@ -15,6 +37,7 @@
   isVisible={$infoLogStore.isOpen}
   isLoading={$infoLogStore.isBusy}
   log={$infoLogStore.lines}
+  {fullText}
   logFilename="metadata-refresh-log"
   on:close={() => infoLogStore.close()}
   on:clear={() => infoLogStore.clear()}
@@ -26,4 +49,19 @@
       <div class="leading-relaxed" style="color: {lineColor};">{line}</div>
     {/each}
   {/if}
+
+  <svelte:fragment slot="extra-actions">
+    {#if hasDetails}
+      <button class="btn btn-sm" on:click={handleShowDetails}>Details</button>
+    {/if}
+  </svelte:fragment>
 </LogPanel>
+
+<MetadataRefreshDetailsModal
+  isVisible={showDetails}
+  skippedMods={$metadataRefreshDetailsStore.skipped}
+  failedMods={$metadataRefreshDetailsStore.failed}
+  on:close={() => {
+    showDetails = false;
+  }}
+/>

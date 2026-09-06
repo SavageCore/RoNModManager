@@ -1075,6 +1075,22 @@ pub struct RefreshModMetadataResult {
     pub refreshed: usize,
     pub skipped: usize,
     pub failed: usize,
+    pub skipped_mods: Vec<ModSkippedDetail>,
+    pub failed_mods: Vec<ModFailedDetail>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModSkippedDetail {
+    pub name: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModFailedDetail {
+    pub name: String,
+    pub reason: String,
 }
 
 struct ResolvedModMetadata {
@@ -1200,9 +1216,15 @@ pub async fn refresh_mod_metadata(
         refreshed: 0,
         skipped: 0,
         failed: 0,
+        skipped_mods: Vec::new(),
+        failed_mods: Vec::new(),
     };
 
     for (name, mut manifest_data) in manifests {
+        let display_name = manifest_data
+            .display_name
+            .clone()
+            .unwrap_or_else(|| name.clone());
         if let Some(filter) = &filter {
             if !filter.contains(&name) {
                 continue;
@@ -1211,11 +1233,19 @@ pub async fn refresh_mod_metadata(
         result.checked += 1;
         let Some(source_url) = manifest_data.source_url.as_ref() else {
             result.skipped += 1;
+            result.skipped_mods.push(ModSkippedDetail {
+                name: display_name,
+                reason: "No source URL configured".to_string(),
+            });
             continue;
         };
         let source_url = source_url.trim().to_string();
         if source_url.is_empty() {
             result.skipped += 1;
+            result.skipped_mods.push(ModSkippedDetail {
+                name: display_name,
+                reason: "No source URL configured".to_string(),
+            });
             continue;
         }
 
@@ -1249,13 +1279,36 @@ pub async fn refresh_mod_metadata(
 
                 if !changed {
                     result.skipped += 1;
+                    result.skipped_mods.push(ModSkippedDetail {
+                        name: display_name,
+                        reason: "Metadata unchanged".to_string(),
+                    });
                 } else if manager.save_manifest(&manifest_data).is_err() {
                     result.failed += 1;
+                    result.failed_mods.push(ModFailedDetail {
+                        name: display_name,
+                        reason: "Failed to save manifest".to_string(),
+                    });
                 } else {
                     result.refreshed += 1;
                 }
             }
-            Err(_) => result.failed += 1,
+            Err(e) => {
+                result.failed += 1;
+                let reason = if e.to_string().contains("api key") {
+                    "API key invalid or expired"
+                } else if e.to_string().contains("rate limit") {
+                    "Rate limited"
+                } else if e.to_string().contains("network") {
+                    "Network error"
+                } else {
+                    "Failed to resolve metadata"
+                };
+                result.failed_mods.push(ModFailedDetail {
+                    name: display_name,
+                    reason: reason.to_string(),
+                });
+            }
         }
     }
 

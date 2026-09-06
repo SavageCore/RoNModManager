@@ -88,3 +88,8 @@ pub async fn get_window_state(state: State<'_, AppState>) -> Result<WindowState,
         y: config.window_y,
     })
 }
+
+#[tauri::command]
+pub async fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, contents).map_err(|e| format!("Failed to write file: {}", e))
+}

@@ -9,6 +9,10 @@
   export let width = "420px";
   export let maxHeight = "400px";
   export let logFilename = "log";
+  // Optional full text used for Copy/Save. When null, falls back to the
+  // visible log lines. Lets callers append extra detail (e.g. per-mod
+  // skip/fail lists) that isn't rendered as log lines.
+  export let fullText: string | null = null;
 
   const dispatch = createEventDispatcher<{ close: void; clear: void }>();
 
@@ -37,12 +41,29 @@
   }
 
   function copyLog() {
-    navigator.clipboard.writeText(log.join("\n")).catch(() => {});
+    const text = fullText ?? log.join("\n");
+    navigator.clipboard.writeText(text).catch(() => {
+      // Clipboard API can fail in webviews - fall back to execCommand.
+      try {
+        const area = document.createElement("textarea");
+        area.value = text;
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        document.body.removeChild(area);
+      } catch {
+        // Best effort only.
+      }
+    });
   }
 
   function saveLog() {
     const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const blob = new Blob([log.join("\n")], { type: "text/plain" });
+    const blob = new Blob([fullText ?? log.join("\n")], {
+      type: "text/plain",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

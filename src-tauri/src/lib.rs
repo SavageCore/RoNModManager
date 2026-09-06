@@ -202,6 +202,7 @@ pub fn run() {
             window::save_window_state,
             window::get_window_state,
             window::manage_window_geometry,
+            window::write_text_file,
             window::is_screenshot_mode,
             window::screenshot_theme,
             commands::fetch::fetch_modpack_json,
