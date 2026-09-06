@@ -176,6 +176,7 @@
   import { toastStore } from "$lib/stores/toast";
   import {
     incognitoMode,
+    wizardScreenshotMode,
     DUMMY_MOD_GROUPS,
     DUMMY_PROFILE_MODS,
     DUMMY_COLLECTIONS,
@@ -388,23 +389,30 @@
   // Filtering logic for modGroups
   // Filter out add-on files that are tracked as standalone mods
 
-  $: effectiveModGroups = $incognitoMode ? DUMMY_MOD_GROUPS : modGroups;
-  $: effectiveProfileMods = $incognitoMode
-    ? DUMMY_PROFILE_MODS
-    : modsForActiveProfile;
-  $: effectiveCollections = $incognitoMode
-    ? DUMMY_COLLECTIONS
-    : activeProfileCollections;
-  $: effectiveTags = $incognitoMode ? DUMMY_TAGS : activeProfileTags;
-  $: effectiveCollectionNames = $incognitoMode
-    ? Object.keys(DUMMY_COLLECTIONS)
-    : activeCollectionNames;
-  $: effectiveTagNames = $incognitoMode
-    ? Object.keys(DUMMY_TAGS).sort((a, b) => a.localeCompare(b))
-    : allTagNames;
-  $: effectiveCollectionColors = $incognitoMode
-    ? DUMMY_COLLECTION_COLORS
-    : activeProfileCollectionColors;
+  $: effectiveModGroups =
+    $incognitoMode && !$wizardScreenshotMode ? DUMMY_MOD_GROUPS : modGroups;
+  $: effectiveProfileMods =
+    $incognitoMode && !$wizardScreenshotMode
+      ? DUMMY_PROFILE_MODS
+      : modsForActiveProfile;
+  $: effectiveCollections =
+    $incognitoMode && !$wizardScreenshotMode
+      ? DUMMY_COLLECTIONS
+      : activeProfileCollections;
+  $: effectiveTags =
+    $incognitoMode && !$wizardScreenshotMode ? DUMMY_TAGS : activeProfileTags;
+  $: effectiveCollectionNames =
+    $incognitoMode && !$wizardScreenshotMode
+      ? Object.keys(DUMMY_COLLECTIONS)
+      : activeCollectionNames;
+  $: effectiveTagNames =
+    $incognitoMode && !$wizardScreenshotMode
+      ? Object.keys(DUMMY_TAGS).sort((a, b) => a.localeCompare(b))
+      : allTagNames;
+  $: effectiveCollectionColors =
+    $incognitoMode && !$wizardScreenshotMode
+      ? DUMMY_COLLECTION_COLORS
+      : activeProfileCollectionColors;
 
   $: filteredModGroups = effectiveModGroups
     .filter((group) => {

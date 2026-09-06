@@ -77,7 +77,11 @@
   import { importLogStore } from "$lib/stores/importLogStore";
   import { infoLogStore } from "$lib/stores/infoLogStore";
   import { metadataRefreshDetailsStore } from "$lib/stores/metadataRefreshDetailsStore";
-  import { incognitoMode, screenshotMode } from "$lib/stores/incognitoMode";
+  import {
+    incognitoMode,
+    screenshotMode,
+    wizardScreenshotMode,
+  } from "$lib/stores/incognitoMode";
 
   const APP_NAME = "RoN Mod Manager";
   const UPDATE_AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -341,6 +345,8 @@
         if (!isWizard) {
           screenshotMode.set(true);
           incognitoMode.set(true);
+        } else {
+          wizardScreenshotMode.set(true);
         }
         const ssPages = ["/mods", "/collections", "/profiles", "/settings"];
         window.addEventListener("keydown", (e) => {
