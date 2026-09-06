@@ -44,12 +44,7 @@
   }
 </script>
 
-<ModalShell
-  {isVisible}
-  title="Edit Collection"
-  showClose={false}
-  on:close={handleCancel}
->
+<ModalShell {isVisible} title="Edit Collection" on:close={handleCancel}>
   <div class="mb-4">
     <label
       for="collection-edit-name"
