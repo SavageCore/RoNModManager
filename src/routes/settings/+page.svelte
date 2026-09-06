@@ -1250,10 +1250,7 @@
       style="background: color-mix(in srgb, var(--clr-primary-300) 15%, transparent); border-left: 3px solid var(--clr-primary-300);"
       class="mt-3 p-3 rounded"
     >
-      <p style="color: var(--clr-text);" class="text-sm font-medium">
-        Important:
-      </p>
-      <p style="color: var(--clr-text-secondary);" class="text-xs mt-1">
+      <p style="color: var(--clr-text-secondary);" class="text-xs">
         On the Nexus API keys page, <strong
           >scroll all the way to the bottom</strong
         > to find your "Personal API Key" section. Copy the key from there.
@@ -1307,7 +1304,7 @@
         on:click={saveNexusKey}
         disabled={validatingNexusKey}
       >
-        {validatingNexusKey ? "Validating..." : "Verify & Save"}
+        {validatingNexusKey ? "Validating..." : "Validate and Save"}
       </button>
     </div>
   </ModalShell>
@@ -1375,7 +1372,7 @@
         on:click={saveModioApiKey}
         disabled={validatingModioApiKey}
       >
-        {validatingModioApiKey ? "Validating..." : "Verify & Save"}
+        {validatingModioApiKey ? "Validating..." : "Validate and Save"}
       </button>
     </div>
   </ModalShell>
