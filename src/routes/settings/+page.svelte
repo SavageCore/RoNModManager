@@ -1187,10 +1187,9 @@
     on:close={closeTokenSetupModal}
   >
     <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
-      mod.io is phasing out OAuth clients. On your access page, open the
-      <strong>Personal access tokens</strong> tab and click
-      <strong>Generate token</strong>. Name it e.g. RoNModManager, enable
-      <strong>User actions</strong> under Permissions, enable
+      Click <strong>Generate token</strong>. Name it e.g. RoNModManager, enable
+      <strong>User actions</strong>
+      under Permissions, enable
       <strong>Write</strong> under Scope (keeping Read checked), and set
       <strong>Expiry</strong> to 1 Year (or whatever you like).
     </p>

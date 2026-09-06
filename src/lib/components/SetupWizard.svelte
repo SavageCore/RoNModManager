@@ -200,8 +200,7 @@
             Personal Access Token
           </label>
           <p class="text-xs mb-2" style="color: var(--clr-text-secondary);">
-            Used to download mods you're subscribed to. On your mod.io access
-            page, open the Personal access tokens tab and click Generate token
+            Used to download mods you're subscribed to. Click Generate token
             (name it e.g. RoNModManager, enable User actions, enable Write under
             Scope keeping Read checked).
           </p>
