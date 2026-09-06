@@ -22,7 +22,7 @@ if git diff --cached --name-only | grep -q '^src-tauri/'; then
 fi
 
 # Type-check frontend when any Svelte/TS/JS files are staged
-if git diff --cached --name-only | grep -qE '\.(svelte|ts|js)$'; then
+if git diff --cached --name-only | grep -qE '\.(svelte|ts|tsx|mts|cts|js|jsx|mjs|cjs)$'; then
   echo "🔷 Running svelte-check..."
   npm run check || {
     echo "❌ svelte-check failed. Fix type errors above."

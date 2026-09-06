@@ -63,7 +63,7 @@
     "vitest": "^4.0.18"
   },
   "lint-staged": {
-    "*.{js,ts,svelte}": [
+    "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts,svelte}": [
       "prettier --write"
     ],
     "*.{css,json,md,yml,yaml}": [

@@ -223,7 +223,9 @@ async function capture(wid, name, theme) {
   const file = path.join(dir, `${name}.png`);
   execSync(`DISPLAY=${display} import -window ${wid} "${file}"`);
   const borderColor = theme === "dark" ? "#ffffff" : "#333333";
-  execSync(`convert "${file}" -bordercolor "${borderColor}" -border 40 "${file}"`);
+  execSync(
+    `convert "${file}" -bordercolor "${borderColor}" -border 40 "${file}"`,
+  );
   console.log(`  ✓  ${name}`);
 }
 
