@@ -1179,7 +1179,7 @@
 {#if showTokenModal}
   <ModalShell
     isVisible={showTokenModal}
-    title="Set mod.io API Token"
+    title="Set mod.io OAuth Token"
     width="w-full max-w-xl"
     zIndex="z-[1200]"
     overlayExtra="p-4"
@@ -1187,26 +1187,25 @@
     on:close={closeTokenSetupModal}
   >
     <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
-      Create a token on mod.io with any name and enable both <strong
-        >Read</strong
-      >
-      and <strong>Write</strong> permissions.
+      On your mod.io access page, open the <strong>OAuth Access</strong> section
+      (not API Access) and create a token with any name. Enable both
+      <strong>Read</strong> and <strong>Write</strong> permissions.
     </p>
 
     <div class="mt-4 flex flex-wrap gap-2">
       <button class="btn btn-sm" on:click={openModioTokenPage}
-        >Open API Token Page</button
+        >Open OAuth Access Page</button
       >
     </div>
 
     <label class="mt-4 block text-sm">
       <span style="color: var(--clr-text-secondary);" class="mb-1 block"
-        >Paste token</span
+        >Paste OAuth token</span
       >
       <input
         class="input w-full"
         bind:value={tokenInput}
-        placeholder="Paste your mod.io API token"
+        placeholder="Paste your mod.io OAuth token"
       />
     </label>
 
@@ -1325,8 +1324,8 @@
     on:close={closeModioApiKeyModal}
   >
     <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
-      Get your <strong>API key</strong> from your mod.io account to enable direct
-      downloads.
+      On your mod.io access page, copy your key from the
+      <strong>API Access</strong> section (not OAuth Access) to enable direct downloads.
     </p>
 
     <div class="mt-4 flex flex-wrap gap-2">
