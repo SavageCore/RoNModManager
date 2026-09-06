@@ -4,13 +4,28 @@
     validateAndSaveModioToken,
     validateAndSaveNexusApiKey,
   } from "$lib/api/apiKeyValidation";
-  import { logout, updateConfig } from "$lib/api/commands";
+  import {
+    detectGamePath,
+    fetchModpackJson,
+    getConfig,
+    logout,
+    setGamePath,
+    setModpackUrl,
+    updateConfig,
+  } from "$lib/api/commands";
   import { tokenStore } from "$lib/stores/token";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import { onMount } from "svelte";
 
   export let onDismiss: () => void;
 
   let step = 1;
+
+  let gamePathInput = "";
+  let gamePathError = "";
+  let savingGamePath = false;
+  let detectingGamePath = false;
 
   let modioApiKeyInput = "";
   let showModioApiKeyText = false;
@@ -24,9 +39,88 @@
   let nexusError = "";
   let savingNexus = false;
 
+  let modpackUrlInput = "";
+  let modpackError = "";
+  let savingModpack = false;
+
+  onMount(async () => {
+    try {
+      const config = await getConfig();
+      if (config.game_path) gamePathInput = config.game_path;
+      if (config.modpack_url) modpackUrlInput = config.modpack_url;
+    } catch {
+      // Non-fatal: wizard works with empty defaults.
+    }
+    if (!gamePathInput) {
+      detectingGamePath = true;
+      try {
+        const detected = await detectGamePath();
+        if (detected) gamePathInput = detected;
+      } catch {
+        // Non-fatal: user can set path manually.
+      } finally {
+        detectingGamePath = false;
+      }
+    }
+  });
+
   async function dismiss() {
     await updateConfig({ setup_wizard_complete: true });
     onDismiss();
+  }
+
+  async function handleAutodetectGamePath() {
+    gamePathError = "";
+    detectingGamePath = true;
+    try {
+      const detected = await detectGamePath();
+      if (!detected) {
+        gamePathError =
+          "Could not auto-detect game path. Browse or paste it manually.";
+        return;
+      }
+      gamePathInput = detected;
+    } catch (error) {
+      gamePathError = `Auto-detect failed: ${String(error)}`;
+    } finally {
+      detectingGamePath = false;
+    }
+  }
+
+  async function handleBrowseGamePath() {
+    gamePathError = "";
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: gamePathInput || undefined,
+      });
+      if (typeof selected === "string" && selected) {
+        gamePathInput = selected;
+      }
+    } catch (error) {
+      gamePathError = `Browse failed: ${String(error)}`;
+    }
+  }
+
+  async function handleGamePathNext() {
+    const trimmed = gamePathInput.trim();
+    gamePathError = "";
+
+    if (!trimmed) {
+      gamePathError = "Please set your game path, or Skip for now.";
+      return;
+    }
+
+    savingGamePath = true;
+    try {
+      await setGamePath(trimmed);
+      step = 3;
+    } catch (error) {
+      gamePathError = String(error);
+    } finally {
+      savingGamePath = false;
+    }
   }
 
   async function handleModioNext() {
@@ -61,7 +155,7 @@
         return;
       }
 
-      step = 3;
+      step = 4;
     } catch (error) {
       modioError = `Failed to validate: ${String(error)}`;
     } finally {
@@ -69,12 +163,12 @@
     }
   }
 
-  async function handleNexusFinish() {
+  async function handleNexusNext() {
     const key = nexusKeyInput.trim();
     nexusError = "";
 
     if (!key) {
-      await dismiss();
+      step = 5;
       return;
     }
 
@@ -85,7 +179,7 @@
         nexusError = "Invalid Nexus API key. Please check and try again.";
         return;
       }
-      await dismiss();
+      step = 5;
     } catch (error) {
       nexusError = `Failed to validate: ${String(error)}`;
     } finally {
@@ -93,7 +187,46 @@
     }
   }
 
-  async function openModioPage() {
+  async function handleModpackFinish() {
+    const url = modpackUrlInput.trim();
+    modpackError = "";
+
+    if (!url) {
+      await dismiss();
+      return;
+    }
+
+    if (!/^https?:\/\//i.test(url)) {
+      modpackError = "Modpack URL should start with http:// or https://";
+      return;
+    }
+
+    savingModpack = true;
+    try {
+      try {
+        await fetchModpackJson(url);
+      } catch (error) {
+        modpackError = `Could not fetch modpack from that URL: ${String(error)}`;
+        return;
+      }
+      await setModpackUrl(url);
+      await dismiss();
+    } catch (error) {
+      modpackError = `Failed to save: ${String(error)}`;
+    } finally {
+      savingModpack = false;
+    }
+  }
+
+  async function openModioApiPage() {
+    try {
+      await openUrl("https://mod.io/me/access");
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  async function openModioTokenPage() {
     try {
       await openUrl("https://mod.io/me/access#tokens");
     } catch {
@@ -117,7 +250,7 @@
   >
     <!-- Step progress indicator -->
     <div class="flex gap-2 mb-6">
-      {#each [1, 2, 3] as s (s)}
+      {#each [1, 2, 3, 4, 5] as s (s)}
         <div
           style="background: {step >= s
             ? 'var(--clr-primary-300)'
@@ -133,11 +266,12 @@
         Welcome to RoN Mod Manager
       </h2>
       <p class="text-sm mb-3" style="color: var(--clr-text-secondary);">
-        To install and manage mods you'll need to connect your mod.io account.
-        This wizard will guide you through the setup.
+        This wizard will set your game folder, connect your mod.io account, and
+        optionally add a Nexus Mods key and modpack URL.
       </p>
       <p class="text-sm mb-6" style="color: var(--clr-text-secondary);">
-        A Nexus Mods API key is optional and can be added later in Settings.
+        Nexus key and modpack URL are optional and can be added later in
+        Settings.
       </p>
       <div class="flex justify-end">
         <button class="btn primary" on:click={() => (step = 2)}>
@@ -145,19 +279,91 @@
         </button>
       </div>
 
-      <!-- Step 2: mod.io -->
+      <!-- Step 2: Game path -->
     {:else if step === 2}
+      <h2 class="text-xl font-semibold mb-2" style="color: var(--clr-text);">
+        Find your game
+      </h2>
+      <p class="text-sm mb-4" style="color: var(--clr-text-secondary);">
+        Select your Ready or Not installation folder. Auto Detect usually finds
+        it via Steam.
+      </p>
+
+      <div class="flex gap-2 mb-4">
+        <button
+          class="btn primary flex-1"
+          on:click={handleAutodetectGamePath}
+          disabled={detectingGamePath || savingGamePath}
+        >
+          {detectingGamePath ? "Detecting..." : "Auto Detect"}
+        </button>
+        <button
+          class="btn flex-1"
+          on:click={handleBrowseGamePath}
+          disabled={savingGamePath}
+        >
+          Browse...
+        </button>
+      </div>
+
+      <div>
+        <label
+          for="wizard-game-path"
+          class="block text-sm font-medium mb-1"
+          style="color: var(--clr-text);"
+        >
+          Game path
+        </label>
+        <input
+          id="wizard-game-path"
+          class="input w-full"
+          bind:value={gamePathInput}
+          placeholder="C:/Program Files (x86)/Steam/steamapps/common/Ready Or Not"
+          on:input={() => (gamePathError = "")}
+        />
+      </div>
+
+      {#if gamePathError}
+        <p class="mt-3 text-sm" style="color: var(--clr-danger-300);">
+          {gamePathError}
+        </p>
+      {/if}
+
+      <div class="flex justify-between mt-6">
+        <button
+          class="btn"
+          on:click={() => (step = 1)}
+          disabled={savingGamePath}
+        >
+          Back
+        </button>
+        <div class="flex gap-2">
+          <button
+            class="btn"
+            on:click={() => (step = 3)}
+            disabled={savingGamePath}
+          >
+            Skip
+          </button>
+          <button
+            class="btn primary"
+            on:click={handleGamePathNext}
+            disabled={savingGamePath}
+          >
+            {savingGamePath ? "Saving..." : "Next"}
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 3: mod.io -->
+    {:else if step === 3}
       <h2 class="text-xl font-semibold mb-2" style="color: var(--clr-text);">
         Connect mod.io
       </h2>
       <p class="text-sm mb-4" style="color: var(--clr-text-secondary);">
-        Both keys are on the same page - click below to open it, then copy each
-        one into the fields below.
+        You need two separate values from mod.io: an API Access key for lookups
+        and a personal access token for downloads.
       </p>
-
-      <button class="btn primary w-full mb-5" on:click={openModioPage}>
-        Open mod.io Access Page
-      </button>
 
       <div class="space-y-4">
         <div>
@@ -169,8 +375,12 @@
             API Access Key
           </label>
           <p class="text-xs mb-2" style="color: var(--clr-text-secondary);">
-            Used to look up mods by ID or URL.
+            On the mod.io access page, copy your key from the API Access
+            section.
           </p>
+          <button class="btn btn-sm w-full mb-2" on:click={openModioApiPage}>
+            Open mod.io API Access Page
+          </button>
           <div class="flex gap-2">
             <input
               id="wizard-modio-api-key"
@@ -200,10 +410,14 @@
             Personal Access Token
           </label>
           <p class="text-xs mb-2" style="color: var(--clr-text-secondary);">
-            Used to download mods you're subscribed to. Click Generate token
-            (name it e.g. RoNModManager, enable User actions, enable Write under
-            Scope keeping Read checked).
+            Click Generate token (name it e.g. RoNModManager, enable User
+            actions under Permissions, enable Write under Scope keeping Read
+            checked, set Expiry to 1 Year). If it later expires, use Regenerate
+            beside it in the tokens table.
           </p>
+          <button class="btn btn-sm w-full mb-2" on:click={openModioTokenPage}>
+            Open Personal Access Tokens Page
+          </button>
           <div class="flex gap-2">
             <input
               id="wizard-modio-token"
@@ -231,7 +445,10 @@
         </p>
       {/if}
 
-      <div class="flex justify-end mt-6">
+      <div class="flex justify-between mt-6">
+        <button class="btn" on:click={() => (step = 2)} disabled={savingModio}>
+          Back
+        </button>
         <button
           class="btn primary"
           on:click={handleModioNext}
@@ -241,8 +458,8 @@
         </button>
       </div>
 
-      <!-- Step 3: Nexus Mods -->
-    {:else if step === 3}
+      <!-- Step 4: Nexus Mods -->
+    {:else if step === 4}
       <h2 class="text-xl font-semibold mb-2" style="color: var(--clr-text);">
         Nexus Mods API Key
         <span
@@ -307,21 +524,84 @@
       {/if}
 
       <div class="flex justify-between mt-6">
-        <button class="btn" on:click={() => (step = 2)} disabled={savingNexus}>
+        <button class="btn" on:click={() => (step = 3)} disabled={savingNexus}>
           Back
         </button>
         <div class="flex gap-2">
-          <button class="btn" on:click={dismiss} disabled={savingNexus}>
+          <button
+            class="btn"
+            on:click={() => (step = 5)}
+            disabled={savingNexus}
+          >
             Skip
           </button>
           <button
             class="btn primary"
-            on:click={handleNexusFinish}
+            on:click={handleNexusNext}
             disabled={savingNexus}
           >
-            {savingNexus ? "Saving..." : "Finish"}
+            {savingNexus ? "Saving..." : "Next"}
           </button>
         </div>
+      </div>
+
+      <!-- Step 5: Modpack URL -->
+    {:else if step === 5}
+      <h2 class="text-xl font-semibold mb-2" style="color: var(--clr-text);">
+        Modpack URL
+        <span
+          class="ml-2 text-xs font-normal px-2 py-0.5 rounded"
+          style="background: color-mix(in srgb, var(--clr-primary-300) 15%, transparent);
+                 color: var(--clr-primary-300);">Optional</span
+        >
+      </h2>
+      <p class="text-sm mb-2" style="color: var(--clr-text-secondary);">
+        If your community shares a modpack.json URL, paste it here. You can add
+        it later from the Mods page via Add Modpack.
+      </p>
+      <p class="text-sm mb-4" style="color: var(--clr-text-secondary);">
+        You can leave this empty and finish.
+      </p>
+
+      <div>
+        <label
+          for="wizard-modpack-url"
+          class="block text-sm font-medium mb-1"
+          style="color: var(--clr-text);"
+        >
+          Modpack URL
+        </label>
+        <input
+          id="wizard-modpack-url"
+          class="input w-full"
+          bind:value={modpackUrlInput}
+          type="url"
+          placeholder="https://.../modpack.json"
+          on:input={() => (modpackError = "")}
+        />
+      </div>
+
+      {#if modpackError}
+        <p class="mt-3 text-sm" style="color: var(--clr-danger-300);">
+          {modpackError}
+        </p>
+      {/if}
+
+      <div class="flex justify-between mt-6">
+        <button
+          class="btn"
+          on:click={() => (step = 4)}
+          disabled={savingModpack}
+        >
+          Back
+        </button>
+        <button
+          class="btn primary"
+          on:click={handleModpackFinish}
+          disabled={savingModpack}
+        >
+          {savingModpack ? "Saving..." : "Finish"}
+        </button>
       </div>
     {/if}
   </div>

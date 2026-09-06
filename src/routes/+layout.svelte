@@ -520,7 +520,7 @@
             Boolean(config.modio_api_key?.trim()) ||
             Boolean(config.oauth_token?.trim()) ||
             Boolean(config.nexus_api_key?.trim());
-          if (hasAnyKey) {
+          if (hasAnyKey && hasGamePath) {
             void updateConfig({ setup_wizard_complete: true });
           } else {
             showSetupWizard = true;
@@ -718,7 +718,7 @@
     </div>
   </header>
 
-  {#if !hasSavedToken}
+  {#if !hasSavedToken && !showSetupWizard}
     <div
       role="button"
       tabindex="0"
@@ -736,8 +736,7 @@
       title="Go to settings to set token"
     >
       <span style="color: var(--clr-text);"
-        >Set your mod.io token to install mods from links and use API-backed
-        features.</span
+        >Set your mod.io token to install mods from links.</span
       >
       <button
         class="btn btn-sm primary"

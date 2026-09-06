@@ -735,7 +735,14 @@
         selectedProfile = activeProfileName;
       }
     } catch (error) {
-      toastStore.error(`Failed to load mods: ${String(error)}`);
+      const msg = String(error);
+      // Expected on first run behind the setup wizard - game path not set yet.
+      if (/game path.*not configured/i.test(msg)) {
+        modGroups = [];
+        hasGamePath = false;
+        return;
+      }
+      toastStore.error(`Failed to load mods: ${msg}`);
     }
   }
 
