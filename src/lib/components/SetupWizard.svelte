@@ -171,7 +171,7 @@
     nexusError = "";
 
     if (!key) {
-      step = 5;
+      nexusError = "Please enter your Nexus API key.";
       return;
     }
 
@@ -274,11 +274,8 @@
   <!-- Step 1: Welcome -->
   {#if step === 1}
     <p class="text-sm mb-3" style="color: var(--clr-text-secondary);">
-      This wizard will set your game folder, connect your mod.io account, and
-      optionally add a Nexus Mods key and modpack URL.
-    </p>
-    <p class="text-sm mb-6" style="color: var(--clr-text-secondary);">
-      Nexus key and modpack URL are optional and can be added later in Settings.
+      This wizard will set your game folder, connect your mod.io and Nexus Mods
+      accounts and optionally a modpack URL.
     </p>
     <div class="flex justify-end">
       <button class="btn primary" on:click={() => (step = 2)}>
@@ -457,6 +454,9 @@
 
     <!-- Step 4: Nexus Mods -->
   {:else if step === 4}
+    <h2 class="text-xl font-semibold mb-2" style="color: var(--clr-text);">
+      Nexus Mods API Key
+    </h2>
     <p class="text-sm mb-4" style="color: var(--clr-text-secondary);">
       Required to fetch metadata and download mods from Nexus Mods links. You
       can add this later in Settings.
@@ -517,9 +517,6 @@
         Back
       </button>
       <div class="flex gap-2">
-        <button class="btn" on:click={() => (step = 5)} disabled={savingNexus}>
-          Skip
-        </button>
         <button
           class="btn primary"
           on:click={handleNexusNext}

@@ -125,7 +125,7 @@
     nexusError = "";
 
     if (!key) {
-      nexusError = "Please enter your Nexus API key, or Skip to set it later.";
+      nexusError = "Please enter your Nexus API key.";
       return;
     }
 
@@ -142,10 +142,6 @@
     } finally {
       savingNexus = false;
     }
-  }
-
-  async function handleNexusSkip() {
-    await handleClose();
   }
 
   $: if (isVisible) {
@@ -293,11 +289,6 @@
     <div class="relative mb-6">
       <h2 class="text-xl font-semibold mb-2" style="color: var(--clr-text);">
         Nexus Mods API Key
-        <span
-          class="ml-2 text-xs font-normal px-2 py-0.5 rounded"
-          style="background: color-mix(in srgb, var(--clr-primary-300) 15%, transparent);
-                 color: var(--clr-primary-300);">Optional</span
-        >
       </h2>
       <button
         class="absolute top-0 right-0 text-xs opacity-50 hover:opacity-100"
@@ -366,9 +357,6 @@
         Back
       </button>
       <div class="flex gap-2">
-        <button class="btn" on:click={handleNexusSkip} disabled={savingNexus}>
-          Skip
-        </button>
         <button
           class="btn primary"
           on:click={handleNexusNext}
