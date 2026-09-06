@@ -7,6 +7,8 @@ import {
 } from "$lib/api/commands";
 import { tokenStore } from "$lib/stores/token";
 
+export { validateToken };
+
 export async function validateAndSaveModioApiKey(
   key: string,
 ): Promise<boolean> {

@@ -938,11 +938,10 @@
         <div class="prefs-row-suffix">
           <button class="btn btn-sm primary" on:click={openTokenSetupModal}
             >{hasSavedToken ? "Update" : "Set"}</button
-          ><button
-            class="btn btn-sm danger"
-            disabled={!hasSavedToken}
-            on:click={disconnect}>Remove</button
-          >
+          >{#if hasSavedToken}<button
+              class="btn btn-sm danger"
+              on:click={disconnect}>Remove</button
+            >{/if}
         </div>
       </div>
       <div class="prefs-row">

@@ -22,6 +22,7 @@
   import ImportLogPanel from "$lib/components/ImportLogPanel.svelte";
   import SyncPanel from "$lib/components/SyncPanel.svelte";
   import Toast from "$lib/components/Toast.svelte";
+  import AuthSetupModal from "$lib/components/AuthSetupModal.svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
   import { pendingInstallUrl } from "$lib/stores/pendingInstall";
   import { toastStore } from "$lib/stores/toast";
@@ -91,6 +92,9 @@
   let profiles: Profile[] = [];
   let hasGamePath = false;
   let hasSavedToken = false;
+  let hasNexusKey = false;
+  let hasModioApiKey = false;
+  let showAuthSetupModal = false;
   let isApplyingProfile = false;
   let isLaunching = false;
   let isRefreshingMetadata = false;
@@ -128,6 +132,8 @@
       const config = await getConfig();
       hasGamePath = config.game_path != null;
       hasSavedToken = Boolean(config.oauth_token?.trim());
+      hasNexusKey = Boolean(config.nexus_api_key?.trim());
+      hasModioApiKey = Boolean(config.modio_api_key?.trim());
       tokenStore.set(hasSavedToken);
       selectedProfile = resolveSelectedProfile(config.active_profile);
       onGameLaunch = config.on_game_launch ?? "nothing";
@@ -138,6 +144,32 @@
     } catch {
       // Non-fatal: shell can continue using previous state.
     }
+  }
+
+  function getAuthMessage() {
+    const missing = [];
+    if (!hasNexusKey) missing.push("Nexus Mods API Key");
+    if (!hasSavedToken) missing.push("mod.io Personal Access Token");
+    if (!hasModioApiKey) missing.push("mod.io API Access Key");
+
+    if (missing.length === 0) {
+      return ""; // Should not show banner if nothing is missing
+    }
+
+    if (missing.length === 3) {
+      return "All authentication keys are missing. Set them to install mods from links.";
+    }
+
+    // List each missing item
+    let missingList;
+    if (missing.length === 2) {
+      missingList = `${missing[0]} and ${missing[1]}`;
+    } else {
+      // length === 1
+      missingList = missing[0];
+    }
+
+    return `${missingList} ${missing.length === 1 ? "is" : "are"} missing. Set ${missing.length === 1 ? "it" : "them"} to install mods from links.`;
   }
 
   async function handleProfileChange() {
@@ -718,33 +750,31 @@
     </div>
   </header>
 
-  {#if !hasSavedToken && !showSetupWizard}
+  {#if !(hasNexusKey && hasSavedToken && hasModioApiKey) && !showSetupWizard}
     <div
       role="button"
       tabindex="0"
       on:click={() => {
-        goto("/settings");
+        showAuthSetupModal = true;
       }}
       on:keydown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          goto("/settings");
+          showAuthSetupModal = true;
         }
       }}
       style="background: color-mix(in srgb, var(--clr-primary-300) 12%, var(--clr-surface)); border-bottom: 1px solid var(--adw-border-color);"
       class="px-4 py-2 text-sm flex items-center justify-between gap-3 cursor-pointer"
-      title="Go to settings to set token"
+      title="Go to settings to set missing authentication keys"
     >
-      <span style="color: var(--clr-text);"
-        >Set your mod.io token to install mods from links.</span
-      >
+      <span style="color: var(--clr-text);">{getAuthMessage()}</span>
       <button
         class="btn btn-sm primary"
-        on:click|stopPropagation={() => {
-          goto("/settings");
+        on:click={() => {
+          showAuthSetupModal = true;
         }}
       >
-        Set Token
+        Set Keys
       </button>
     </div>
   {/if}
@@ -789,8 +819,15 @@
   <FooterStatusBar />
 
   {#if showSetupWizard}
-    <SetupWizard onDismiss={handleWizardDismiss} />
+    <SetupWizard isVisible={showSetupWizard} onClose={handleWizardDismiss} />
   {/if}
+
+  <AuthSetupModal
+    isVisible={showAuthSetupModal}
+    onClose={() => {
+      showAuthSetupModal = false;
+    }}
+  />
 
   <ConfirmModal
     isVisible={showCloseWhileRunningDialog}
@@ -799,7 +836,7 @@
     confirmLabel="Close anyway"
     onConfirm={() => void handleForceClose()}
     onCancel={() => {
-      showCloseWhileRunningDialog = false;
+      showClosePreferenceDialog = false;
     }}
   />
 
