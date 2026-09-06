@@ -35,7 +35,6 @@
 
 <ModalShell
   {isVisible}
-  showClose={false}
   headerClass="flex items-center justify-between"
   on:close={handleClose}
 >
