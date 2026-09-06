@@ -1187,7 +1187,8 @@
     on:close={closeTokenSetupModal}
   >
     <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
-      Click <strong>Generate token</strong>. Name it e.g. RoNModManager, enable
+      On the mod.io personal access tokens page, click
+      <strong>Generate token</strong>. Name it e.g. RoNModManager, enable
       <strong>User actions</strong>
       under Permissions, enable
       <strong>Write</strong> under Scope (keeping Read checked), and set
@@ -1323,7 +1324,7 @@
     on:close={closeModioApiKeyModal}
   >
     <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
-      On your mod.io access page, copy your key from the
+      On the mod.io access page, copy your key from the
       <strong>API Access</strong> section (not Personal Access Tokens) to enable direct
       downloads.
     </p>
