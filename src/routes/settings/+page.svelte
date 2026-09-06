@@ -1325,8 +1325,7 @@
   >
     <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
       On the mod.io access page, copy your key from the
-      <strong>API Access</strong> section (not Personal Access Tokens) to enable direct
-      downloads.
+      <strong>API Access</strong> section to enable direct downloads.
     </p>
 
     <div class="mt-4 flex flex-wrap gap-2">
