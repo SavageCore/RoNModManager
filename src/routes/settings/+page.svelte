@@ -35,6 +35,7 @@
     validateAndSaveNexusApiKey,
   } from "$lib/api/apiKeyValidation";
   import ExportModpackModal from "$lib/components/ExportModpackModal.svelte";
+  import ModalShell from "$lib/components/ModalShell.svelte";
   import SyncAuthModal from "$lib/components/SyncAuthModal.svelte";
   import { syncLogStore } from "$lib/stores/syncLogStore";
   import type {
@@ -1176,139 +1177,207 @@
 {/if}
 
 {#if showTokenModal}
-  <div
-    class="fixed inset-0 z-[1200] flex items-center justify-center p-4"
-    style="background: rgba(0, 0, 0, 0.65);"
+  <ModalShell
+    isVisible={showTokenModal}
+    title="Set mod.io API Token"
+    width="w-full max-w-xl"
+    zIndex="z-[1200]"
+    overlayExtra="p-4"
+    closeOnEscape={false}
+    on:close={closeTokenSetupModal}
   >
-    <div class="card w-full max-w-xl">
-      <h2 style="color: var(--clr-text);" class="text-lg font-semibold">
-        Set mod.io API Token
-      </h2>
-      <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
-        Create a token on mod.io with any name and enable both <strong
-          >Read</strong
-        >
-        and <strong>Write</strong> permissions.
-      </p>
+    <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
+      Create a token on mod.io with any name and enable both <strong
+        >Read</strong
+      >
+      and <strong>Write</strong> permissions.
+    </p>
 
-      <div class="mt-4 flex flex-wrap gap-2">
-        <button class="btn btn-sm" on:click={openModioTokenPage}
-          >Open API Token Page</button
-        >
-      </div>
-
-      <label class="mt-4 block text-sm">
-        <span style="color: var(--clr-text-secondary);" class="mb-1 block"
-          >Paste token</span
-        >
-        <input
-          class="input w-full"
-          bind:value={tokenInput}
-          placeholder="Paste your mod.io API token"
-        />
-      </label>
-
-      {#if tokenModalError}
-        <p class="mt-3 text-sm" style="color: var(--clr-danger-300);">
-          {tokenModalError}
-        </p>
-      {/if}
-
-      <div class="mt-5 flex justify-end gap-2">
-        <button
-          class="btn btn-sm"
-          on:click={closeTokenSetupModal}
-          disabled={validatingToken}>Cancel</button
-        >
-        <button
-          class="btn btn-sm primary"
-          on:click={validateAndSaveToken}
-          disabled={validatingToken}
-        >
-          {validatingToken ? "Validating..." : "Validate and Save"}
-        </button>
-      </div>
+    <div class="mt-4 flex flex-wrap gap-2">
+      <button class="btn btn-sm" on:click={openModioTokenPage}
+        >Open API Token Page</button
+      >
     </div>
-  </div>
+
+    <label class="mt-4 block text-sm">
+      <span style="color: var(--clr-text-secondary);" class="mb-1 block"
+        >Paste token</span
+      >
+      <input
+        class="input w-full"
+        bind:value={tokenInput}
+        placeholder="Paste your mod.io API token"
+      />
+    </label>
+
+    {#if tokenModalError}
+      <p class="mt-3 text-sm" style="color: var(--clr-danger-300);">
+        {tokenModalError}
+      </p>
+    {/if}
+
+    <div class="mt-5 flex justify-end gap-2">
+      <button
+        class="btn btn-sm"
+        on:click={closeTokenSetupModal}
+        disabled={validatingToken}>Cancel</button
+      >
+      <button
+        class="btn btn-sm primary"
+        on:click={validateAndSaveToken}
+        disabled={validatingToken}
+      >
+        {validatingToken ? "Validating..." : "Validate and Save"}
+      </button>
+    </div>
+  </ModalShell>
 {/if}
 
 {#if showNexusKeyModal}
-  <div
-    class="fixed inset-0 z-[1200] flex items-center justify-center p-4"
-    style="background: rgba(0, 0, 0, 0.65);"
+  <ModalShell
+    isVisible={showNexusKeyModal}
+    title="Set Nexus Mods API Key"
+    width="w-full max-w-xl"
+    zIndex="z-[1200]"
+    overlayExtra="p-4"
+    closeOnEscape={false}
+    on:close={closeNexusKeyModal}
   >
-    <div class="card w-full max-w-xl">
-      <h2 style="color: var(--clr-text);" class="text-lg font-semibold">
-        Set Nexus Mods API Key
-      </h2>
-      <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
-        Get your <strong>Personal API Key</strong> from Nexus Mods to fetch mod information.
+    <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
+      Get your <strong>Personal API Key</strong> from Nexus Mods to fetch mod information.
+    </p>
+
+    <div
+      style="background: color-mix(in srgb, var(--clr-primary-300) 15%, transparent); border-left: 3px solid var(--clr-primary-300);"
+      class="mt-3 p-3 rounded"
+    >
+      <p style="color: var(--clr-text);" class="text-sm font-medium">
+        Important:
       </p>
+      <p style="color: var(--clr-text-secondary);" class="text-xs mt-1">
+        On the Nexus API keys page, <strong
+          >scroll all the way to the bottom</strong
+        > to find your "Personal API Key" section. Copy the key from there.
+      </p>
+    </div>
 
-      <div
-        style="background: color-mix(in srgb, var(--clr-primary-300) 15%, transparent); border-left: 3px solid var(--clr-primary-300);"
-        class="mt-3 p-3 rounded"
+    <div class="mt-4 flex flex-wrap gap-2">
+      <button class="btn btn-sm" on:click={openNexusApiKeysPage}
+        >Open Nexus API Keys Page</button
       >
-        <p style="color: var(--clr-text);" class="text-sm font-medium">
-          Important:
-        </p>
-        <p style="color: var(--clr-text-secondary);" class="text-xs mt-1">
-          On the Nexus API keys page, <strong
-            >scroll all the way to the bottom</strong
-          > to find your "Personal API Key" section. Copy the key from there.
-        </p>
-      </div>
+    </div>
 
-      <div class="mt-4 flex flex-wrap gap-2">
-        <button class="btn btn-sm" on:click={openNexusApiKeysPage}
-          >Open Nexus API Keys Page</button
-        >
-      </div>
-
-      <label class="mt-4 block text-sm">
-        <span style="color: var(--clr-text-secondary);" class="mb-1 block"
-          >Paste API key</span
-        >
-        <div class="flex gap-2">
-          <input
-            class="input w-full"
-            bind:value={nexusKeyInput}
-            on:input={() => (nexusKeyModalError = "")}
-            placeholder="Paste your Nexus Mods Personal API Key"
-            type={showNexusKeyText ? "text" : "password"}
-            aria-invalid={Boolean(nexusKeyModalError)}
-          />
-          <button
-            type="button"
-            class="btn btn-sm"
-            on:click={() => (showNexusKeyText = !showNexusKeyText)}
-            title={showNexusKeyText ? "Hide key" : "Show key"}
-          >
-            {showNexusKeyText ? "👁️" : "👁️‍🗨️"}
-          </button>
-        </div>
-      </label>
-
-      {#if nexusKeyModalError}
-        <p class="mt-3 text-sm" style="color: var(--clr-danger-300);">
-          {nexusKeyModalError}
-        </p>
-      {/if}
-
-      <div class="mt-5 flex justify-end gap-2">
+    <label class="mt-4 block text-sm">
+      <span style="color: var(--clr-text-secondary);" class="mb-1 block"
+        >Paste API key</span
+      >
+      <div class="flex gap-2">
+        <input
+          class="input w-full"
+          bind:value={nexusKeyInput}
+          on:input={() => (nexusKeyModalError = "")}
+          placeholder="Paste your Nexus Mods Personal API Key"
+          type={showNexusKeyText ? "text" : "password"}
+          aria-invalid={Boolean(nexusKeyModalError)}
+        />
         <button
+          type="button"
           class="btn btn-sm"
-          on:click={closeNexusKeyModal}
-          disabled={validatingNexusKey}>Cancel</button
+          on:click={() => (showNexusKeyText = !showNexusKeyText)}
+          title={showNexusKeyText ? "Hide key" : "Show key"}
         >
-        <button
-          class="btn btn-sm primary"
-          on:click={saveNexusKey}
-          disabled={validatingNexusKey}
-        >
-          {validatingNexusKey ? "Validating..." : "Verify & Save"}
+          {showNexusKeyText ? "👁️" : "👁️‍🗨️"}
         </button>
       </div>
+    </label>
+
+    {#if nexusKeyModalError}
+      <p class="mt-3 text-sm" style="color: var(--clr-danger-300);">
+        {nexusKeyModalError}
+      </p>
+    {/if}
+
+    <div class="mt-5 flex justify-end gap-2">
+      <button
+        class="btn btn-sm"
+        on:click={closeNexusKeyModal}
+        disabled={validatingNexusKey}>Cancel</button
+      >
+      <button
+        class="btn btn-sm primary"
+        on:click={saveNexusKey}
+        disabled={validatingNexusKey}
+      >
+        {validatingNexusKey ? "Validating..." : "Verify & Save"}
+      </button>
     </div>
-  </div>
+  </ModalShell>
+{/if}
+
+{#if showModioApiKeyModal}
+  <ModalShell
+    isVisible={showModioApiKeyModal}
+    title="Set mod.io API Access Key"
+    width="w-full max-w-xl"
+    zIndex="z-[1200]"
+    overlayExtra="p-4"
+    closeOnEscape={false}
+    on:close={closeModioApiKeyModal}
+  >
+    <p style="color: var(--clr-text-secondary);" class="text-sm mt-2">
+      Get your <strong>API key</strong> from your mod.io account to enable direct
+      downloads.
+    </p>
+
+    <div class="mt-4 flex flex-wrap gap-2">
+      <button class="btn btn-sm" on:click={openModioApiKeyPage}
+        >Open mod.io API Access Page</button
+      >
+    </div>
+
+    <label class="mt-4 block text-sm">
+      <span style="color: var(--clr-text-secondary);" class="mb-1 block"
+        >Paste API key</span
+      >
+      <div class="flex gap-2">
+        <input
+          class="input w-full"
+          bind:value={modioApiKeyInput}
+          on:input={() => (modioApiKeyModalError = "")}
+          placeholder="Paste your mod.io API key"
+          type={showModioApiKeyText ? "text" : "password"}
+          aria-invalid={Boolean(modioApiKeyModalError)}
+        />
+        <button
+          type="button"
+          class="btn btn-sm"
+          on:click={() => (showModioApiKeyText = !showModioApiKeyText)}
+          title={showModioApiKeyText ? "Hide key" : "Show key"}
+        >
+          {showModioApiKeyText ? "👁️" : "👁️‍🗨️"}
+        </button>
+      </div>
+    </label>
+
+    {#if modioApiKeyModalError}
+      <p class="mt-3 text-sm" style="color: var(--clr-danger-300);">
+        {modioApiKeyModalError}
+      </p>
+    {/if}
+
+    <div class="mt-5 flex justify-end gap-2">
+      <button
+        class="btn btn-sm"
+        on:click={closeModioApiKeyModal}
+        disabled={validatingModioApiKey}>Cancel</button
+      >
+      <button
+        class="btn btn-sm primary"
+        on:click={saveModioApiKey}
+        disabled={validatingModioApiKey}
+      >
+        {validatingModioApiKey ? "Validating..." : "Verify & Save"}
+      </button>
+    </div>
+  </ModalShell>
 {/if}
