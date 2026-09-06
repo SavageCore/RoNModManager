@@ -200,8 +200,10 @@ export const refreshModMetadata = (archiveNames?: string[]) =>
     checked: number;
     refreshed: number;
     skipped: number;
+    hidden: number;
     failed: number;
     skippedMods?: { name: string; reason: string }[];
+    hiddenMods?: { name: string; reason: string }[];
     failedMods?: { name: string; reason: string }[];
   }>("refresh_mod_metadata", { archiveNames });
 

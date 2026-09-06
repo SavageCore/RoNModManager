@@ -3,6 +3,7 @@
   import {
     X,
     AlertCircle,
+    EyeOff,
     SkipForward,
     Copy,
     Save,
@@ -13,9 +14,11 @@
 
   export let isVisible = false;
   export let skippedMods: { name: string; reason: string }[] = [];
+  export let hiddenMods: { name: string; reason: string }[] = [];
   export let failedMods: { name: string; reason: string }[] = [];
 
   $: safeSkippedMods = skippedMods ?? [];
+  $: safeHiddenMods = hiddenMods ?? [];
   $: safeFailedMods = failedMods ?? [];
 
   const dispatch = createEventDispatcher<{ close: void }>();
@@ -45,6 +48,14 @@
       lines.push("");
     }
 
+    if (safeHiddenMods.length > 0) {
+      lines.push(`HIDDEN (${safeHiddenMods.length}):`);
+      for (const mod of safeHiddenMods) {
+        lines.push(`  - ${mod.name}: ${mod.reason}`);
+      }
+      lines.push("");
+    }
+
     if (safeSkippedMods.length > 0) {
       lines.push(`SKIPPED (${safeSkippedMods.length}):`);
       for (const mod of safeSkippedMods) {
@@ -53,7 +64,11 @@
       lines.push("");
     }
 
-    if (safeFailedMods.length === 0 && safeSkippedMods.length === 0) {
+    if (
+      safeFailedMods.length === 0 &&
+      safeHiddenMods.length === 0 &&
+      safeSkippedMods.length === 0
+    ) {
       lines.push("No skipped or failed mods.");
     }
 
@@ -184,6 +199,30 @@
           </div>
         {/if}
 
+        {#if safeHiddenMods.length > 0}
+          <div class="mb-6">
+            <div class="flex items-center gap-2 mb-2">
+              <EyeOff size={16} style="color: var(--clr-text-secondary);" />
+              <h3 style="color: var(--clr-text-secondary);" class="font-medium">
+                Hidden ({safeHiddenMods.length})
+              </h3>
+            </div>
+            <ul class="space-y-1">
+              {#each safeHiddenMods as mod}
+                <li class="text-sm" style="color: var(--clr-text);">
+                  <span class="font-medium">{mod.name}</span>
+                  <span
+                    class="text-xs"
+                    style="color: var(--clr-text-secondary);"
+                  >
+                    - {mod.reason}
+                  </span>
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
+
         {#if safeSkippedMods.length > 0}
           <div>
             <div class="flex items-center gap-2 mb-2">
@@ -211,7 +250,7 @@
           </div>
         {/if}
 
-        {#if safeFailedMods.length === 0 && safeSkippedMods.length === 0}
+        {#if safeFailedMods.length === 0 && safeHiddenMods.length === 0 && safeSkippedMods.length === 0}
           <p class="text-center" style="color: var(--clr-text-secondary);">
             No skipped or failed mods.
           </p>

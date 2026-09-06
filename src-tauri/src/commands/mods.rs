@@ -64,7 +64,7 @@ use crate::models::{
     Result,
 };
 use crate::services::{
-    downloader, hasher, installer, manifest, modio_api::ModioApiService,
+    addon_map, downloader, hasher, installer, manifest, modio_api::ModioApiService,
     modpack as modpack_service, nexus_api, profiles, steam,
 };
 use crate::state::{app_data_root, app_temp_root, AppState};
@@ -1074,8 +1074,11 @@ pub struct RefreshModMetadataResult {
     pub checked: usize,
     pub refreshed: usize,
     pub skipped: usize,
+    pub hidden: usize,
     pub failed: usize,
     pub skipped_mods: Vec<ModSkippedDetail>,
+    #[serde(default)]
+    pub hidden_mods: Vec<ModSkippedDetail>,
     pub failed_mods: Vec<ModFailedDetail>,
 }
 
@@ -1106,6 +1109,28 @@ const NO_RESOLVED_METADATA: ResolvedModMetadata = ResolvedModMetadata {
     version: None,
     nexus_file_id: None,
 };
+
+/// True when a metadata resolution error means the upstream mod is hidden,
+/// deleted, or otherwise unavailable - not a real failure worth alarming
+/// about. Covers the typed Nexus 404 (`NotFound` with the hidden-or-removed
+/// marker), mod.io forbidden on hidden/DMCA mods (`Unsupported`), and a
+/// status-code fallback for older message shapes.
+fn is_hidden_error(error: &AppError) -> bool {
+    match error {
+        AppError::NotFound(message) => {
+            let lower = message.to_lowercase();
+            lower.contains("hidden or removed")
+                || lower.contains("hidden")
+                || lower.contains("not found")
+        }
+        AppError::Unsupported(message) => message.to_lowercase().contains("hidden"),
+        AppError::Validation(message) => {
+            message.contains("Nexus API error (404")
+                || message.contains("404") && message.to_lowercase().contains("nexus")
+        }
+        _ => false,
+    }
+}
 
 /// Fetches display name and version info for a mod from its source URL.
 ///
@@ -1215,10 +1240,35 @@ pub async fn refresh_mod_metadata(
         checked: 0,
         refreshed: 0,
         skipped: 0,
+        hidden: 0,
         failed: 0,
         skipped_mods: Vec::new(),
+        hidden_mods: Vec::new(),
         failed_mods: Vec::new(),
     };
+
+    // Addon archives are child files of a parent mod - they carry no
+    // independent source page, so refresh the parent instead of treating
+    // addons as missing or failed entries.
+    let addon_map_data = addon_map::read_addon_map().unwrap_or_default();
+    let addon_parent_by_archive: HashMap<&String, &String> = addon_map_data
+        .iter()
+        .flat_map(|(parent, addons)| addons.iter().map(move |addon| (addon, parent)))
+        .collect();
+    // Pretty names for the skip reason, so the log reads "Addon of Ragdolls
+    // Return" instead of an archive filename.
+    let parent_display_name_by_archive: HashMap<String, String> = manifests
+        .iter()
+        .map(|(archive, manifest)| {
+            (
+                archive.clone(),
+                manifest
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| archive.clone()),
+            )
+        })
+        .collect();
 
     for (name, mut manifest_data) in manifests {
         let display_name = manifest_data
@@ -1231,6 +1281,17 @@ pub async fn refresh_mod_metadata(
             }
         }
         result.checked += 1;
+        if let Some(parent) = addon_parent_by_archive.get(&name) {
+            let parent_label = parent_display_name_by_archive
+                .get(*parent)
+                .map_or((*parent).as_str(), String::as_str);
+            result.skipped += 1;
+            result.skipped_mods.push(ModSkippedDetail {
+                name: display_name,
+                reason: format!("Addon of {parent_label} - uses parent metadata"),
+            });
+            continue;
+        }
         let Some(source_url) = manifest_data.source_url.as_ref() else {
             result.skipped += 1;
             result.skipped_mods.push(ModSkippedDetail {
@@ -1294,6 +1355,21 @@ pub async fn refresh_mod_metadata(
                 }
             }
             Err(e) => {
+                if is_hidden_error(&e) {
+                    let reason = if source_url.contains("nexusmods.com") {
+                        "Hidden or removed on Nexus"
+                    } else if source_url.contains("mod.io") {
+                        "Hidden or unavailable on mod.io"
+                    } else {
+                        "Hidden or removed upstream"
+                    };
+                    result.hidden += 1;
+                    result.hidden_mods.push(ModSkippedDetail {
+                        name: display_name,
+                        reason: reason.to_string(),
+                    });
+                    continue;
+                }
                 result.failed += 1;
                 let reason = if e.to_string().contains("api key") {
                     "API key invalid or expired"
@@ -1416,9 +1492,21 @@ pub async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<ModUpda
     let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
     let modio_service = ModioApiService::new(state.client.clone(), config.modio_game_id);
 
+    // Addon archives inherit their parent's release - never report standalone
+    // updates for them.
+    let addon_archives: HashSet<String> = addon_map::read_addon_map()
+        .unwrap_or_default()
+        .values()
+        .flatten()
+        .cloned()
+        .collect();
+
     let mut results = Vec::new();
 
     for manifest_data in manifests.into_values() {
+        if addon_archives.contains(&manifest_data.source_archive) {
+            continue;
+        }
         let source_url = manifest_data
             .source_url
             .as_deref()
@@ -3074,8 +3162,6 @@ pub(crate) async fn install_downloaded_file(
     Ok(false)
 }
 
-use crate::services::addon_map;
-
 #[tauri::command]
 pub fn get_addon_map(
     state: tauri::State<'_, crate::state::AppState>,
@@ -3239,5 +3325,35 @@ mod update_check_tests {
     fn modio_no_update_when_hash_unknown() {
         assert!(!modio_update_available(&None, &Some("abc123".to_string())));
         assert!(!modio_update_available(&Some("abc123".to_string()), &None));
+    }
+
+    #[test]
+    fn hidden_error_for_typed_nexus_not_found() {
+        let err =
+            AppError::NotFound("Nexus mod 4212 not found (hidden or removed): gone".to_string());
+        assert!(is_hidden_error(&err));
+    }
+
+    #[test]
+    fn hidden_error_for_modio_forbidden() {
+        let err =
+            AppError::Unsupported("mod.io request forbidden (mod may be hidden/DMCA)".to_string());
+        assert!(is_hidden_error(&err));
+    }
+
+    #[test]
+    fn hidden_error_for_legacy_nexus_404_message() {
+        let err = AppError::Validation("Nexus API error (404 Not Found): gone".to_string());
+        assert!(is_hidden_error(&err));
+    }
+
+    #[test]
+    fn other_errors_are_not_hidden() {
+        assert!(!is_hidden_error(&AppError::Validation(
+            "Failed to resolve metadata".to_string()
+        )));
+        assert!(!is_hidden_error(&AppError::Validation(
+            "Nexus API rate limit exceeded after retries".to_string()
+        )));
     }
 }

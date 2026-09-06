@@ -168,6 +168,11 @@ impl NexusApiService {
 
     /// Fetch mod information from Nexus Mods API
     /// Requires a valid API key
+    ///
+    /// Hidden, deleted, and staff-removed mods are not accessible via the API
+    /// and come back as HTTP 404 - mapped to `AppError::NotFound` with a
+    /// stable "hidden or removed" marker so callers can report them as
+    /// hidden instead of failed.
     pub async fn get_mod_info(&self, api_key: &str, mod_id: u64) -> Result<NexusModInfo> {
         let url = format!(
             "{}/games/{}/mods/{}.json",
@@ -189,10 +194,7 @@ impl NexusApiService {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(AppError::Validation(format!(
-                "Nexus API error ({}): {}",
-                status, error_text
-            )));
+            return Err(nexus_mod_error(mod_id, status, &error_text));
         }
 
         let mod_info: NexusModInfo = response.json().await?;
@@ -221,10 +223,7 @@ impl NexusApiService {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(AppError::Validation(format!(
-                "Nexus API error ({}): {}",
-                status, error_text
-            )));
+            return Err(nexus_mod_error(mod_id, status, &error_text));
         }
 
         let files_response: NexusFilesResponse = response.json().await?;
@@ -303,6 +302,19 @@ impl NexusApiService {
     }
 }
 
+/// Maps a failed Nexus mod/files response to a typed error.
+/// HTTP 404 means the mod is hidden, deleted, or staff-removed (the API does
+/// not distinguish these) - callers use the `NotFound` variant with its
+/// stable marker to report the mod as hidden instead of failed.
+fn nexus_mod_error(mod_id: u64, status: reqwest::StatusCode, body: &str) -> AppError {
+    if status.as_u16() == 404 {
+        return AppError::NotFound(format!(
+            "Nexus mod {mod_id} not found (hidden or removed): {body}"
+        ));
+    }
+    AppError::Validation(format!("Nexus API error ({status}): {body}"))
+}
+
 /// Parse Nexus Mods URL to extract mod ID
 /// Supports formats:
 /// - https://www.nexusmods.com/readyornot/mods/1234
@@ -335,6 +347,19 @@ pub fn parse_nexus_url_to_mod_id(input: &str) -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_nexus_mod_error_maps_404_to_not_found() {
+        let err = nexus_mod_error(4212, reqwest::StatusCode::NOT_FOUND, "not found");
+        assert!(matches!(err, AppError::NotFound(_)));
+        assert!(err.to_string().contains("hidden or removed"));
+    }
+
+    #[test]
+    fn test_nexus_mod_error_keeps_other_statuses_as_validation() {
+        let err = nexus_mod_error(4212, reqwest::StatusCode::FORBIDDEN, "denied");
+        assert!(matches!(err, AppError::Validation(_)));
+    }
 
     #[test]
     fn test_parse_nexus_url() {

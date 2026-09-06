@@ -217,10 +217,11 @@
       metadataRefreshDetailsStore.setDetails(
         result.skippedMods ?? [],
         result.failedMods ?? [],
+        result.hiddenMods ?? [],
       );
       const tone = result.failed > 0 ? "error" : "success";
       infoLogStore.addLine(
-        `Metadata refresh complete: checked ${result.checked}, refreshed ${result.refreshed}, skipped ${result.skipped}, failed ${result.failed}.`,
+        `Metadata refresh complete: checked ${result.checked}, refreshed ${result.refreshed}, skipped ${result.skipped}, hidden ${result.hidden ?? 0}, failed ${result.failed}.`,
       );
       infoLogStore.finish(tone);
       window.dispatchEvent(new CustomEvent("ron:metadata-refreshed"));

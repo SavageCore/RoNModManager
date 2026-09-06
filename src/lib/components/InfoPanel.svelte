@@ -24,6 +24,7 @@
   $: detailText = buildMetadataRefreshDetailText(
     $metadataRefreshDetailsStore.skipped,
     $metadataRefreshDetailsStore.failed,
+    $metadataRefreshDetailsStore.hidden,
   );
   $: hasDetails = detailText.length > 0;
   $: fullText =
@@ -60,6 +61,7 @@
 <MetadataRefreshDetailsModal
   isVisible={showDetails}
   skippedMods={$metadataRefreshDetailsStore.skipped}
+  hiddenMods={$metadataRefreshDetailsStore.hidden}
   failedMods={$metadataRefreshDetailsStore.failed}
   on:close={() => {
     showDetails = false;
