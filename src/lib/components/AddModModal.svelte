@@ -20,6 +20,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { open } from "@tauri-apps/plugin-dialog";
   import { createEventDispatcher, onDestroy, onMount } from "svelte";
+  import ModalShell from "./ModalShell.svelte";
 
   export let isVisible = false;
   export let autoSubmitEntries: Array<{
@@ -549,161 +550,150 @@
   }
 </script>
 
-{#if isVisible}
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div
-      style="background: var(--clr-surface); border-color: var(--adw-border-color);"
-      class="border rounded-lg shadow-2xl w-[560px] p-6"
+<!-- AddMod keeps its own drag-drop listeners; only overlay/panel/header
+  chrome comes from the shell. -->
+<ModalShell
+  {isVisible}
+  title="Add Mod"
+  titleClass="text-2xl font-bold"
+  width="w-[560px]"
+  closeOnEscape={false}
+  on:close={closeModal}
+>
+  <!-- Tabs -->
+  <div
+    class="flex gap-2 mb-4 border-b"
+    style="border-color: var(--adw-border-color);"
+  >
+    <button
+      on:click={() => {
+        activeTab = "link";
+        alertStore.clear();
+      }}
+      style={activeTab === "link"
+        ? `color: var(--clr-primary-300); border-bottom: 2px solid var(--clr-primary-300);`
+        : `color: var(--clr-text-secondary);`}
+      class="pb-2 px-3 text-sm font-medium transition border-b-2 border-transparent cursor-pointer"
     >
-      <div class="flex items-center justify-between mb-4">
-        <h2 style="color: var(--clr-text);" class="text-2xl font-bold">
-          Add Mod
-        </h2>
-        <button
-          on:click={closeModal}
-          style="color: var(--clr-text-secondary);"
-          class="text-2xl hover:opacity-70 transition cursor-pointer"
-        >
-          ×
-        </button>
-      </div>
-
-      <!-- Tabs -->
-      <div
-        class="flex gap-2 mb-4 border-b"
-        style="border-color: var(--adw-border-color);"
-      >
-        <button
-          on:click={() => {
-            activeTab = "link";
-            alertStore.clear();
-          }}
-          style={activeTab === "link"
-            ? `color: var(--clr-primary-300); border-bottom: 2px solid var(--clr-primary-300);`
-            : `color: var(--clr-text-secondary);`}
-          class="pb-2 px-3 text-sm font-medium transition border-b-2 border-transparent cursor-pointer"
-        >
-          Mod Link
-        </button>
-        <button
-          on:click={() => {
-            activeTab = "file";
-            alertStore.clear();
-          }}
-          style={activeTab === "file"
-            ? `color: var(--clr-primary-300); border-bottom: 2px solid var(--clr-primary-300);`
-            : `color: var(--clr-text-secondary);`}
-          class="pb-2 px-3 text-sm font-medium transition border-b-2 border-transparent cursor-pointer"
-        >
-          Local File
-        </button>
-      </div>
-
-      <!-- Content area with fixed min-height -->
-      <div style="min-height: 180px;">
-        {#if activeTab === "link"}
-          <div class="space-y-3">
-            <div>
-              <label
-                for="modio-input"
-                style="color: var(--clr-text);"
-                class="block text-sm font-medium mb-1"
-              >
-                Mod Links (one per line)
-              </label>
-              <textarea
-                id="modio-input"
-                rows="5"
-                class="textarea"
-                placeholder="https://mod.io/g/readyornot/m/lustful-remorse&#10;https://mod.io/g/readyornot/m/simple-mod-menu&#10;https://www.nexusmods.com/readyornot/mods/1234"
-                bind:value={modioInput}
-                on:paste={handlePaste}></textarea>
-              <p style="color: var(--clr-text-secondary);" class="text-xs mt-1">
-                Paste mod.io or Nexus Mods links, one per line
-              </p>
-
-              {#if nexusPreviewName}
-                <p style="color: var(--clr-success-300);" class="text-xs mt-2">
-                  Nexus: {nexusPreviewName} - browser will open to download page
-                </p>
-              {:else if nexusPreviewError}
-                <p style="color: var(--clr-danger-300);" class="text-xs mt-2">
-                  Nexus lookup failed: {nexusPreviewError}
-                </p>
-              {/if}
-            </div>
-
-            {#if activeQueueCount > 0}
-              <p style="color: var(--clr-text-secondary);" class="text-xs">
-                Running in background: {activeQueueCount}
-              </p>
-            {/if}
-
-            {#if $alertStore.message}
-              <p style={alertStyle} class="text-sm p-2 rounded">
-                {$alertStore.message}
-              </p>
-            {/if}
-
-            <div class="flex gap-2">
-              <button on:click={closeModal} class="flex-1 btn"> Cancel </button>
-              <button
-                on:click={() => handleAddViaLink()}
-                disabled={!modioInput.trim()}
-                class="flex-1 btn primary"
-              >
-                Add Mod{parseModInputs(modioInput).length > 1 ? "s" : ""}
-              </button>
-            </div>
-          </div>
-        {:else}
-          <div class="space-y-3">
-            <!-- Drop zone -->
-            <button
-              on:click={handleAddViaFile}
-              style="border-color: {isDraggingOver
-                ? 'var(--clr-primary-300)'
-                : 'var(--adw-border-color)'}; background: {isDraggingOver
-                ? 'color-mix(in srgb, var(--clr-primary-300) 10%, transparent)'
-                : 'transparent'};"
-              class="w-full rounded-lg border-2 border-dashed p-8 flex flex-col items-center gap-2 cursor-pointer transition-colors"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="32"
-                height="32"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                style="color: var(--clr-text-secondary);"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              <p style="color: var(--clr-text);" class="text-sm font-medium">
-                Drop file here or click to browse
-              </p>
-              <p style="color: var(--clr-text-secondary);" class="text-xs">
-                .pak, .zip, .rar, .7z
-              </p>
-            </button>
-
-            {#if $alertStore.message}
-              <p style={alertStyle} class="text-sm p-2 rounded">
-                {$alertStore.message}
-              </p>
-            {/if}
-
-            <div class="flex gap-2">
-              <button on:click={closeModal} class="flex-1 btn"> Cancel </button>
-            </div>
-          </div>
-        {/if}
-      </div>
-    </div>
+      Mod Link
+    </button>
+    <button
+      on:click={() => {
+        activeTab = "file";
+        alertStore.clear();
+      }}
+      style={activeTab === "file"
+        ? `color: var(--clr-primary-300); border-bottom: 2px solid var(--clr-primary-300);`
+        : `color: var(--clr-text-secondary);`}
+      class="pb-2 px-3 text-sm font-medium transition border-b-2 border-transparent cursor-pointer"
+    >
+      Local File
+    </button>
   </div>
-{/if}
+
+  <!-- Content area with fixed min-height -->
+  <div style="min-height: 180px;">
+    {#if activeTab === "link"}
+      <div class="space-y-3">
+        <div>
+          <label
+            for="modio-input"
+            style="color: var(--clr-text);"
+            class="block text-sm font-medium mb-1"
+          >
+            Mod Links (one per line)
+          </label>
+          <textarea
+            id="modio-input"
+            rows="5"
+            class="textarea"
+            placeholder="https://mod.io/g/readyornot/m/lustful-remorse&#10;https://mod.io/g/readyornot/m/simple-mod-menu&#10;https://www.nexusmods.com/readyornot/mods/1234"
+            bind:value={modioInput}
+            on:paste={handlePaste}></textarea>
+          <p style="color: var(--clr-text-secondary);" class="text-xs mt-1">
+            Paste mod.io or Nexus Mods links, one per line
+          </p>
+
+          {#if nexusPreviewName}
+            <p style="color: var(--clr-success-300);" class="text-xs mt-2">
+              Nexus: {nexusPreviewName} - browser will open to download page
+            </p>
+          {:else if nexusPreviewError}
+            <p style="color: var(--clr-danger-300);" class="text-xs mt-2">
+              Nexus lookup failed: {nexusPreviewError}
+            </p>
+          {/if}
+        </div>
+
+        {#if activeQueueCount > 0}
+          <p style="color: var(--clr-text-secondary);" class="text-xs">
+            Running in background: {activeQueueCount}
+          </p>
+        {/if}
+
+        {#if $alertStore.message}
+          <p style={alertStyle} class="text-sm p-2 rounded">
+            {$alertStore.message}
+          </p>
+        {/if}
+
+        <div class="flex gap-2">
+          <button on:click={closeModal} class="flex-1 btn"> Cancel </button>
+          <button
+            on:click={() => handleAddViaLink()}
+            disabled={!modioInput.trim()}
+            class="flex-1 btn primary"
+          >
+            Add Mod{parseModInputs(modioInput).length > 1 ? "s" : ""}
+          </button>
+        </div>
+      </div>
+    {:else}
+      <div class="space-y-3">
+        <!-- Drop zone -->
+        <button
+          on:click={handleAddViaFile}
+          style="border-color: {isDraggingOver
+            ? 'var(--clr-primary-300)'
+            : 'var(--adw-border-color)'}; background: {isDraggingOver
+            ? 'color-mix(in srgb, var(--clr-primary-300) 10%, transparent)'
+            : 'transparent'};"
+          class="w-full rounded-lg border-2 border-dashed p-8 flex flex-col items-center gap-2 cursor-pointer transition-colors"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="32"
+            height="32"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            style="color: var(--clr-text-secondary);"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          <p style="color: var(--clr-text);" class="text-sm font-medium">
+            Drop file here or click to browse
+          </p>
+          <p style="color: var(--clr-text-secondary);" class="text-xs">
+            .pak, .zip, .rar, .7z
+          </p>
+        </button>
+
+        {#if $alertStore.message}
+          <p style={alertStyle} class="text-sm p-2 rounded">
+            {$alertStore.message}
+          </p>
+        {/if}
+
+        <div class="flex gap-2">
+          <button on:click={closeModal} class="flex-1 btn"> Cancel </button>
+        </div>
+      </div>
+    {/if}
+  </div>
+</ModalShell>

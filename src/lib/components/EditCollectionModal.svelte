@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ModalShell from "./ModalShell.svelte";
+
   export let isVisible = false;
   export let initialName = "";
   export let initialColor: string | null = null;
@@ -42,98 +44,82 @@
   }
 </script>
 
-{#if isVisible}
-  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div
-    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-    role="dialog"
-    tabindex="-1"
-    aria-modal="true"
-    aria-label="Edit collection"
-    on:keydown={(e) => {
-      if (e.key === "Escape") handleCancel();
-    }}
-  >
-    <div
-      style="background: var(--clr-surface); border-color: var(--adw-border-color);"
-      class="border rounded-lg shadow-2xl w-96 p-6"
+<ModalShell
+  {isVisible}
+  title="Edit Collection"
+  showClose={false}
+  on:close={handleCancel}
+>
+  <div class="mb-4">
+    <label
+      for="collection-edit-name"
+      style="color: var(--clr-text);"
+      class="block text-sm font-medium mb-1"
     >
-      <h2 style="color: var(--clr-text);" class="text-lg font-semibold mb-4">
-        Edit Collection
-      </h2>
-
-      <div class="mb-4">
-        <label
-          for="collection-edit-name"
-          style="color: var(--clr-text);"
-          class="block text-sm font-medium mb-1"
-        >
-          Name
-        </label>
-        <input
-          id="collection-edit-name"
-          class="input w-full"
-          type="text"
-          bind:value={editName}
-          use:focusInput
-          on:keydown={(e) => {
-            if (e.key === "Enter") handleSave();
-          }}
-        />
-      </div>
-
-      <div class="mb-6">
-        <fieldset class="border-0 p-0 m-0">
-          <legend
-            style="color: var(--clr-text);"
-            class="block text-sm font-medium mb-2"
-          >
-            Colour
-          </legend>
-          <div class="flex flex-wrap gap-2">
-            <button
-              class="color-swatch none-swatch"
-              class:selected={editColor === null}
-              style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
-              on:click={() => (editColor = null)}
-              title="No colour"
-              aria-label="No colour"
-            >
-              {#if editColor === null}
-                <span class="check">✓</span>
-              {/if}
-            </button>
-            {#each PALETTE as swatch (swatch.value)}
-              <button
-                class="color-swatch"
-                class:selected={editColor === swatch.value}
-                style="background: {swatch.value};"
-                on:click={() => (editColor = swatch.value)}
-                title={swatch.label}
-                aria-label={swatch.label}
-              >
-                {#if editColor === swatch.value}
-                  <span class="check">✓</span>
-                {/if}
-              </button>
-            {/each}
-          </div>
-        </fieldset>
-      </div>
-
-      <div class="flex gap-3 justify-end">
-        <button class="btn" on:click={handleCancel}>Cancel</button>
-        <button
-          class="btn primary"
-          on:click={handleSave}
-          disabled={!editName.trim()}
-        >
-          Save
-        </button>
-      </div>
-    </div>
+      Name
+    </label>
+    <input
+      id="collection-edit-name"
+      class="input w-full"
+      type="text"
+      bind:value={editName}
+      use:focusInput
+      on:keydown={(e) => {
+        if (e.key === "Enter") handleSave();
+      }}
+    />
   </div>
-{/if}
+
+  <div class="mb-6">
+    <fieldset class="border-0 p-0 m-0">
+      <legend
+        style="color: var(--clr-text);"
+        class="block text-sm font-medium mb-2"
+      >
+        Colour
+      </legend>
+      <div class="flex flex-wrap gap-2">
+        <button
+          class="color-swatch none-swatch"
+          class:selected={editColor === null}
+          style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
+          on:click={() => (editColor = null)}
+          title="No colour"
+          aria-label="No colour"
+        >
+          {#if editColor === null}
+            <span class="check">✓</span>
+          {/if}
+        </button>
+        {#each PALETTE as swatch (swatch.value)}
+          <button
+            class="color-swatch"
+            class:selected={editColor === swatch.value}
+            style="background: {swatch.value};"
+            on:click={() => (editColor = swatch.value)}
+            title={swatch.label}
+            aria-label={swatch.label}
+          >
+            {#if editColor === swatch.value}
+              <span class="check">✓</span>
+            {/if}
+          </button>
+        {/each}
+      </div>
+    </fieldset>
+  </div>
+
+  <div class="flex gap-3 justify-end">
+    <button class="btn" on:click={handleCancel}>Cancel</button>
+    <button
+      class="btn primary"
+      on:click={handleSave}
+      disabled={!editName.trim()}
+    >
+      Save
+    </button>
+  </div>
+</ModalShell>
 
 <style>
   .color-swatch {

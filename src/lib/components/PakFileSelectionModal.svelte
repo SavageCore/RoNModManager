@@ -1,7 +1,9 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import type { PakFileInfo } from "$lib/api/commands";
+  import ModalShell from "./ModalShell.svelte";
 
+  export let isVisible = true;
   export let archiveName: string = "";
   export let paks: PakFileInfo[] = [];
 
@@ -49,91 +51,81 @@
   }
 </script>
 
-<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-  <div
-    style="background: var(--clr-surface); border-color: var(--adw-border-color);"
-    class="border rounded-lg shadow-2xl w-[520px] p-6"
+<ModalShell
+  {isVisible}
+  title="Select PAK Files"
+  titleClass="text-xl font-bold"
+  width="w-[520px]"
+  headerClass="flex items-center justify-between mb-2"
+  closeOnEscape={false}
+  on:close={handleCancel}
+>
+  <p
+    style="color: var(--clr-text-secondary);"
+    class="text-sm mb-4 truncate"
+    title={archiveName}
   >
-    <div class="flex items-center justify-between mb-2">
-      <h2 style="color: var(--clr-text);" class="text-xl font-bold">
-        Select PAK Files
-      </h2>
-      <button
-        on:click={handleCancel}
-        style="color: var(--clr-text-secondary);"
-        class="text-2xl hover:opacity-70 transition cursor-pointer"
-      >
-        ×
-      </button>
-    </div>
+    {archiveName}
+  </p>
 
-    <p
-      style="color: var(--clr-text-secondary);"
-      class="text-sm mb-4 truncate"
-      title={archiveName}
+  <div class="flex gap-3 mb-3">
+    <button
+      on:click={selectAll}
+      class="text-xs cursor-pointer hover:opacity-70 transition"
+      style="color: var(--clr-primary-300);"
     >
-      {archiveName}
-    </p>
-
-    <div class="flex gap-3 mb-3">
-      <button
-        on:click={selectAll}
-        class="text-xs cursor-pointer hover:opacity-70 transition"
-        style="color: var(--clr-primary-300);"
-      >
-        Select all
-      </button>
-      <button
-        on:click={selectNone}
-        class="text-xs cursor-pointer hover:opacity-70 transition"
-        style="color: var(--clr-text-secondary);"
-      >
-        Select none
-      </button>
-    </div>
-
-    <div class="space-y-2 overflow-y-auto mb-5" style="max-height: 280px;">
-      {#each paks as pak (pak.path)}
-        <label
-          class="flex items-center gap-3 p-3 rounded cursor-pointer transition-colors"
-          style="background: var(--clr-surface-alt, rgba(255,255,255,0.04)); border: 1px solid var(--adw-border-color);"
-        >
-          <input
-            type="checkbox"
-            checked={selected.has(pak.path)}
-            on:change={() => toggle(pak.path)}
-            class="w-4 h-4 flex-shrink-0"
-          />
-          <span class="flex-1 min-w-0">
-            <span
-              class="block text-sm font-medium truncate"
-              style="color: var(--clr-text);"
-              title={pak.path}
-            >
-              {pak.path}
-            </span>
-          </span>
-          <span
-            class="text-xs flex-shrink-0"
-            style="color: var(--clr-text-secondary);"
-          >
-            {formatSize(pak.size)}
-          </span>
-        </label>
-      {/each}
-    </div>
-
-    <div class="flex gap-2">
-      <button on:click={handleCancel} class="flex-1 btn">Cancel</button>
-      <button
-        on:click={handleInstall}
-        disabled={selected.size === 0}
-        class="flex-1 btn primary"
-      >
-        Install {selected.size === paks.length
-          ? "All"
-          : `${selected.size} of ${paks.length}`}
-      </button>
-    </div>
+      Select all
+    </button>
+    <button
+      on:click={selectNone}
+      class="text-xs cursor-pointer hover:opacity-70 transition"
+      style="color: var(--clr-text-secondary);"
+    >
+      Select none
+    </button>
   </div>
-</div>
+
+  <div class="space-y-2 overflow-y-auto mb-5" style="max-height: 280px;">
+    {#each paks as pak (pak.path)}
+      <label
+        class="flex items-center gap-3 p-3 rounded cursor-pointer transition-colors"
+        style="background: var(--clr-surface-alt, rgba(255,255,255,0.04)); border: 1px solid var(--adw-border-color);"
+      >
+        <input
+          type="checkbox"
+          checked={selected.has(pak.path)}
+          on:change={() => toggle(pak.path)}
+          class="w-4 h-4 flex-shrink-0"
+        />
+        <span class="flex-1 min-w-0">
+          <span
+            class="block text-sm font-medium truncate"
+            style="color: var(--clr-text);"
+            title={pak.path}
+          >
+            {pak.path}
+          </span>
+        </span>
+        <span
+          class="text-xs flex-shrink-0"
+          style="color: var(--clr-text-secondary);"
+        >
+          {formatSize(pak.size)}
+        </span>
+      </label>
+    {/each}
+  </div>
+
+  <div class="flex gap-2">
+    <button on:click={handleCancel} class="flex-1 btn">Cancel</button>
+    <button
+      on:click={handleInstall}
+      disabled={selected.size === 0}
+      class="flex-1 btn primary"
+    >
+      Install {selected.size === paks.length
+        ? "All"
+        : `${selected.size} of ${paks.length}`}
+    </button>
+  </div>
+</ModalShell>

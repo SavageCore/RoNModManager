@@ -1,7 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import {
-    X,
     AlertCircle,
     EyeOff,
     SkipForward,
@@ -14,6 +13,8 @@
     downloadTextFile,
     timestampedFilename,
   } from "$lib/utils/downloadText";
+  import ModalIconButton from "./ModalIconButton.svelte";
+  import ModalCloseButton from "./ModalCloseButton.svelte";
 
   export let isVisible = false;
   export let skippedMods: { name: string; reason: string }[] = [];
@@ -141,32 +142,13 @@
           Metadata Refresh Details
         </h2>
         <div class="flex items-center gap-2">
-          <button
-            on:click={handleCopy}
-            class="p-2 rounded hover:bg-white/10 transition-colors"
-            style="color: var(--clr-text-secondary);"
-            aria-label={copyTooltip}
-            title={copyTooltip}
-          >
+          <ModalIconButton label={copyTooltip} on:click={handleCopy}>
             <Copy size={18} />
-          </button>
-          <button
-            on:click={handleSave}
-            class="p-2 rounded hover:bg-white/10 transition-colors"
-            style="color: var(--clr-text-secondary);"
-            aria-label={saveTooltip}
-            title={saveTooltip}
-          >
+          </ModalIconButton>
+          <ModalIconButton label={saveTooltip} on:click={handleSave}>
             <Save size={18} />
-          </button>
-          <button
-            on:click={handleClose}
-            class="p-1 rounded hover:bg-white/10 transition-colors"
-            style="color: var(--clr-text-secondary);"
-            aria-label="Close"
-          >
-            <X size={20} />
-          </button>
+          </ModalIconButton>
+          <ModalCloseButton on:click={handleClose} />
         </div>
       </div>
 
