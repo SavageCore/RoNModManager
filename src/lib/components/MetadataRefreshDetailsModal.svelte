@@ -9,8 +9,11 @@
     Save,
     Check,
   } from "lucide-svelte";
-  import { save } from "@tauri-apps/plugin-dialog";
-  import { writeTextFile } from "$lib/api/commands";
+  import { toastStore } from "$lib/stores/toast";
+  import {
+    downloadTextFile,
+    timestampedFilename,
+  } from "$lib/utils/downloadText";
 
   export let isVisible = false;
   export let skippedMods: { name: string; reason: string }[] = [];
@@ -107,21 +110,14 @@
 
   async function handleSave() {
     try {
-      const text = buildDetailText();
-      const filePath = await save({
-        defaultPath: `metadata-refresh-details-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.txt`,
-        filters: [{ name: "Text Files", extensions: ["txt"] }],
-      });
-      if (filePath) {
-        await writeTextFile(filePath, text);
-        saveTooltip = "Saved!";
-      }
+      downloadTextFile(
+        timestampedFilename("metadata-refresh-details"),
+        buildDetailText(),
+      );
+      toastStore.success("Details saved - check your Downloads folder.");
     } catch {
-      saveTooltip = "Save failed";
+      toastStore.error("Failed to save details.");
     }
-    setTimeout(() => {
-      saveTooltip = "Save details";
-    }, 1500);
   }
 </script>
 

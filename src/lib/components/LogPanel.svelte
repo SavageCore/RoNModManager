@@ -2,6 +2,10 @@
   import { createEventDispatcher } from "svelte";
   import Minus from "lucide-svelte/icons/minus";
   import { toastStore } from "$lib/stores/toast";
+  import {
+    downloadTextFile,
+    timestampedFilename,
+  } from "$lib/utils/downloadText";
 
   export let title: string;
   export let isVisible = true;
@@ -61,17 +65,10 @@
   }
 
   function saveLog() {
-    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const filename = `${logFilename}-${ts}.txt`;
-    const blob = new Blob([fullText ?? log.join("\n")], {
-      type: "text/plain",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadTextFile(
+      timestampedFilename(logFilename),
+      fullText ?? log.join("\n"),
+    );
     toastStore.success("Log saved - check your Downloads folder.");
   }
 </script>

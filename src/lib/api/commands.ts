@@ -336,8 +336,6 @@ export const saveWindowState = (
     x,
     y,
   });
-export const writeTextFile = (path: string, contents: string) =>
-  invoke<void>("write_text_file", { path, contents });
 export const getWindowState = () => invoke<WindowState>("get_window_state");
 export const manageWindowGeometry = () =>
   invoke<boolean>("manage_window_geometry");
