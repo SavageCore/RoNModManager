@@ -897,7 +897,7 @@
         </div>
         <div class="prefs-row-suffix">
           <button class="btn btn-sm primary" on:click={openNexusKeyModal}
-            >{hasNexusKey ? "Update Key" : "Set Key"}</button
+            >{hasNexusKey ? "Update" : "Set"}</button
           >{#if hasNexusKey}<button
               class="btn btn-sm danger"
               on:click={async () => {
@@ -931,7 +931,7 @@
         </div>
         <div class="prefs-row-suffix">
           <button class="btn btn-sm primary" on:click={openTokenSetupModal}
-            >Set OAuth</button
+            >{hasSavedToken ? "Update" : "Set"}</button
           ><button
             class="btn btn-sm danger"
             disabled={!hasSavedToken}
@@ -953,7 +953,7 @@
         </div>
         <div class="prefs-row-suffix">
           <button class="btn btn-sm primary" on:click={openModioApiKeyModal}
-            >{hasModioApiKey ? "Update" : "Set Key"}</button
+            >{hasModioApiKey ? "Update" : "Set"}</button
           >{#if hasModioApiKey}<button
               class="btn btn-sm danger"
               on:click={async () => {
