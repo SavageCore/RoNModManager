@@ -127,12 +127,35 @@ function x(cmd) {
   return execSync(`DISPLAY=${display} ${cmd}`, { encoding: "utf8" });
 }
 
-function killApp(app) {
+function waitForWindowToDisappear(timeoutMs = 10000) {
   return new Promise((resolve) => {
-    app.kill();
-    // Give it a moment to release the window
-    setTimeout(resolve, 500);
+    const start = Date.now();
+    const interval = setInterval(() => {
+      try {
+        const ids = x(`xdotool search --name "RoN Mod Manager"`).trim();
+        if (!ids) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+      } catch {}
+      if (Date.now() - start > timeoutMs) {
+        clearInterval(interval);
+        resolve();
+      }
+    }, 200);
   });
+}
+
+async function killApp(app) {
+  app.kill();
+  await waitForWindowToDisappear();
+  try {
+    execSync(
+      `DISPLAY=${display} xdotool search --name "RoN Mod Manager" windowkill`,
+      { stdio: "ignore" },
+    );
+  } catch {}
 }
 
 function waitForWindow(timeoutMs = 20000) {
@@ -145,9 +168,7 @@ function waitForWindow(timeoutMs = 20000) {
           clearInterval(interval);
           resolve(ids.split("\n").at(-1));
         }
-      } catch {
-        // not ready yet
-      }
+      } catch {}
       if (Date.now() - start > timeoutMs) {
         clearInterval(interval);
         reject(new Error("Window did not appear in time."));
@@ -178,11 +199,19 @@ async function launchApp(theme, wizardPass) {
 
   const wid = await waitForWindow();
   console.log(`Window ID: ${wid}`);
-  x(`xdotool windowsize ${wid} 1280 840`);
-  x(`xdotool windowfocus --sync ${wid}`);
-  x(`xdotool windowraise ${wid}`);
 
-  // Wait for the app to load
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      x(`xdotool windowsize ${wid} 1280 840`);
+      x(`xdotool windowfocus --sync ${wid}`);
+      x(`xdotool windowraise ${wid}`);
+      break;
+    } catch (err) {
+      if (attempt === 4) throw err;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+
   await new Promise((r) => setTimeout(r, 4000));
 
   return { app, wid };
@@ -198,13 +227,16 @@ async function capture(wid, name, theme) {
   console.log(`  ✓  ${name}`);
 }
 
-// For each theme: capture main pages, then restart the app to capture the wizard.
-// The dev server keeps running across restarts so the frontend is never rebuilt.
 for (const theme of themes) {
-  console.log(`\n── ${theme.toUpperCase()} ──`);
+  console.log(`\n── ${theme.toUpperCase()} WIZARD ──`);
+  const { app, wid } = await launchApp(theme, true);
+  await capture(wid, "wizard", theme);
+  await killApp(app);
+}
 
-  if (!wizardOnly) {
-    // Main pages pass
+if (!wizardOnly) {
+  for (const theme of themes) {
+    console.log(`\n── ${theme.toUpperCase()} ──`);
     const { app, wid } = await launchApp(theme, false);
     const pages = ["mods", "collections", "profiles", "settings"];
     for (let i = 0; i < pages.length; i++) {
@@ -215,16 +247,10 @@ for (const theme of themes) {
     }
     await killApp(app);
   }
-
-  // Wizard pass: restart the app with the wizard forced on
-  const { app, wid } = await launchApp(theme, true);
-  await capture(wid, "wizard", theme);
-  await killApp(app);
 }
 
 vite.kill();
 
-// Restore original config
 if (originalConfig) {
   fs.writeFileSync(configFile, originalConfig);
   console.log("Restored original config");

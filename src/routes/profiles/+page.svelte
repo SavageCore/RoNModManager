@@ -4,9 +4,14 @@
   import type { Profile } from "$lib/types";
   import { get } from "svelte/store";
   import { onMount } from "svelte";
-  import { incognitoMode, DUMMY_PROFILES } from "$lib/stores/incognitoMode";
+  import {
+    incognitoMode,
+    DUMMY_PROFILES,
+    wizardScreenshotMode,
+  } from "$lib/stores/incognitoMode";
 
-  $: effectiveProfiles = $incognitoMode ? DUMMY_PROFILES : profiles;
+  $: effectiveProfiles =
+    $incognitoMode && !$wizardScreenshotMode ? DUMMY_PROFILES : profiles;
 
   let profiles: Profile[] = [];
   let loading = false;
@@ -25,7 +30,7 @@
     try {
       loading = true;
       error = null;
-      if (get(incognitoMode)) return;
+      if (get(incognitoMode) && !$wizardScreenshotMode) return;
       profiles = await commands.listProfiles();
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -231,7 +236,7 @@
         {" "} - create and switch between configurations{/if}
     </div>
     <div class="prefs-boxed-list">
-      {#if loading && !$incognitoMode}
+      {#if loading && !$incognitoMode && !$wizardScreenshotMode}
         <div class="prefs-row">
           <span class="prefs-row-subtitle">Loading profiles…</span>
         </div>

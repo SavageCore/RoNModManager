@@ -234,7 +234,8 @@
   let brokenModsMap: Record<string, string> = {};
   let noWorldGenSet: Set<string> = new Set();
   let modUpdates: Record<string, ModUpdateInfo> = {};
-  $: effectiveModUpdates = $incognitoMode ? DUMMY_MOD_UPDATES : modUpdates;
+  $: effectiveModUpdates =
+    $incognitoMode && !$wizardScreenshotMode ? DUMMY_MOD_UPDATES : modUpdates;
   $: updatableGroups = effectiveModGroups.filter(
     (g) => effectiveModUpdates[g.name] && g.sourceUrl,
   );
@@ -389,8 +390,11 @@
   // Filtering logic for modGroups
   // Filter out add-on files that are tracked as standalone mods
 
-  $: effectiveModGroups =
-    $incognitoMode && !$wizardScreenshotMode ? DUMMY_MOD_GROUPS : modGroups;
+  $: effectiveModGroups = $wizardScreenshotMode
+    ? []
+    : $incognitoMode
+      ? DUMMY_MOD_GROUPS
+      : modGroups;
   $: effectiveProfileMods =
     $incognitoMode && !$wizardScreenshotMode
       ? DUMMY_PROFILE_MODS
@@ -626,6 +630,7 @@
   }
 
   async function refreshModList() {
+    if (get(wizardScreenshotMode)) return;
     try {
       const groups = await getInstalledModGroups();
       allInstalledGroupNames = new Set(groups.map((g) => g.name));
@@ -642,6 +647,7 @@
   }
 
   async function refresh() {
+    if (get(wizardScreenshotMode)) return;
     try {
       const [groups, config, profileList, map, broken, noWorldGen] =
         await Promise.all([
@@ -1947,7 +1953,8 @@
             }}
             disabled={effectiveModGroups.length === 0 ||
               !activeProfileName ||
-              $incognitoMode}
+              $incognitoMode ||
+              $wizardScreenshotMode}
           />
           <span class="gale-switch-track"></span>
         </label>
@@ -2352,7 +2359,8 @@
                       on:change={() => toggleGroupState(group.name)}
                       disabled={!activeProfileName ||
                         !!brokenModsMap[group.name] ||
-                        $incognitoMode}
+                        $incognitoMode ||
+                        $wizardScreenshotMode}
                     />
                     <span class="gale-switch-track"></span>
                   </label>

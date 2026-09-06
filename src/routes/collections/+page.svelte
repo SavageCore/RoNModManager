@@ -17,6 +17,7 @@
   import EditCollectionModal from "$lib/components/EditCollectionModal.svelte";
   import {
     incognitoMode,
+    wizardScreenshotMode,
     DUMMY_COLLECTIONS,
     DUMMY_COLLECTION_COLORS,
     DUMMY_MOD_GROUPS,
@@ -29,18 +30,27 @@
   let rawCollections: Record<string, boolean> = {};
   let rawCollectionColors: Record<string, string> = {};
   let rawModDisplayNames: Record<string, string> = {};
-  $: collectionMods = $incognitoMode ? DUMMY_COLLECTIONS : rawCollectionMods;
-  $: collections = $incognitoMode
-    ? Object.fromEntries(Object.keys(DUMMY_COLLECTIONS).map((k) => [k, true]))
-    : rawCollections;
-  $: collectionColors = $incognitoMode
-    ? DUMMY_COLLECTION_COLORS
-    : rawCollectionColors;
-  $: modDisplayNames = $incognitoMode
-    ? Object.fromEntries(
-        DUMMY_MOD_GROUPS.map((g) => [g.name, g.displayName?.trim() || g.name]),
-      )
-    : rawModDisplayNames;
+  $: collectionMods =
+    $incognitoMode && !$wizardScreenshotMode
+      ? DUMMY_COLLECTIONS
+      : rawCollectionMods;
+  $: collections =
+    $incognitoMode && !$wizardScreenshotMode
+      ? Object.fromEntries(Object.keys(DUMMY_COLLECTIONS).map((k) => [k, true]))
+      : rawCollections;
+  $: collectionColors =
+    $incognitoMode && !$wizardScreenshotMode
+      ? DUMMY_COLLECTION_COLORS
+      : rawCollectionColors;
+  $: modDisplayNames =
+    $incognitoMode && !$wizardScreenshotMode
+      ? Object.fromEntries(
+          DUMMY_MOD_GROUPS.map((g) => [
+            g.name,
+            g.displayName?.trim() || g.name,
+          ]),
+        )
+      : rawModDisplayNames;
 
   let activeProfileName: string | null = null;
   let activeProfileEnabledCount = 0;
