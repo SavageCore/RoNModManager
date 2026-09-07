@@ -70,5 +70,8 @@
       "prettier --write"
     ]
   },
-  "packageManager": "npm@11.14.1"
+  "packageManager": "npm@11.14.1",
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  }
 }
