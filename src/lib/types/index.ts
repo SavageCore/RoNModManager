@@ -2,6 +2,7 @@ export type ThemeMode = "light" | "dark" | "system";
 export type OnGameLaunchAction = "nothing" | "minimize" | "close";
 export type CloseAction = "quit" | "minimize";
 export type MinimizeTarget = "taskbar" | "tray";
+export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
 
 export interface AppConfig {
   game_path: string | null;
@@ -28,6 +29,7 @@ export interface AppConfig {
   intro_skip_enabled: boolean;
   optimization_enabled: boolean;
   optimization_profile: string | null;
+  log_level: LogLevel;
 }
 
 export interface Collection {

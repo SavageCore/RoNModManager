@@ -11,3 +11,4 @@ src-tauri/vendor/
 src-tauri/.cargo/
 *.flatpak
 .opencode/
+ronmm.log

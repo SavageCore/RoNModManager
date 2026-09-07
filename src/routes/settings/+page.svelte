@@ -38,6 +38,7 @@
   import ModalShell from "$lib/components/ModalShell.svelte";
   import SyncAuthModal from "$lib/components/SyncAuthModal.svelte";
   import { syncLogStore } from "$lib/stores/syncLogStore";
+  import { setLogLevel } from "$lib/stores/importLogStore";
   import type {
     CloseAction,
     MinimizeTarget,
@@ -104,6 +105,7 @@
   let showModioApiKeyText = false;
   let modioApiKeyModalError = "";
   let theme: "light" | "dark" | "system" = "system";
+  let logLevel: "error" | "warn" | "info" | "debug" | "trace" = "info";
   let introSkipApplied = false;
   let applyingIntroSkip = false;
   let undoingIntroSkip = false;
@@ -248,6 +250,8 @@
     onGameLaunch = config.on_game_launch ?? "nothing";
     closeAction = config.close_action ?? "quit";
     minimizeTarget = config.minimize_target ?? "taskbar";
+    logLevel = config.log_level ?? "info";
+    setLogLevel(logLevel);
   }
   function openModioApiKeyModal() {
     modioApiKeyInput = modioApiKey;
@@ -865,6 +869,34 @@
             ><option value="taskbar">Taskbar</option><option value="tray"
               >System tray</option
             ></select
+          >
+        </div>
+      </div>
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">Log Level</div>
+          <div class="prefs-row-subtitle">
+            Backend verbosity. Override at launch with
+            <span class="font-mono">RUST_LOG=debug</span>. Logs go to stdout -
+            capture with
+            <span class="font-mono"
+              >flatpak run uk.savagecore.ronmodmanager 2&gt;&1 | tee ronmm.log</span
+            >.
+          </div>
+        </div>
+        <div class="prefs-row-suffix">
+          <select
+            class="select w-40"
+            bind:value={logLevel}
+            on:change={() => {
+              setLogLevel(logLevel);
+              void updateConfig({ log_level: logLevel });
+            }}
+            ><option value="error">Error</option><option value="warn"
+              >Warn</option
+            ><option value="info">Info</option><option value="debug"
+              >Debug</option
+            ><option value="trace">Trace</option></select
           >
         </div>
       </div>

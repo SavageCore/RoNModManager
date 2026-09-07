@@ -9,7 +9,24 @@ pub mod state;
 use crate::commands::{
     auth, collections, config, game, modpack, mods, profiles, sharing, sync, tags, updater, window,
 };
-use state::AppState;
+use state::{default_config_path, load_config_from_path, AppState};
+
+/// Resolve the initial backend log level: `RUST_LOG` (if set and parseable)
+/// overrides the persisted setting. Falls back to the configured level, then
+/// to `Info` as a last resort so logging always works even on a fresh or
+/// corrupt config file.
+fn initial_log_level() -> log::LevelFilter {
+    if let Ok(env) = std::env::var("RUST_LOG") {
+        if let Ok(level) = env.parse::<log::LevelFilter>() {
+            return level;
+        }
+    }
+    default_config_path()
+        .ok()
+        .and_then(|path| load_config_from_path(&path).ok())
+        .map(|config| log::LevelFilter::from(config.log_level))
+        .unwrap_or(log::LevelFilter::Info)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,13 +41,13 @@ pub fn run() {
         }
     }
 
-    #[cfg(debug_assertions)]
-    {
-        let _ = env_logger::builder()
-            .filter_level(log::LevelFilter::Info)
-            .is_test(false)
-            .try_init();
-    }
+    // Init the backend logger in both debug and release so the Flatpak
+    // build (where env_logger is otherwise disabled) emits diagnostics.
+    let level = initial_log_level();
+    let _ = env_logger::builder()
+        .filter_level(level)
+        .is_test(false)
+        .try_init();
     let builder = tauri::Builder::default().setup(|app| {
         #[cfg(debug_assertions)]
         {

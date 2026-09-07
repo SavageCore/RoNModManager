@@ -53,6 +53,7 @@ pub fn read_manifest_for_archive(archive_name: String) -> Result<Option<serde_js
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize; // This line is kept as it is needed
@@ -68,6 +69,12 @@ use crate::services::{
     modpack as modpack_service, nexus_api, profiles, steam,
 };
 use crate::state::{app_data_root, app_temp_root, AppState};
+
+/// Concurrent-install guard. `install_local_mod` is meant to run serially per
+/// the frontend queue; if two are ever live at once we log the file names so
+/// the overlap is visible in the app log instead of silently corrupting the
+/// staging dir / progress display.
+static ACTIVE_INSTALLS: AtomicUsize = AtomicUsize::new(0);
 
 fn bytes_to_mib(bytes: u64) -> f64 {
     bytes as f64 / (1024.0 * 1024.0)
@@ -1662,6 +1669,7 @@ struct NexusFreeDownloadWaitingPayload {
     pretty_name: Option<String>,
     file_name: String,
     mod_url: String,
+    wait_id: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1677,9 +1685,6 @@ pub async fn add_nexus_mod(
     input: String,
     file_id: Option<u64>,
 ) -> Result<AddNexusResult> {
-    state
-        .nexus_cancel
-        .store(false, std::sync::atomic::Ordering::SeqCst);
     let config = state.get_config()?;
     let api_key = config.nexus_api_key.ok_or_else(|| {
         AppError::Validation(
@@ -1788,11 +1793,26 @@ pub async fn add_nexus_mod(
     } else {
         // Non-premium: watch ~/Downloads, only open browser if the file isn't already there.
         // Uses find_in_downloads for tolerant name matching (whitespace/case/browser dedup suffix).
+        //
+        // The manual-download wait registers a per-invocation cancel flag.
+        // The old single global AtomicBool was reset on every entry, so
+        // starting mod2 cleared a cancel meant for mod1 (and cancelling once
+        // hit whichever wait happened to be polling). Registration happens
+        // here - not at the top of the function - so API failures above can't
+        // leak map entries, and every exit path below clears it.
+        let wait_id = state.register_nexus_wait();
+        log::info!(
+            "nexus manual-download wait registered: id={} file={}",
+            wait_id,
+            expected_filename
+        );
         let files_url = format!("{}?tab=files", source_url);
 
         // Fail fast with a meaningful error if the OS has no Downloads directory.
-        let downloads_dir = dirs::download_dir()
-            .ok_or_else(|| AppError::Validation("Cannot locate Downloads directory".to_string()))?;
+        let downloads_dir = dirs::download_dir().ok_or_else(|| {
+            state.clear_nexus_wait(wait_id);
+            AppError::Validation("Cannot locate Downloads directory".to_string())
+        })?;
 
         // Base deadline of 2h, extended by another hour each time the matching
         // browser partial (.part/.crdownload/.tmp) grows - a slow download is
@@ -1807,13 +1827,25 @@ pub async fn add_nexus_mod(
         let mut found_path: Option<PathBuf> = None;
 
         // Pre-check: file may already be present from a previous attempt.
-        if let Some(path) =
-            downloader::find_in_downloads(&expected_filename, expected_size, None, |_, _| {})
+        // The Downloads scan is blocking IO (directory walk) - keep it off
+        // the async worker even here.
+        let pre_name = expected_filename.clone();
+        if let Some(path) = tokio::task::spawn_blocking(move || {
+            downloader::find_in_downloads(&pre_name, expected_size, None, |_, _| {})
+        })
+        .await
+        .unwrap_or(None)
         {
             let s1 = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             let s2 = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
             if s1 > 0 && s1 == s2 {
+                state.clear_nexus_wait(wait_id);
+                log::info!(
+                    "nexus manual-download pre-check hit: id={} file={}",
+                    wait_id,
+                    expected_filename
+                );
                 let _ = app.emit(
                     "nexus_free_download_complete",
                     &NexusFreeDownloadCompletePayload {
@@ -1846,6 +1878,7 @@ pub async fn add_nexus_mod(
                     pretty_name: file_pretty_name.clone(),
                     file_name: expected_filename.clone(),
                     mod_url: files_url.clone(),
+                    wait_id,
                 },
             );
 
@@ -1866,7 +1899,19 @@ pub async fn add_nexus_mod(
             );
 
             loop {
-                if state.nexus_cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                if state.is_nexus_wait_cancelled(wait_id) {
+                    state.clear_nexus_wait(wait_id);
+                    log::info!(
+                        "nexus manual-download cancelled: id={} file={}",
+                        wait_id,
+                        expected_filename
+                    );
+                    let _ = app.emit(
+                        "nexus_free_download_complete",
+                        &NexusFreeDownloadCompletePayload {
+                            file_name: expected_filename.clone(),
+                        },
+                    );
                     let _ = app.emit(
                         "install_progress",
                         &ProgressEvent {
@@ -1884,22 +1929,39 @@ pub async fn add_nexus_mod(
                 }
 
                 if std::time::Instant::now() >= deadline {
+                    state.clear_nexus_wait(wait_id);
+                    log::warn!(
+                        "nexus manual-download timed out: id={} file={}",
+                        wait_id,
+                        expected_filename
+                    );
                     return Err(AppError::Validation(format!(
                         "Timed out waiting for {} in Downloads. Download the file manually and use 'Local File' to install it.",
                         expected_filename
                     )));
                 }
 
-                if let Some(path) = downloader::find_in_downloads(
-                    &expected_filename,
-                    expected_size,
-                    None,
-                    |_, _| {},
-                ) {
+                // Downloads-folder scans are blocking IO - run them on the
+                // blocking pool so the 2s poll loop never pins an async
+                // worker (which a concurrent extraction may already need).
+                let poll_name = expected_filename.clone();
+                let poll_hit = tokio::task::spawn_blocking(move || {
+                    downloader::find_in_downloads(&poll_name, expected_size, None, |_, _| {})
+                })
+                .await
+                .unwrap_or(None);
+                if let Some(path) = poll_hit {
                     let size_first = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
                     tokio::time::sleep(poll_interval).await;
                     let size_second = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
                     if size_first > 0 && size_first == size_second {
+                        state.clear_nexus_wait(wait_id);
+                        log::info!(
+                            "nexus manual-download found stable file: id={} file={} size={}",
+                            wait_id,
+                            expected_filename,
+                            size_first
+                        );
                         let _ = app.emit(
                             "nexus_free_download_complete",
                             &NexusFreeDownloadCompletePayload {
@@ -1912,9 +1974,14 @@ pub async fn add_nexus_mod(
                 } else {
                     // Track partial-download growth: each observed increase
                     // pushes the deadline out and reports liveness to the UI.
-                    if let Some((_, partial_size)) =
-                        downloader::find_partial_download(&expected_filename)
-                    {
+                    // Same blocking-pool treatment as the full scan above.
+                    let partial_name = expected_filename.clone();
+                    let partial_hit = tokio::task::spawn_blocking(move || {
+                        downloader::find_partial_download(&partial_name)
+                    })
+                    .await
+                    .unwrap_or(None);
+                    if let Some((_, partial_size)) = partial_hit {
                         let grew = match last_partial_size {
                             Some(prev) => partial_size > prev,
                             None => false,
@@ -2593,8 +2660,13 @@ pub struct PakFileInfo {
 pub async fn get_archive_pak_files(
     #[allow(non_snake_case)] filePath: String,
 ) -> Result<Vec<PakFileInfo>> {
+    // Archive listing does blocking file IO (zip central-directory walk,
+    // rar/7z header scan). Run it on the blocking pool so a concurrent mod
+    // extraction can't starve this picker scan on a Tokio worker.
     let path = PathBuf::from(&filePath);
-    list_archive_paks(&path)
+    tokio::task::spawn_blocking(move || list_archive_paks(&path))
+        .await
+        .map_err(|e| AppError::Validation(format!("Archive scan task failed: {e}")))?
 }
 
 #[tauri::command]
@@ -2649,7 +2721,29 @@ pub async fn install_local_mod(
 
     let temp_root = crate::state::app_temp_root()?;
     let pak_filter_set: Option<HashSet<String>> = selectedPakFiles.map(|v| v.into_iter().collect());
-    match install_downloaded_file(
+
+    // Track concurrent installs for diagnostics: the frontend queue is meant
+    // to serialize these. If two ever overlap we log both file names so the
+    // race is visible in the app log instead of silently corrupting the
+    // staging dir or the progress display.
+    let archive_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("<unknown>")
+        .to_string();
+    let archive_size = std::fs::metadata(&path).map(|m| m.len()).ok();
+    let active = ACTIVE_INSTALLS.fetch_add(1, Ordering::SeqCst) + 1;
+    if active > 1 {
+        log::warn!(
+            "concurrent installs active: {active} (file: {filePath}) - queue should serialize these"
+        );
+    }
+    log::info!(
+        "install start: {} ({:.1} MiB on disk)",
+        archive_name,
+        archive_size.unwrap_or(0) as f64 / (1024.0 * 1024.0)
+    );
+    let result = install_downloaded_file(
         &path,
         &context,
         &app,
@@ -2658,8 +2752,11 @@ pub async fn install_local_mod(
         pak_filter_set.as_ref(),
         precomputedHash,
     )
-    .await
-    {
+    .await;
+    ACTIVE_INSTALLS.fetch_sub(1, Ordering::SeqCst);
+    log::info!("install complete: {}", archive_name);
+
+    match result {
         Ok(is_duplicate) => {
             if let Some(installed_mod_name) = path.file_name().and_then(|n| n.to_str()) {
                 let _ =
@@ -2827,47 +2924,58 @@ pub(crate) async fn install_downloaded_file(
     let content_hash = if let Some(hash) = precomputed_hash {
         hash
     } else {
-        let hash_start = Instant::now();
-        let mut hash_last_emit = Instant::now() - Duration::from_millis(500);
+        // Hashing does blocking disk reads over the whole archive - run it on
+        // the blocking pool so other commands (e.g. a second mod's PAK scan)
+        // stay responsive. AppHandle::emit is thread-safe, so progress events
+        // can be sent straight from the blocking thread.
+        let hash_path = path.clone();
+        let hash_app = app.clone();
+        tokio::task::spawn_blocking(move || {
+            let hash_start = Instant::now();
+            let mut hash_last_emit = Instant::now() - Duration::from_millis(500);
+            let file_label = hash_path.to_string_lossy().to_string();
 
-        hasher::md5_file_with_progress(path, |processed_bytes, total_bytes| {
-            let now = Instant::now();
-            let done = total_bytes > 0 && processed_bytes >= total_bytes;
-            if now.duration_since(hash_last_emit) < Duration::from_millis(120) && !done {
-                return;
-            }
-            hash_last_emit = now;
-            let elapsed = hash_start.elapsed().as_secs_f64().max(0.001);
-            let mib_per_sec = bytes_to_mib(processed_bytes) / elapsed;
-            let ratio = if total_bytes > 0 {
-                (processed_bytes as f64 / total_bytes as f64).clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-            let mapped_percent = (8.0 + (ratio * 30.0)) as f32;
-            let message = if total_bytes > 0 {
-                format!(
-                    "Hashing archive... {:.1}/{:.1} MiB ({:.1} MiB/s)",
-                    bytes_to_mib(processed_bytes),
-                    bytes_to_mib(total_bytes),
-                    mib_per_sec
-                )
-            } else {
-                format!("Hashing archive... {:.1} MiB/s", mib_per_sec)
-            };
-            let _ = app.emit(
-                "install_progress",
-                &ProgressEvent {
-                    operation: "hash".to_string(),
-                    file: path.to_string_lossy().to_string(),
-                    percent: mapped_percent,
-                    message,
-                    total_bytes: Some(total_bytes),
-                    processed_bytes: Some(processed_bytes),
-                },
-            );
+            hasher::md5_file_with_progress(&hash_path, |processed_bytes, total_bytes| {
+                let now = Instant::now();
+                let done = total_bytes > 0 && processed_bytes >= total_bytes;
+                if now.duration_since(hash_last_emit) < Duration::from_millis(120) && !done {
+                    return;
+                }
+                hash_last_emit = now;
+                let elapsed = hash_start.elapsed().as_secs_f64().max(0.001);
+                let mib_per_sec = bytes_to_mib(processed_bytes) / elapsed;
+                let ratio = if total_bytes > 0 {
+                    (processed_bytes as f64 / total_bytes as f64).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let mapped_percent = (8.0 + (ratio * 30.0)) as f32;
+                let message = if total_bytes > 0 {
+                    format!(
+                        "Hashing archive... {:.1}/{:.1} MiB ({:.1} MiB/s)",
+                        bytes_to_mib(processed_bytes),
+                        bytes_to_mib(total_bytes),
+                        mib_per_sec
+                    )
+                } else {
+                    format!("Hashing archive... {:.1} MiB/s", mib_per_sec)
+                };
+                let _ = hash_app.emit(
+                    "install_progress",
+                    &ProgressEvent {
+                        operation: "hash".to_string(),
+                        file: file_label.clone(),
+                        percent: mapped_percent,
+                        message,
+                        total_bytes: Some(total_bytes),
+                        processed_bytes: Some(processed_bytes),
+                    },
+                );
+            })
+            .map_err(|e| AppError::Validation(format!("Failed to hash file: {}", e)))
         })
-        .map_err(|e| AppError::Validation(format!("Failed to hash file: {}", e)))?
+        .await
+        .map_err(|e| AppError::Validation(format!("Hash task failed: {e}")))??
     };
 
     let _ = app.emit(
@@ -2901,7 +3009,14 @@ pub(crate) async fn install_downloaded_file(
     // If this archive is a UE4SS Lua/Blueprint mod (or bundles UE4SS itself), make sure
     // the UE4SS runtime is on disk first. `bundles_runtime` guards against recursing when
     // the archive being installed *is* the UE4SS runtime download.
-    let entry_names = installer::list_archive_entry_names(path).unwrap_or_default();
+    // Listing entry names opens and walks the archive - blocking IO, so it
+    // goes on the blocking pool like the hash and extraction below.
+    let scan_path = path.clone();
+    let entry_names = tokio::task::spawn_blocking(move || {
+        installer::list_archive_entry_names(&scan_path).unwrap_or_default()
+    })
+    .await
+    .unwrap_or_default();
     if let Some(layout) = installer::detect_ue4ss_layout(&entry_names) {
         if !layout.bundles_runtime {
             // Boxed because this closes a (runtime-guarded, non-infinite) recursive cycle:
@@ -2949,7 +3064,8 @@ pub(crate) async fn install_downloaded_file(
         let archive_name = path
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("unknown");
+            .unwrap_or("unknown")
+            .to_string();
         let _ = app.emit(
             "install_progress",
             &ProgressEvent {
@@ -2961,36 +3077,63 @@ pub(crate) async fn install_downloaded_file(
                 processed_bytes: None,
             },
         );
-        let start = Instant::now();
-        let mut last_emit = Instant::now() - Duration::from_millis(500);
-        let report = installer::install_archive_with_progress(
-            path,
-            &staged_context,
-            |progress| {
-                let now = Instant::now();
-                if now.duration_since(last_emit) < Duration::from_millis(120)
-                    && progress.processed_bytes < progress.total_bytes
-                {
-                    return;
-                }
-                last_emit = now;
-                let elapsed = start.elapsed().as_secs_f64().max(0.001);
-                let mib_per_sec = (progress.processed_bytes as f64 / elapsed) / (1024.0 * 1024.0);
-                let mapped_percent = 55.0 + (progress.percent * 0.40);
-                let _ = app.emit(
-                    "install_progress",
-                    &ProgressEvent {
-                        operation: "extract".to_string(),
-                        file: progress.file,
-                        percent: mapped_percent.min(95.0),
-                        message: format!("Extracting files... {:.1} MiB/s", mib_per_sec),
-                        total_bytes: Some(progress.total_bytes),
-                        processed_bytes: Some(progress.processed_bytes),
-                    },
-                );
-            },
-            pak_filter,
-        )?;
+        // Extraction is blocking disk IO (decompress + copy) - run it on the
+        // blocking pool so concurrent commands stay responsive. Progress is
+        // emitted straight from the blocking thread (AppHandle::emit is
+        // thread-safe), so the UI keeps updating during long extracts.
+        //
+        // Emit the archive name as the progress `file` (stable across all
+        // chunks of one archive) and the inner entry name in the message, so
+        // the footer's per-file byte scoping tracks one archive start to
+        // finish and the user can see which entry is being extracted.
+        let zip_path = path.clone();
+        let zip_context = staged_context.clone();
+        let zip_filter = pak_filter.cloned();
+        let zip_app = app.clone();
+        let zip_archive_name = archive_name.clone();
+        let report = tokio::task::spawn_blocking(move || {
+            let start = Instant::now();
+            let mut last_emit = Instant::now() - Duration::from_millis(500);
+            installer::install_archive_with_progress(
+                &zip_path,
+                &zip_context,
+                |progress| {
+                    let now = Instant::now();
+                    if now.duration_since(last_emit) < Duration::from_millis(120)
+                        && progress.processed_bytes < progress.total_bytes
+                    {
+                        return;
+                    }
+                    last_emit = now;
+                    let elapsed = start.elapsed().as_secs_f64().max(0.001);
+                    let mib_per_sec =
+                        (progress.processed_bytes as f64 / elapsed) / (1024.0 * 1024.0);
+                    let mapped_percent = 55.0 + (progress.percent * 0.40);
+                    let _ = zip_app.emit(
+                        "install_progress",
+                        &ProgressEvent {
+                            operation: "extract".to_string(),
+                            file: zip_archive_name.clone(),
+                            percent: mapped_percent.min(95.0),
+                            message: format!(
+                                "Extracting {}... {:.1} MiB/s ({})",
+                                zip_archive_name, mib_per_sec, progress.file
+                            ),
+                            total_bytes: Some(progress.total_bytes),
+                            processed_bytes: Some(progress.processed_bytes),
+                        },
+                    );
+                },
+                zip_filter.as_ref(),
+            )
+        })
+        .await
+        .map_err(|e| AppError::Validation(format!("Extraction task failed: {e}")))??;
+        log::debug!(
+            "zip extract complete: {} ({} files installed)",
+            archive_name,
+            report.installed_files.len()
+        );
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_config_files_from_report(&report, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
@@ -3014,7 +3157,15 @@ pub(crate) async fn install_downloaded_file(
                 processed_bytes: None,
             },
         );
-        let report = installer::install_rar_archive(path, &staged_context, temp_root, pak_filter)?;
+        let rar_path = path.clone();
+        let rar_context = staged_context.clone();
+        let rar_temp = temp_root.to_path_buf();
+        let rar_filter = pak_filter.cloned();
+        let report = tokio::task::spawn_blocking(move || {
+            installer::install_rar_archive(&rar_path, &rar_context, &rar_temp, rar_filter.as_ref())
+        })
+        .await
+        .map_err(|e| AppError::Validation(format!("Extraction task failed: {e}")))??;
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_config_files_from_report(&report, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
@@ -3038,7 +3189,20 @@ pub(crate) async fn install_downloaded_file(
                 processed_bytes: None,
             },
         );
-        let report = installer::install_7z_archive(path, &staged_context, temp_root, pak_filter)?;
+        let sevenz_path = path.clone();
+        let sevenz_context = staged_context.clone();
+        let sevenz_temp = temp_root.to_path_buf();
+        let sevenz_filter = pak_filter.cloned();
+        let report = tokio::task::spawn_blocking(move || {
+            installer::install_7z_archive(
+                &sevenz_path,
+                &sevenz_context,
+                &sevenz_temp,
+                sevenz_filter.as_ref(),
+            )
+        })
+        .await
+        .map_err(|e| AppError::Validation(format!("Extraction task failed: {e}")))??;
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_config_files_from_report(&report, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
@@ -3191,10 +3355,27 @@ pub fn set_addon_map(
 }
 
 #[tauri::command]
-pub async fn cancel_nexus_download(state: State<'_, AppState>) -> Result<()> {
-    state
-        .nexus_cancel
-        .store(true, std::sync::atomic::Ordering::SeqCst);
+pub async fn cancel_nexus_download(
+    state: State<'_, AppState>,
+    #[allow(non_snake_case)] waitId: Option<u64>,
+) -> Result<()> {
+    // With no id, cancel every active wait (close-app dialog path). With an
+    // id, cancel only that wait so concurrent manual downloads stay
+    // independent. Unknown ids are a no-op.
+    if let Ok(mut flags) = state.nexus_cancel.lock() {
+        match waitId {
+            Some(id) => {
+                if let Some(flag) = flags.get_mut(&id) {
+                    *flag = true;
+                }
+            }
+            None => {
+                for flag in flags.values_mut() {
+                    *flag = true;
+                }
+            }
+        }
+    }
     Ok(())
 }
 

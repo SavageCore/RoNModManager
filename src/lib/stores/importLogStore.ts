@@ -12,6 +12,30 @@ export interface ImportLogMod {
   awaitingInput: boolean;
 }
 
+// Backend log level mirrored for the Import Log. When "debug" or "trace",
+// phase transitions include archive names + byte totals so the saved log
+// captures what the footer flickered past. Set via setLogLevel(), typically
+// from the Settings page after hydrating the config.
+let currentLogLevel = "info";
+
+const VERBOSE_LEVELS = new Set(["debug", "trace"]);
+
+export function setLogLevel(level: string): void {
+  currentLogLevel = level;
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  const units = ["B", "KiB", "MiB", "GiB"];
+  let size = value;
+  let i = 0;
+  while (size >= 1024 && i < units.length - 1) {
+    size /= 1024;
+    i += 1;
+  }
+  return `${size.toFixed(size >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
 interface ImportLogState {
   mods: ImportLogMod[];
   isOpen: boolean;
@@ -138,6 +162,24 @@ function createImportLogStore() {
         ...s,
         mods: s.mods.map((m) =>
           m.id === currentModId ? { ...m, lines: [...m.lines, label] } : m,
+        ),
+      }));
+    }
+    // Verbose: append a timestamped detail line with the archive/file name
+    // and byte totals so the saved log captures what the footer flickered
+    // past. Only at debug/trace to keep the default log concise.
+    if (VERBOSE_LEVELS.has(currentLogLevel) && state.operation) {
+      const detail = `[${new Date().toISOString().slice(11, 19)}] ${
+        state.file ? state.file + " " : ""
+      }${state.message}${
+        state.totalBytes != null && state.processedBytes != null
+          ? ` (${formatBytes(state.processedBytes)}/${formatBytes(state.totalBytes)})`
+          : ""
+      }`;
+      update((s) => ({
+        ...s,
+        mods: s.mods.map((m) =>
+          m.id === currentModId ? { ...m, lines: [...m.lines, detail] } : m,
         ),
       }));
     }

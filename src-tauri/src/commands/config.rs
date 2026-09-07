@@ -2,7 +2,7 @@ use serde::Deserialize;
 use tauri::State;
 
 use crate::models::config::{
-    AppConfig, CloseAction, MinimizeTarget, OnGameLaunchAction, ThemeMode,
+    AppConfig, CloseAction, LogLevel, MinimizeTarget, OnGameLaunchAction, ThemeMode,
 };
 use crate::models::Result;
 use crate::services::nexus_api;
@@ -23,6 +23,7 @@ pub struct ConfigUpdate {
     pub minimize_target: Option<MinimizeTarget>,
     pub asked_close_preference: Option<bool>,
     pub setup_wizard_complete: Option<bool>,
+    pub log_level: Option<LogLevel>,
 }
 
 #[tauri::command]
@@ -85,6 +86,11 @@ pub async fn update_config(state: State<'_, AppState>, updates: ConfigUpdate) ->
         }
         if let Some(v) = updates.setup_wizard_complete {
             config.setup_wizard_complete = v;
+        }
+        if let Some(level) = updates.log_level {
+            config.log_level = level;
+            // Apply at runtime so no restart is needed.
+            log::set_max_level(level.into());
         }
     })?;
 

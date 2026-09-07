@@ -27,11 +27,43 @@
     return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
   }
 
+  // Track the file currently owning the byte counters. When the backend
+  // switches to a different file (sequential installs), reset the counters
+  // so the previous file's totals never bleed into the next file's display.
+  let byteFile: string | null = null;
+  let scopedTotalBytes: number | null = null;
+  let scopedProcessedBytes: number | null = null;
+
+  $: {
+    const store = $operationStatusStore;
+    if (store.file !== byteFile) {
+      byteFile = store.file;
+      scopedTotalBytes = store.totalBytes;
+      scopedProcessedBytes = store.processedBytes;
+    } else {
+      if (store.totalBytes != null) scopedTotalBytes = store.totalBytes;
+      if (store.processedBytes != null)
+        scopedProcessedBytes = store.processedBytes;
+    }
+    // Reset when the operation completes/errors so the next install starts clean.
+    if (store.operation === "complete" || store.operation === "error") {
+      scopedTotalBytes = null;
+      scopedProcessedBytes = null;
+      byteFile = null;
+    }
+  }
+
   $: progressDetails =
-    $operationStatusStore.totalBytes &&
-    $operationStatusStore.processedBytes != null
-      ? `${formatBytes($operationStatusStore.processedBytes)} / ${formatBytes($operationStatusStore.totalBytes)}`
+    scopedTotalBytes && scopedProcessedBytes != null
+      ? `${formatBytes(scopedProcessedBytes)} / ${formatBytes(scopedTotalBytes)}`
       : "";
+
+  $: bytePercent =
+    scopedTotalBytes != null &&
+    scopedTotalBytes > 0 &&
+    scopedProcessedBytes != null
+      ? Math.min(100, (scopedProcessedBytes / scopedTotalBytes) * 100)
+      : null;
 
   $: activeQueue = $modAddQueueStore.items.filter(
     (item) => item.status === "queued" || item.status === "running",
@@ -55,20 +87,6 @@
   $: stillInBatch =
     $modAddQueueStore.totalQueued > 1 &&
     completedCount < $modAddQueueStore.totalQueued;
-
-  // When bytes are available, derive percent directly from bytes so it matches the displayed sizes.
-  // Otherwise normalize backend phase-mapped percents so task text shows 0-100 per phase.
-  $: bytePercent =
-    $operationStatusStore.totalBytes != null &&
-    $operationStatusStore.totalBytes > 0 &&
-    $operationStatusStore.processedBytes != null
-      ? Math.min(
-          100,
-          ($operationStatusStore.processedBytes /
-            $operationStatusStore.totalBytes) *
-            100,
-        )
-      : null;
 
   function mapRangeToPercent(
     value: number,
@@ -228,6 +246,17 @@
       ? "Processing download..."
       : $operationStatusStore.message;
 
+  // The footer shows one global operation. When it is a manual-download
+  // wait, resolve the per-wait backend id via the pending file whose name the
+  // status message refers to, so Cancel hits only that wait. Falls back to
+  // cancelling all waits when no pending file matches (close-app path relies
+  // on cancel-all anyway).
+  $: waitingFile = $operationStatusStore.message.includes("Waiting for")
+    ? ($manualDownloadStore.pendingFiles.find((f) =>
+        $operationStatusStore.message.includes(f.fileName),
+      ) ?? null)
+    : null;
+
   // During the download-to-processing handoff, clear the determinate fill and
   // show only an indeterminate animation. When real progress resumes, the
   // monotonic batch state restores the bar position.
@@ -350,7 +379,7 @@
         {/if}
         {#if $operationStatusStore.operation === "download" && $operationStatusStore.message.includes("Waiting for")}
           <button
-            on:click={cancelNexusDownload}
+            on:click={() => cancelNexusDownload(waitingFile?.waitId)}
             class="shrink-0 text-xs px-2 py-0.5 rounded"
             style="color: var(--clr-text-secondary); border: 1px solid var(--adw-border-color); background: var(--clr-surface-variant);"
           >

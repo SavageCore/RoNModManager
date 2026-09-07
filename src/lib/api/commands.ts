@@ -179,7 +179,8 @@ export const addNexusMod = (input: string, fileId?: number) =>
   invoke<ModAddResult>("add_nexus_mod", { input, fileId: fileId ?? null });
 export const listNexusFileOptions = (input: string) =>
   invoke<NexusFileOption[]>("list_nexus_file_options", { input });
-export const cancelNexusDownload = () => invoke<void>("cancel_nexus_download");
+export const cancelNexusDownload = (waitId?: number | null) =>
+  invoke<void>("cancel_nexus_download", { waitId: waitId ?? null });
 export const checkNexusPremium = () => invoke<boolean>("check_nexus_premium");
 export const updateNexusFileId = (archiveName: string, fileId: number) =>
   invoke<void>("update_nexus_file_id", { archiveName, fileId });
@@ -231,6 +232,7 @@ export const updateConfig = (updates: {
   minimize_target?: "taskbar" | "tray";
   asked_close_preference?: boolean;
   setup_wizard_complete?: boolean;
+  log_level?: "error" | "warn" | "info" | "debug" | "trace";
 }) => invoke<void>("update_config", { updates });
 
 export const verifyNexusApiKey = (apiKey: string) =>

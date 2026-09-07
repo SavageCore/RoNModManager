@@ -4,6 +4,9 @@ export interface ManualDownloadFile {
   prettyName: string | null;
   fileName: string;
   modUrl: string;
+  /** Per-wait backend id for targeted cancellation. Null for entries added
+   * before wait ids existed (defensive - current backend always sends one). */
+  waitId: number | null;
 }
 
 export interface ManualDownloadState {

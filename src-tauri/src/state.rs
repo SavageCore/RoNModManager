@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 
 use reqwest::Client;
 
@@ -36,7 +37,15 @@ pub struct AppState {
     pub config: RwLock<AppConfig>,
     pub client: Client,
     pub config_path: PathBuf,
-    pub nexus_cancel: Arc<AtomicBool>,
+    /// Cancel flags for in-progress free Nexus manual-download waits, keyed by
+    /// a per-invocation wait id. The old single global flag meant starting
+    /// mod2 cleared a cancel meant for mod1 (and vice versa); per-wait flags
+    /// keep concurrent manual downloads independent.
+    /// `cancel_nexus_download` with no id cancels all active waits
+    /// (used by the "close app while waiting" dialog).
+    /// Map value is the cancel signal: false = waiting, true = cancelled.
+    pub nexus_cancel: Arc<Mutex<HashMap<u64, bool>>>,
+    pub nexus_wait_id: Arc<AtomicU64>,
 }
 
 impl AppState {
@@ -85,7 +94,8 @@ impl AppState {
             config: RwLock::new(config),
             client,
             config_path,
-            nexus_cancel: Arc::new(AtomicBool::new(false)),
+            nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
+            nexus_wait_id: Arc::new(AtomicU64::new(1)),
         })
     }
 
@@ -94,6 +104,35 @@ impl AppState {
             .read()
             .map(|guard| guard.clone())
             .map_err(|_| AppError::Validation("failed to lock config for read".to_string()))
+    }
+
+    /// Allocate a fresh id for a Nexus manual-download wait and register it
+    /// as active (not cancelled). Ids are unique per invocation so concurrent
+    /// waits never share cancel state.
+    pub fn register_nexus_wait(&self) -> u64 {
+        let wait_id = self.nexus_wait_id.fetch_add(1, Ordering::SeqCst);
+        if let Ok(mut flags) = self.nexus_cancel.lock() {
+            flags.insert(wait_id, false);
+        }
+        wait_id
+    }
+
+    /// True when the given wait has been cancelled. Unknown ids (already
+    /// cleaned up, or never registered) read as "not cancelled" - a lock
+    /// failure or missing entry must never wedge a download wait loop.
+    pub fn is_nexus_wait_cancelled(&self, wait_id: u64) -> bool {
+        self.nexus_cancel
+            .lock()
+            .map(|flags| flags.get(&wait_id).copied().unwrap_or(false))
+            .unwrap_or(false)
+    }
+
+    /// Remove a wait's cancel flag once the wait finishes (found, timed out,
+    /// errored). Keeps the map from growing across many installs.
+    pub fn clear_nexus_wait(&self, wait_id: u64) {
+        if let Ok(mut flags) = self.nexus_cancel.lock() {
+            flags.remove(&wait_id);
+        }
     }
 
     pub fn update_config<F>(&self, update_fn: F) -> Result<AppConfig>
@@ -132,7 +171,8 @@ impl Default for AppState {
                     config: RwLock::new(AppConfig::default()),
                     client: Client::new(),
                     config_path,
-                    nexus_cancel: Arc::new(AtomicBool::new(false)),
+                    nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
+                    nexus_wait_id: Arc::new(AtomicU64::new(1)),
                 }
             }
         }
@@ -192,7 +232,7 @@ pub fn save_config_to_path(path: &PathBuf, config: &AppConfig) -> Result<()> {
     Ok(())
 }
 
-fn default_config_path() -> Result<PathBuf> {
+pub fn default_config_path() -> Result<PathBuf> {
     Ok(app_config_root()?.join("config.json"))
 }
 

@@ -205,16 +205,55 @@
   }
 
   // Resolves current wait so newly queued items are picked up immediately.
+  // Only one waiter is outstanding at a time (every wait is awaited before
+  // looping), so a single resolver slot is enough. Each waiter also has a
+  // timeout fallback so a lost wake can never hang the loop forever.
   let wakeResolver: (() => void) | null = null;
-  function waitForWake(): Promise<void> {
+  let wakeTimer: ReturnType<typeof setTimeout> | null = null;
+  function waitForWake(timeoutMs = 30000): Promise<void> {
     return new Promise((resolve) => {
-      wakeResolver = resolve;
+      // A previous waiter must have settled via the other race branch -
+      // disarm it so no stale timer/resolver lingers.
+      if (wakeTimer) {
+        clearTimeout(wakeTimer);
+        wakeTimer = null;
+      }
+      wakeTimer = setTimeout(() => {
+        wakeTimer = null;
+        if (wakeResolver === wrapped) wakeResolver = null;
+        resolve();
+      }, timeoutMs);
+      const wrapped = () => {
+        if (wakeTimer) {
+          clearTimeout(wakeTimer);
+          wakeTimer = null;
+        }
+        resolve();
+      };
+      wakeResolver = wrapped;
     });
+  }
+  // Disarm the current waiter without resolving it. Returns true when a
+  // waiter was still armed, meaning the race just settled via the other
+  // branch (caller should yield so progress events / UI can run).
+  function disarmWake(): boolean {
+    if (!wakeResolver) return false;
+    wakeResolver = null;
+    if (wakeTimer) {
+      clearTimeout(wakeTimer);
+      wakeTimer = null;
+    }
+    return true;
   }
   function wakeWorker() {
     if (wakeResolver) {
-      wakeResolver();
+      const resolve = wakeResolver;
       wakeResolver = null;
+      if (wakeTimer) {
+        clearTimeout(wakeTimer);
+        wakeTimer = null;
+      }
+      resolve();
     }
   }
 
@@ -232,6 +271,13 @@
           | Awaited<ReturnType<typeof addModIoMod>>;
         selectedPaks?: string[];
         failed?: boolean;
+        // True once the underlying download promise settles, independent of
+        // whether workChain has consumed it yet. d.result alone can't be used:
+        // it is only assigned inside workChain, so an already-resolved
+        // download queued behind another mod's install would look "in flight"
+        // and Promise.race on it would resolve instantly in a tight microtask
+        // loop, starving progress events / UI.
+        settled?: boolean;
       };
       type Plan = {
         entry: {
@@ -328,17 +374,35 @@
           }
 
           // Phase 2: Kick off download immediately (concurrent with any
-          // previous downloads still in flight).
+          // previous downloads still in flight). Attach a settle hook so the
+          // wait logic below can tell truly-pending downloads apart from
+          // already-resolved ones still queued behind workChain.
+          const trackSettled = (d: Download) => {
+            d.promise?.then(
+              () => {
+                d.settled = true;
+              },
+              () => {
+                d.settled = true;
+              },
+            );
+          };
           if (isNexusUrl(plan.entry.input)) {
             const fileIds =
               plan.chosenFileIds.length > 0 ? plan.chosenFileIds : [undefined];
             for (const fileId of fileIds) {
-              plan.downloads.push({
+              const download: Download = {
                 promise: addNexusMod(plan.entry.input, fileId),
-              });
+              };
+              trackSettled(download);
+              plan.downloads.push(download);
             }
           } else {
-            plan.downloads.push({ promise: addModIoMod(plan.entry.input) });
+            const download: Download = {
+              promise: addModIoMod(plan.entry.input),
+            };
+            trackSettled(download);
+            plan.downloads.push(download);
           }
           modAddQueueStore.markRunning(
             plan.entry.queueId,
@@ -468,14 +532,24 @@
         }
 
         // Queue drained. Determine what to wait for.
+        // Only truly-pending downloads count as in-flight: an already-settled
+        // download whose workChain turn hasn't come yet must NOT be raced on
+        // (racing a resolved promise resolves immediately and busy-loops,
+        // freezing progress rendering for the whole install).
         const inFlight = allPlans
           .flatMap((p) => p.downloads)
-          .filter((d) => !d.result && !d.failed)
+          .filter((d) => !d.settled && !d.result && !d.failed)
           .map((d) => d.promise!);
 
         if (inFlight.length > 0) {
           // Downloads still in flight - wait for any to complete or new items.
           await Promise.race([...inFlight, waitForWake()]);
+          if (disarmWake()) {
+            // Race settled via a download: the abandoned waiter is now
+            // disarmed, but yield to the event loop so Tauri progress events
+            // and UI get a chance to run before re-checking.
+            await new Promise((r) => setTimeout(r, 0));
+          }
           // If new items arrived, loop back to process them.
           continue;
         }
@@ -486,18 +560,29 @@
         );
         if (allDone && allPlans.length > 0) {
           await workChain;
+          // Re-check the queue before exiting: a late submit during the
+          // await above pushed items to pendingLinkQueue but saw
+          // isProcessingLinks still true and bailed out. If we set finished
+          // here those items would strand with nobody to drain them.
+          if (pendingLinkQueue.length > 0) {
+            continue;
+          }
           finished = true;
         } else if (allPlans.length === 0) {
           // First iteration with nothing queued yet.
           await waitForWake();
+          disarmWake();
         } else {
-          // Downloads done but installs pending - wait for work or new items.
+          // Downloads settled but installs pending - wait for work or new items.
           await Promise.race([workChain, waitForWake()]);
+          if (disarmWake()) {
+            await new Promise((r) => setTimeout(r, 0));
+          }
         }
       }
     } finally {
       isProcessingLinks = false;
-      wakeResolver = null;
+      disarmWake();
       dispatch("modAdded");
     }
   }

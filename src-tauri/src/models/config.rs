@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
+use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -30,11 +31,37 @@ pub enum CloseAction {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "lowercase")]
 pub enum MinimizeTarget {
     #[default]
     Taskbar,
     Tray,
+}
+
+/// Backend log verbosity. Maps directly to `log::LevelFilter`, is persisted in
+/// config.json, and is overridable at launch with the standard `RUST_LOG`
+/// environment variable (which wins over the stored setting).
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    Error,
+    Warn,
+    #[default]
+    Info,
+    Debug,
+    Trace,
+}
+
+impl From<LogLevel> for LevelFilter {
+    fn from(level: LogLevel) -> Self {
+        match level {
+            LogLevel::Error => LevelFilter::Error,
+            LogLevel::Warn => LevelFilter::Warn,
+            LogLevel::Info => LevelFilter::Info,
+            LogLevel::Debug => LevelFilter::Debug,
+            LogLevel::Trace => LevelFilter::Trace,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -89,6 +116,8 @@ pub struct AppConfig {
     pub optimization_enabled: bool,
     #[serde(default)]
     pub optimization_profile: Option<String>,
+    #[serde(default)]
+    pub log_level: LogLevel,
 }
 
 impl Default for AppConfig {
@@ -119,6 +148,7 @@ impl Default for AppConfig {
             setup_wizard_complete: false,
             optimization_enabled: false,
             optimization_profile: None,
+            log_level: LogLevel::Info,
         }
     }
 }

@@ -1471,8 +1471,12 @@
       prettyName: string | null;
       fileName: string;
       modUrl: string;
+      waitId?: number | null;
     }>("nexus_free_download_waiting", (event) => {
-      manualDownloadStore.add(event.payload);
+      manualDownloadStore.add({
+        ...event.payload,
+        waitId: event.payload.waitId ?? null,
+      });
     }).then((fn) => {
       unlistenFreeDownload = fn;
     });
