@@ -3,6 +3,7 @@ name: Flatpak
 on:
   push:
     branches: ["main"]
+    tags: ["v*"]
     paths:
       - "src-tauri/**"
       - "src/**"
@@ -18,9 +19,6 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/flatpak.yml"
-  push:
-    tags:
-      - "v*"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
