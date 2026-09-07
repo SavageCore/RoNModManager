@@ -1653,6 +1653,7 @@ pub struct AddNexusResult {
     pub file_pretty_name: Option<String>,
     pub content_hash: Option<String>,
     pub version: Option<String>,
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1713,6 +1714,15 @@ pub async fn add_nexus_mod(
 
     let source_url = format!("https://www.nexusmods.com/readyornot/mods/{}", mod_id);
     let archive_name = sanitize_filename_for_download(&expected_filename);
+    let game_info = nexus_service.get_game_info(&api_key).await.ok();
+    let category = nexus_api::resolve_nexus_category_name(
+        game_info
+            .as_ref()
+            .map(|g| g.categories.as_slice())
+            .unwrap_or_default(),
+        mod_info.category_id,
+        mod_info.category_name.as_deref(),
+    );
 
     let (install_path, content_hash) = if is_premium {
         // Premium: download directly via API without opening a browser
@@ -1958,6 +1968,7 @@ pub async fn add_nexus_mod(
         file_pretty_name,
         content_hash,
         version,
+        category,
     })
 }
 

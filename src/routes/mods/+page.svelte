@@ -23,6 +23,7 @@
     updateModDisplayName,
     updateModSourceUrl,
     getAddonMap,
+    getTags,
     setAddonMap,
     getBrokenMods,
     setModBroken,
@@ -1449,10 +1450,21 @@
       void refresh();
       void loadModUpdates();
     };
+    const handleTagsChanged = async () => {
+      if (!activeProfileName) return;
+      try {
+        const tags = await getTags();
+        activeProfileTags = tags;
+        allTagNames = Object.keys(tags).sort((a, b) => a.localeCompare(b));
+      } catch {
+        // non-fatal
+      }
+    };
 
     window.addEventListener("focus", handleAppFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("ron:metadata-refreshed", handleMetadataRefreshed);
+    window.addEventListener("ron:tags-changed", handleTagsChanged);
 
     let unlistenFreeDownload: (() => void) | null = null;
     void listen<{
@@ -1514,6 +1526,7 @@
         "ron:metadata-refreshed",
         handleMetadataRefreshed,
       );
+      window.removeEventListener("ron:tags-changed", handleTagsChanged);
       if (unlistenDragDrop) {
         unlistenDragDrop();
       }

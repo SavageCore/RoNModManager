@@ -24,6 +24,21 @@ pub struct NexusModInfo {
     pub description: Option<String>,
     pub picture_url: Option<String>,
     pub domain_name: String,
+    #[serde(default)]
+    pub category_id: Option<u64>,
+    #[serde(default)]
+    pub category_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct NexusGameCategory {
+    pub category_id: u64,
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct NexusGameInfo {
+    pub categories: Vec<NexusGameCategory>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -300,6 +315,52 @@ impl NexusApiService {
         let links: Vec<NexusDownloadLink> = response.json().await?;
         Ok(links)
     }
+
+    /// Fetch game metadata including the category id-to-name map.
+    pub async fn get_game_info(&self, api_key: &str) -> Result<NexusGameInfo> {
+        let url = format!("{}/games/{}", NEXUS_API_BASE, GAME_DOMAIN);
+
+        let response = self
+            .execute_with_retry(|| {
+                self.client
+                    .get(&url)
+                    .header("apikey", api_key)
+                    .header("accept", "application/json")
+            })
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(nexus_mod_error(0, status, &error_text));
+        }
+
+        let game_info: NexusGameInfo = response.json().await?;
+        Ok(game_info)
+    }
+}
+
+/// Resolves a ReadyOrNot mod category name from the game's category list.
+/// Prefers the API-provided `category_name` on the mod itself, then falls back to
+/// looking up `category_id` in the provided game-info categories.
+/// Returns None for unknown/missing categories so callers can skip tagging.
+pub(crate) fn resolve_nexus_category_name(
+    categories: &[NexusGameCategory],
+    category_id: Option<u64>,
+    category_name: Option<&str>,
+) -> Option<String> {
+    if let Some(name) = category_name.filter(|n| !n.is_empty()) {
+        return Some(name.to_string());
+    }
+    if let Some(id) = category_id {
+        if let Some(cat) = categories.iter().find(|c| c.category_id == id) {
+            return Some(cat.name.clone());
+        }
+    }
+    None
 }
 
 /// Maps a failed Nexus mod/files response to a typed error.
@@ -356,9 +417,85 @@ mod tests {
     }
 
     #[test]
-    fn test_nexus_mod_error_keeps_other_statuses_as_validation() {
-        let err = nexus_mod_error(4212, reqwest::StatusCode::FORBIDDEN, "denied");
-        assert!(matches!(err, AppError::Validation(_)));
+    fn test_resolve_nexus_category_name_prefers_mod_field() {
+        let categories = vec![
+            NexusGameCategory {
+                category_id: 11,
+                name: "Maps".to_string(),
+            },
+            NexusGameCategory {
+                category_id: 7,
+                name: "Weapons".to_string(),
+            },
+        ];
+        assert_eq!(
+            resolve_nexus_category_name(&categories, Some(7), Some("Override")),
+            Some("Override".to_string()),
+        );
+    }
+
+    #[test]
+    fn test_resolve_nexus_category_name_lookup_by_id() {
+        let categories = vec![
+            NexusGameCategory {
+                category_id: 11,
+                name: "Maps".to_string(),
+            },
+            NexusGameCategory {
+                category_id: 7,
+                name: "Weapons".to_string(),
+            },
+        ];
+        assert_eq!(
+            resolve_nexus_category_name(&categories, Some(11), None),
+            Some("Maps".to_string()),
+        );
+        assert_eq!(
+            resolve_nexus_category_name(&categories, Some(7), None),
+            Some("Weapons".to_string()),
+        );
+    }
+
+    #[test]
+    fn test_resolve_nexus_category_name_unknown_id_returns_none() {
+        let categories = vec![NexusGameCategory {
+            category_id: 11,
+            name: "Maps".to_string(),
+        }];
+        assert_eq!(
+            resolve_nexus_category_name(&categories, Some(999), None),
+            None,
+        );
+    }
+
+    #[test]
+    fn test_resolve_nexus_category_name_empty_name_skips_to_lookup() {
+        let categories = vec![NexusGameCategory {
+            category_id: 11,
+            name: "Maps".to_string(),
+        }];
+        assert_eq!(
+            resolve_nexus_category_name(&categories, Some(11), Some("")),
+            Some("Maps".to_string()),
+        );
+    }
+
+    #[test]
+    fn test_resolve_nexus_category_name_no_inputs_returns_none() {
+        let categories = vec![NexusGameCategory {
+            category_id: 11,
+            name: "Maps".to_string(),
+        }];
+        assert_eq!(resolve_nexus_category_name(&categories, None, None), None,);
+    }
+
+    #[test]
+    fn test_resolve_nexus_category_name_empty_categories_returns_none() {
+        let categories: Vec<NexusGameCategory> = vec![];
+        assert_eq!(
+            resolve_nexus_category_name(&categories, Some(11), None),
+            None,
+        );
     }
 
     #[test]

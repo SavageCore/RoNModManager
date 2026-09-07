@@ -4,9 +4,11 @@
     addNexusMod,
     fetchNexusModInfo,
     getArchivePakFiles,
+    getTags,
     installLocalMod,
     listNexusFileOptions,
     replaceModArchive,
+    setModTags,
     updateModDisplayName,
     updateModSourceUrl,
     updateNexusFileId,
@@ -368,7 +370,7 @@
                       "Installing...",
                     );
                     try {
-                      await installLocalMod(
+                      const installResult = await installLocalMod(
                         result.archivePath,
                         download.selectedPaks,
                         result.contentHash,
@@ -397,6 +399,11 @@
                           result.archiveName,
                         ).catch(() => {});
                       }
+                      await applyNexusCategoryTag(
+                        result.archiveName,
+                        result.category,
+                        installResult.wasDuplicate,
+                      );
                     } catch (error) {
                       modAddQueueStore.markError(
                         plan.entry.queueId,
@@ -435,6 +442,7 @@
                 : `Installed ${succeeded.length} of ${total} files`;
             modAddQueueStore.markDone(plan.entry.queueId, message);
             addModpackPanelStore.notifyModInstalled();
+            window.dispatchEvent(new CustomEvent("ron:tags-changed"));
           }),
         );
         await Promise.all(completions);
@@ -468,8 +476,23 @@
     }
   }
 
-  // Returns the user's pak selection, undefined (install all) if no choice needed,
-  // or null if the user cancelled. Pass queueId to update queue status while waiting.
+  async function applyNexusCategoryTag(
+    archiveName: string,
+    category: string | null | undefined,
+    wasDuplicate: boolean,
+  ): Promise<void> {
+    if (!category || wasDuplicate) return;
+    try {
+      const tags = await getTags();
+      const currentTags = Object.entries(tags)
+        .filter(([, mods]) => mods.includes(archiveName))
+        .map(([tag]) => tag);
+      if (currentTags.includes(category)) return;
+      await setModTags(archiveName, [...new Set([...currentTags, category])]);
+    } catch {
+      // Tagging is best-effort; never fail the install because of it.
+    }
+  }
   async function choosePaks(
     filePath: string,
     archiveName: string,
