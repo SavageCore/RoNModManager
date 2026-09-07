@@ -1,6 +1,6 @@
 npx lint-staged
 
-# Lint backend (Rust) when any src-tauri source files are staged
+# Fast backend lint: fmt check + clippy on lib/bins only (no --all-targets, no tests)
 if git diff --cached --name-only | grep -q '^src-tauri/'; then
   echo "🦀 Running cargo fmt check..."
   cargo fmt --manifest-path src-tauri/Cargo.toml -- --check || {
@@ -8,24 +8,9 @@ if git diff --cached --name-only | grep -q '^src-tauri/'; then
     exit 1
   }
 
-  echo "🦀 Running cargo clippy..."
-  cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings || {
+  echo "🦀 Running cargo clippy (lib + bins)..."
+  cargo clippy --manifest-path src-tauri/Cargo.toml --lib --bins -- -D warnings || {
     echo "❌ cargo clippy failed. Fix warnings above."
-    exit 1
-  }
-
-  echo "🦀 Running cargo test..."
-  cargo test --manifest-path src-tauri/Cargo.toml || {
-    echo "❌ cargo test failed. Fix failing tests above."
-    exit 1
-  }
-fi
-
-# Type-check frontend when any Svelte/TS/JS files are staged
-if git diff --cached --name-only | grep -qE '\.(svelte|ts|tsx|mts|cts|js|jsx|mjs|cjs)$'; then
-  echo "🔷 Running svelte-check..."
-  npm run check || {
-    echo "❌ svelte-check failed. Fix type errors above."
     exit 1
   }
 fi

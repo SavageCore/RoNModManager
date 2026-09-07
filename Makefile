@@ -5,11 +5,14 @@ FLATPAK_GPG_PUB      := packaging/flatpak/ronmodmanager-flatpak.gpg
 FLATPAK_LOCAL_REMOTE := ronmodmanager-local
 CARGO_MANIFEST   := src-tauri/Cargo.toml
 
-.PHONY: help install dev dev-xwayland build build-frontend release \
+# Use ccache for faster local rebuilds (set RUSTC_WRAPPER= to override)
+export RUSTC_WRAPPER := ccache
+
+.PHONY: help install dev dev-xwayland build build-fast build-frontend release \
         lint format check lint-frontend lint-backend fmt-backend clippy lint-all \
         test-frontend test-backend test \
         screenshots screenshots-build \
-        vendor flatpak-deps update-appstream flatpak-build flatpak-bundle flatpak-install flatpak-run flatpak \
+        vendor flatpak-deps update-appstream flatpak-build flatpak-build-clean flatpak-build-fast flatpak-bundle flatpak-install flatpak-run flatpak \
         clean watch
 
 help: ## Show available targets
@@ -28,18 +31,21 @@ vendor: src-tauri/vendor/.cargo-lock-stamp ## Vendor Cargo dependencies (auto-sk
 
 # ── Development ───────────────────────────────────────────────────────────────
 
-dev: vendor ## Run Tauri dev (Wayland-compatible, software rendering)
+dev: ## Run Tauri dev (Wayland-compatible, software rendering)
 	WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 npm run tauri dev
 
-dev-xwayland: vendor ## Run Tauri dev via XWayland (full window state persistence)
+dev-xwayland: ## Run Tauri dev via XWayland (full window state persistence)
 	GDK_BACKEND=x11 npm run tauri dev
 
 watch: dev ## Watch for changes and rebuild Tauri application
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
-build: vendor ## Build the full Tauri application
+build: ## Build the full Tauri application (release, bundles)
 	npm run tauri build
+
+build-fast: ## Build with fast profile, no bundles (iteration builds)
+	TAURI_BUNDLE_TARGETS=none npm run tauri -- build --no-bundle -- --profile release-fast
 
 build-frontend: ## Build only the Svelte frontend with Vite
 	npm run build
@@ -60,14 +66,14 @@ check: ## Run svelte-check for TypeScript/Svelte type checking
 
 lint-frontend: lint check ## Run all frontend lint checks (Prettier + svelte-check)
 
-lint-backend: vendor ## Run cargo fmt check + clippy on the Rust backend
+lint-backend: ## Run cargo fmt check + clippy on the Rust backend
 	cargo fmt --manifest-path $(CARGO_MANIFEST) -- --check
 	cargo clippy --manifest-path $(CARGO_MANIFEST) --all-targets --all-features -- -D warnings
 
 fmt-backend: ## Auto-format the Rust backend with cargo fmt
 	cargo fmt --manifest-path $(CARGO_MANIFEST)
 
-clippy: vendor ## Run cargo clippy on the Rust backend
+clippy: ## Run cargo clippy on the Rust backend
 	cargo clippy --manifest-path $(CARGO_MANIFEST) --all-targets --all-features -- -D warnings
 
 lint-all: lint-frontend lint-backend ## Run all linters (frontend + backend)
@@ -79,7 +85,7 @@ format-all: format fmt-backend ## Auto-format all code (frontend + backend)
 test-frontend: ## Run Vitest unit tests
 	npm run test:unit
 
-test-backend: vendor ## Run Rust tests with cargo test
+test-backend: ## Run Rust tests with cargo test
 	cargo test --manifest-path $(CARGO_MANIFEST)
 
 test: test-frontend test-backend ## Run all tests (frontend + backend)
@@ -91,7 +97,7 @@ screenshot: screenshots ## Take light + dark screenshots
 screenshots: ## Take light + dark screenshots (rebuild with make screenshots-build if Rust changed)
 	node scripts/take-screenshots.mjs
 
-screenshots-build: vendor ## Build debug binary then take screenshots (run after Rust changes)
+screenshots-build: ## Build debug binary then take screenshots (run after Rust changes)
 	cargo build --manifest-path $(CARGO_MANIFEST)
 	node scripts/take-screenshots.mjs
 
@@ -113,8 +119,15 @@ flatpak-deps: ## Install Flatpak runtimes and SDK extensions (run once)
 		org.freedesktop.Sdk.Extension.node24//25.08 \
 		org.freedesktop.Sdk.Extension.rust-stable//25.08
 
-flatpak-build: ## Build Flatpak from local repo (run vendor first)
+flatpak-build-clean: ## Build Flatpak from scratch (run vendor first)
 	flatpak-builder --force-clean --delete-build-dirs --user --install-deps-from=flathub \
+		--gpg-sign=$(FLATPAK_GPG_KEY) \
+		--repo=flatpak-repo build-dir $(FLATPAK_MANIFEST)
+
+flatpak-build: vendor flatpak-build-clean ## Build Flatpak from local repo (run vendor first)
+
+flatpak-build-fast: ## Build Flatpak incrementally (keeps build dirs, uses ccache)
+	flatpak-builder --user --keep-build-dirs --ccache --install-deps-from=flathub \
 		--gpg-sign=$(FLATPAK_GPG_KEY) \
 		--repo=flatpak-repo build-dir $(FLATPAK_MANIFEST)
 
@@ -135,7 +148,7 @@ flatpak-install: ## Install the locally built Flatpak via a local OSTree remote
 flatpak-run: ## Run the installed Flatpak
 	flatpak run $(FLATPAK_ID)
 
-flatpak: vendor flatpak-build flatpak-install ## Full local Flatpak pipeline (vendor → build → install)
+flatpak: vendor flatpak-build-clean flatpak-install ## Full local Flatpak pipeline (vendor → build → install)
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
 

@@ -1,0 +1,24 @@
+# Heavy checks run before push (not on every commit)
+echo "🦀 Running full cargo clippy (--all-targets, --all-features)..."
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings || {
+  echo "❌ cargo clippy failed. Fix warnings above."
+  exit 1
+}
+
+echo "🦀 Running cargo test..."
+cargo test --manifest-path src-tauri/Cargo.toml || {
+  echo "❌ cargo test failed. Fix failing tests above."
+  exit 1
+}
+
+echo "🔷 Running svelte-check..."
+npm run check || {
+  echo "❌ svelte-check failed. Fix type errors above."
+  exit 1
+}
+
+echo "🧪 Running unit tests..."
+npm run test:unit || {
+  echo "❌ unit tests failed. Fix failing tests above."
+  exit 1
+}
