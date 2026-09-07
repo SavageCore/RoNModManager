@@ -1687,7 +1687,14 @@
 {#if $manualDownloadStore.pendingFiles.length > 0 && !$manualDownloadStore.dismissed}
   <NexusFreeDownloadModal
     downloads={$manualDownloadStore.pendingFiles}
+    pickerActive={$nexusFileSelectionStore !== null ||
+      $pakSelectionStore !== null}
     on:close={() => manualDownloadStore.dismiss()}
+    on:addmore={() => {
+      manualDownloadStore.dismiss();
+      autoSubmitEntries = [];
+      showAddModModal = true;
+    }}
   />
 {/if}
 

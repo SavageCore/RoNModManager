@@ -11,7 +11,9 @@
     modUrl: string;
   }> = [];
 
-  const dispatch = createEventDispatcher<{ close: void }>();
+  export let pickerActive = false;
+
+  const dispatch = createEventDispatcher<{ close: void; addmore: void }>();
 
   let downloadsPath: string | null = null;
 
@@ -90,7 +92,14 @@
     >.
   </p>
 
-  <div class="flex justify-end">
-    <button on:click={() => dispatch("close")} class="btn">Close</button>
+  <div class="flex justify-end gap-2">
+    <button on:click={() => dispatch("close")} class="btn"> Close </button>
+    <button
+      on:click={() => dispatch("addmore")}
+      disabled={pickerActive}
+      class="btn primary"
+    >
+      Add more
+    </button>
   </div>
 </ModalShell>

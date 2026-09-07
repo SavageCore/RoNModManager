@@ -179,6 +179,7 @@
     // Close immediately - progress is visible in the bottom bar
     closeModal();
 
+    wakeWorker();
     void processQueue();
   }
 
@@ -199,7 +200,22 @@
       });
     }
     closeModal();
+    wakeWorker();
     void processQueue();
+  }
+
+  // Resolves current wait so newly queued items are picked up immediately.
+  let wakeResolver: (() => void) | null = null;
+  function waitForWake(): Promise<void> {
+    return new Promise((resolve) => {
+      wakeResolver = resolve;
+    });
+  }
+  function wakeWorker() {
+    if (wakeResolver) {
+      wakeResolver();
+      wakeResolver = null;
+    }
   }
 
   async function processQueue() {
@@ -208,98 +224,111 @@
 
     isProcessingLinks = true;
     try {
-      while (pendingLinkQueue.length > 0) {
-        type Download = {
-          promise?:
-            ReturnType<typeof addNexusMod> | ReturnType<typeof addModIoMod>;
-          result?:
-            | Awaited<ReturnType<typeof addNexusMod>>
-            | Awaited<ReturnType<typeof addModIoMod>>;
-          selectedPaks?: string[];
-          failed?: boolean;
+      type Download = {
+        promise?:
+          ReturnType<typeof addNexusMod> | ReturnType<typeof addModIoMod>;
+        result?:
+          | Awaited<ReturnType<typeof addNexusMod>>
+          | Awaited<ReturnType<typeof addModIoMod>>;
+        selectedPaks?: string[];
+        failed?: boolean;
+      };
+      type Plan = {
+        entry: {
+          input: string;
+          queueId: string;
+          replacingArchiveName?: string;
+          displayName?: string;
         };
-        type Plan = {
-          entry: {
-            input: string;
-            queueId: string;
-            replacingArchiveName?: string;
-            displayName?: string;
+        chosenFileIds: number[];
+        downloads: Download[];
+        failed?: boolean;
+      };
+      const allPlans: Plan[] = [];
+
+      // Serialises post-download work (PAK picker + install) so prompts never
+      // stack and installs don't race each other - while the downloads
+      // themselves keep running concurrently in the background.
+      let workChain: Promise<void> = Promise.resolve();
+
+      // Phase 1 serialisation: Nexus file-variant prompts must not overlap.
+      let interactionChain: Promise<void> = Promise.resolve();
+      const withInteractionLock = <T,>(fn: () => Promise<T>): Promise<T> => {
+        const run = interactionChain.then(fn, fn);
+        interactionChain = run.then(
+          () => undefined,
+          () => undefined,
+        );
+        return run;
+      };
+
+      // Single loop: process queued items, then wait for work, waking
+      // immediately when new items arrive so their Phase 1 + browser tab
+      // start promptly.
+      let finished = false;
+      while (!finished) {
+        // Drain the queue, kicking off each download as we go.
+        while (pendingLinkQueue.length > 0) {
+          const entry = pendingLinkQueue.shift()!;
+          const plan: Plan = {
+            entry,
+            chosenFileIds: [],
+            downloads: [],
+            failed: false,
           };
-          chosenFileIds: number[];
-          downloads: Download[];
-          installFutures: Promise<void>[];
-          failed?: boolean;
-        };
-        const plans: Plan[] = pendingLinkQueue.splice(0).map((e) => ({
-          entry: e,
-          chosenFileIds: [],
-          downloads: [],
-          installFutures: [],
-        }));
+          allPlans.push(plan);
 
-        // Phase 1: Ask all Nexus file variant questions before downloading anything
-        for (const plan of plans) {
-          if (!isNexusUrl(plan.entry.input)) continue;
-          try {
-            modAddQueueStore.markRunning(
-              plan.entry.queueId,
-              "Checking available files...",
-            );
-            const fileOptions = await listNexusFileOptions(plan.entry.input);
-            let chosenFileIds: number[] = [];
-            if (fileOptions.length > 1) {
-              modAddQueueStore.markRunning(
-                plan.entry.queueId,
-                "Select file variant...",
-              );
-              importLogStore.setWaitingForInput(plan.entry.queueId);
-              const chosen = await requestNexusFileSelection(
-                plan.entry.displayName || nexusPreviewName || plan.entry.input,
-                fileOptions,
-              );
-              importLogStore.clearWaitingForInput(plan.entry.queueId);
-              if (chosen === null) {
-                modAddQueueStore.markError(plan.entry.queueId, "Cancelled");
-                plan.failed = true;
-                continue;
+          // Phase 1: Ask Nexus file variant questions before downloading.
+          // Serialised so prompts never overlap.
+          if (isNexusUrl(plan.entry.input)) {
+            try {
+              const fileOptions = await withInteractionLock(async () => {
+                modAddQueueStore.markRunning(
+                  plan.entry.queueId,
+                  "Checking available files...",
+                );
+                return listNexusFileOptions(plan.entry.input);
+              });
+              let chosenFileIds: number[] = [];
+              if (fileOptions.length > 1) {
+                const chosen = await withInteractionLock(async () => {
+                  modAddQueueStore.markRunning(
+                    plan.entry.queueId,
+                    "Select file variant...",
+                  );
+                  importLogStore.setWaitingForInput(plan.entry.queueId);
+                  const result = await requestNexusFileSelection(
+                    plan.entry.displayName ||
+                      nexusPreviewName ||
+                      plan.entry.input,
+                    fileOptions,
+                  );
+                  importLogStore.clearWaitingForInput(plan.entry.queueId);
+                  return result;
+                });
+                if (chosen === null) {
+                  modAddQueueStore.markError(plan.entry.queueId, "Cancelled");
+                  plan.failed = true;
+                  continue;
+                }
+                chosenFileIds = chosen.map((f) => f.fileId);
+              } else if (fileOptions.length === 1) {
+                chosenFileIds = [fileOptions[0].fileId];
               }
-              chosenFileIds = chosen.map((f) => f.fileId);
-            } else if (fileOptions.length === 1) {
-              chosenFileIds = [fileOptions[0].fileId];
+              plan.chosenFileIds = chosenFileIds;
+              modAddQueueStore.markRunning(plan.entry.queueId, "Queued");
+            } catch (error) {
+              modAddQueueStore.markError(
+                plan.entry.queueId,
+                `Failed: ${String(error)}`,
+              );
+              plan.failed = true;
+              continue;
             }
-            plan.chosenFileIds = chosenFileIds;
-            modAddQueueStore.markRunning(plan.entry.queueId, "Queued");
-          } catch (error) {
-            modAddQueueStore.markError(
-              plan.entry.queueId,
-              `Failed: ${String(error)}`,
-            );
-            plan.failed = true;
           }
-        }
 
-        // Serialises post-download work (PAK picker + install) so prompts never
-        // stack and installs don't race each other - while the downloads
-        // themselves keep running concurrently in the background.
-        let workChain: Promise<void> = Promise.resolve();
-        function enqueueWork<T>(fn: () => Promise<T>): Promise<T> {
-          const run = workChain.then(fn, fn);
-          workChain = run.then(
-            () => undefined,
-            () => undefined,
-          );
-          return run;
-        }
-
-        // Phase 2: Download all mods. Kick every download off before awaiting any of
-        // them, so N Nexus mods open N browser tabs together instead of waiting for
-        // each free-account download to land before starting the next.
-        // ponytail: concurrent premium downloads share one footer progress bar and
-        // will interleave their percentages - same as AddModpackPanel's import flow
-        // already does. Upgrade path: branch on checkNexusPremium() and keep premium
-        // serial if that ever actually bothers someone.
-        for (const plan of plans) {
-          if (plan.failed) continue;
+          // Phase 2: Kick off download immediately (concurrent with any
+          // previous downloads still in flight).
           if (isNexusUrl(plan.entry.input)) {
             const fileIds =
               plan.chosenFileIds.length > 0 ? plan.chosenFileIds : [undefined];
@@ -317,102 +346,85 @@
               ? "Waiting for download..."
               : "Starting...",
           );
-        }
 
-        // Phases 3+4, pipelined per download: the moment an archive lands it is
-        // PAK-checked (if needed) and installed, while the remaining downloads
-        // are still in flight. No more waiting for the whole queue to finish
-        // downloading before anything installs.
-        for (const plan of plans) {
-          if (plan.failed) continue;
+          // Phases 3+4: Pipelined PAK-check + install, serial via workChain.
+          // Track this plan's install futures so we can mark it done the
+          // moment its own work finishes, without waiting for other plans.
+          const installFutures: Promise<void>[] = [];
           for (const download of plan.downloads) {
-            plan.installFutures.push(
-              (async () => {
-                if (!download.promise) return;
-                try {
-                  download.result = await download.promise;
-                } catch (error) {
-                  const msg = String(error);
-                  if (msg.includes("CANCELLED:")) {
-                    modAddQueueStore.markError(plan.entry.queueId, "Cancelled");
-                    importLogStore.clear();
-                  } else {
-                    modAddQueueStore.markError(
-                      plan.entry.queueId,
-                      `Failed: ${msg}`,
-                    );
-                  }
+            const future = workChain.then(async () => {
+              if (!download.promise) return;
+              try {
+                download.result = await download.promise;
+              } catch (error) {
+                const msg = String(error);
+                if (msg.includes("CANCELLED:")) {
+                  modAddQueueStore.markError(plan.entry.queueId, "Cancelled");
+                  importLogStore.clear();
+                } else {
+                  modAddQueueStore.markError(
+                    plan.entry.queueId,
+                    `Failed: ${msg}`,
+                  );
+                }
+                download.failed = true;
+                plan.failed = true;
+                return;
+              }
+              try {
+                const result = download.result;
+                if (download.failed || !result) return;
+                const selectedPaks = await choosePaks(
+                  result.archivePath,
+                  result.archiveName,
+                  plan.entry.queueId,
+                );
+                if (selectedPaks === null) {
+                  modAddQueueStore.markError(plan.entry.queueId, "Cancelled");
                   download.failed = true;
-                  plan.failed = true;
                   return;
                 }
+                download.selectedPaks = selectedPaks ?? undefined;
+                importLogStore.setCurrentMod(plan.entry.queueId);
+                modAddQueueStore.markRunning(
+                  plan.entry.queueId,
+                  "Installing...",
+                );
                 try {
-                  await enqueueWork(async () => {
-                    const result = download.result;
-                    if (download.failed || !result) return;
-                    const selectedPaks = await choosePaks(
-                      result.archivePath,
+                  const installResult = await installLocalMod(
+                    result.archivePath,
+                    download.selectedPaks,
+                    result.contentHash,
+                  );
+                  await updateModDisplayName(
+                    result.archiveName,
+                    result.name,
+                  ).catch(() => {});
+                  await updateModSourceUrl(
+                    result.archiveName,
+                    result.sourceUrl,
+                    result.version,
+                  ).catch(() => {});
+                  if (result.fileId != null) {
+                    await updateNexusFileId(
                       result.archiveName,
-                      plan.entry.queueId,
-                    );
-                    if (selectedPaks === null) {
-                      modAddQueueStore.markError(
-                        plan.entry.queueId,
-                        "Cancelled",
-                      );
-                      download.failed = true;
-                      return;
-                    }
-                    download.selectedPaks = selectedPaks ?? undefined;
-                    importLogStore.setCurrentMod(plan.entry.queueId);
-                    modAddQueueStore.markRunning(
-                      plan.entry.queueId,
-                      "Installing...",
-                    );
-                    try {
-                      const installResult = await installLocalMod(
-                        result.archivePath,
-                        download.selectedPaks,
-                        result.contentHash,
-                      );
-                      await updateModDisplayName(
-                        result.archiveName,
-                        result.name,
-                      ).catch(() => {});
-                      await updateModSourceUrl(
-                        result.archiveName,
-                        result.sourceUrl,
-                        result.version,
-                      ).catch(() => {});
-                      if (result.fileId != null) {
-                        await updateNexusFileId(
-                          result.archiveName,
-                          result.fileId,
-                        ).catch(() => {});
-                      }
-                      if (
-                        plan.entry.replacingArchiveName &&
-                        plan.entry.replacingArchiveName !== result.archiveName
-                      ) {
-                        await replaceModArchive(
-                          plan.entry.replacingArchiveName,
-                          result.archiveName,
-                        ).catch(() => {});
-                      }
-                      await applyNexusCategoryTag(
-                        result.archiveName,
-                        result.category,
-                        installResult.wasDuplicate,
-                      );
-                    } catch (error) {
-                      modAddQueueStore.markError(
-                        plan.entry.queueId,
-                        `Failed: ${String(error)}`,
-                      );
-                      download.failed = true;
-                      plan.failed = true;
-                    }
-                  });
+                      result.fileId,
+                    ).catch(() => {});
+                  }
+                  if (
+                    plan.entry.replacingArchiveName &&
+                    plan.entry.replacingArchiveName !== result.archiveName
+                  ) {
+                    await replaceModArchive(
+                      plan.entry.replacingArchiveName,
+                      result.archiveName,
+                    ).catch(() => {});
+                  }
+                  await applyNexusCategoryTag(
+                    result.archiveName,
+                    result.category,
+                    installResult.wasDuplicate,
+                  );
                 } catch (error) {
                   modAddQueueStore.markError(
                     plan.entry.queueId,
@@ -421,15 +433,24 @@
                   download.failed = true;
                   plan.failed = true;
                 }
-              })(),
+              } catch (error) {
+                modAddQueueStore.markError(
+                  plan.entry.queueId,
+                  `Failed: ${String(error)}`,
+                );
+                download.failed = true;
+                plan.failed = true;
+              }
+            });
+            installFutures.push(future);
+            workChain = future.then(
+              () => undefined,
+              () => undefined,
             );
           }
-        }
-        // Finalize each plan the moment its own downloads and installs are
-        // finished, so queue rows tick green individually instead of all at
-        // once when the whole batch completes.
-        const completions = plans.map((plan) =>
-          Promise.all(plan.installFutures).then(() => {
+
+          // Mark this plan done as soon as all its installs finish.
+          void Promise.all(installFutures).then(() => {
             if (plan.failed) return;
             const succeeded = plan.downloads.filter(
               (d) => d.result && !d.failed,
@@ -443,12 +464,40 @@
             modAddQueueStore.markDone(plan.entry.queueId, message);
             addModpackPanelStore.notifyModInstalled();
             window.dispatchEvent(new CustomEvent("ron:tags-changed"));
-          }),
+          });
+        }
+
+        // Queue drained. Determine what to wait for.
+        const inFlight = allPlans
+          .flatMap((p) => p.downloads)
+          .filter((d) => !d.result && !d.failed)
+          .map((d) => d.promise!);
+
+        if (inFlight.length > 0) {
+          // Downloads still in flight - wait for any to complete or new items.
+          await Promise.race([...inFlight, waitForWake()]);
+          // If new items arrived, loop back to process them.
+          continue;
+        }
+
+        // All downloads landed. Wait for installs to finish or new items.
+        const allDone = allPlans.every((p) =>
+          p.downloads.every((d) => d.result || d.failed),
         );
-        await Promise.all(completions);
+        if (allDone && allPlans.length > 0) {
+          await workChain;
+          finished = true;
+        } else if (allPlans.length === 0) {
+          // First iteration with nothing queued yet.
+          await waitForWake();
+        } else {
+          // Downloads done but installs pending - wait for work or new items.
+          await Promise.race([workChain, waitForWake()]);
+        }
       }
     } finally {
       isProcessingLinks = false;
+      wakeResolver = null;
       dispatch("modAdded");
     }
   }
