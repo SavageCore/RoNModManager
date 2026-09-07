@@ -75,6 +75,19 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: ${{ matrix.os }}-release
+
+      - name: Cache apt packages (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libglib2.0-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+          version: 1.0
+
       - name: Install system dependencies (Linux)
         if: matrix.os == 'ubuntu-22.04'
         run: |
@@ -94,7 +107,7 @@ jobs:
 
   flatpak:
     needs: create-release
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
@@ -130,6 +143,26 @@ jobs:
           cache: npm
       - run: npm ci
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Flatpak runtimes
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/flatpak
+            /var/lib/flatpak
+          key: flatpak-runtimes-release-${{ hashFiles('packaging/flatpak/uk.savagecore.ronmodmanager.yml') }}
+          restore-keys: |
+            flatpak-runtimes-release-
+
+      - name: Cache Flatpak builder state
+        uses: actions/cache@v4
+        with:
+          path: |
+            .flatpak-builder/
+          key: flatpak-builder-release-${{ hashFiles('packaging/flatpak/uk.savagecore.ronmodmanager.yml') }}-${{ github.sha }}
+          restore-keys: |
+            flatpak-builder-release-${{ hashFiles('packaging/flatpak/uk.savagecore.ronmodmanager.yml') }}-
+
       - run: |
           cd src-tauri
           mkdir -p .cargo vendor

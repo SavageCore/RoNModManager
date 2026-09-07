@@ -1,0 +1,105 @@
+name: Flatpak
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "src-tauri/**"
+      - "src/**"
+      - "packaging/flatpak/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/flatpak.yml"
+  pull_request:
+    paths:
+      - "src-tauri/**"
+      - "src/**"
+      - "packaging/flatpak/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/flatpak.yml"
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flatpak:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Vendor Cargo dependencies
+        run: |
+          cd src-tauri
+          mkdir -p .cargo vendor
+          cargo vendor vendor
+          cat <<EOF > .cargo/config.toml
+          [source.crates-io]
+          replace-with = "vendored-sources"
+
+          [source.vendored-sources]
+          directory = "vendor"
+          EOF
+
+      - name: Cache Flatpak runtimes
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/flatpak
+            /var/lib/flatpak
+          key: flatpak-runtimes-${{ hashFiles('packaging/flatpak/uk.savagecore.ronmodmanager.yml') }}
+          restore-keys: |
+            flatpak-runtimes-
+
+      - name: Cache Flatpak builder state
+        uses: actions/cache@v4
+        with:
+          path: |
+            .flatpak-builder/
+          key: flatpak-builder-${{ hashFiles('packaging/flatpak/uk.savagecore.ronmodmanager.yml') }}-${{ github.sha }}
+          restore-keys: |
+            flatpak-builder-${{ hashFiles('packaging/flatpak/uk.savagecore.ronmodmanager.yml') }}-
+
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder appstream-compose
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.node24//25.08
+          # org.freedesktop.Sdk.Extension.rust-stable//25.08 HEAD is currently broken upstream
+          # (missing objects -> HTTP 404 on pull); fall back to last known good publish.
+          GOOD_COMMIT=385427f6dabe6d297cced114496cfa6e38bb93fe4c6fbee7fdabb97dd141d29a
+          if flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//25.08; then
+            exit 0
+          fi
+          echo "::warning::Flathub pull failed; installing rust-stable//25.08 from known good commit ${GOOD_COMMIT}"
+          sudo apt-get install -y ostree
+          ostree --repo=rust-stable-repo init --mode=archive-z2
+          ostree --repo=rust-stable-repo remote add --no-gpg-verify origin https://dl.flathub.org/repo/
+          ostree --repo=rust-stable-repo pull origin "${GOOD_COMMIT}"
+          ostree --repo=rust-stable-repo refs --create=runtime/org.freedesktop.Sdk.Extension.rust-stable/x86_64/25.08 "${GOOD_COMMIT}"
+          flatpak build-bundle --runtime rust-stable-repo rust-stable.flatpak org.freedesktop.Sdk.Extension.rust-stable 25.08
+          flatpak install --user -y --bundle rust-stable.flatpak
+
+      - name: Build Flatpak
+        run: |
+          flatpak-builder --user --keep-build-dirs --ccache --repo=flatpak-repo build-dir packaging/flatpak/uk.savagecore.ronmodmanager.yml
+          flatpak build-bundle flatpak-repo ronmodmanager.flatpak uk.savagecore.ronmodmanager master
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ronmodmanager-flatpak
+          path: ronmodmanager.flatpak
