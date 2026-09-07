@@ -2,6 +2,7 @@
   import { cancelNexusDownload } from "$lib/api/commands";
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import { importLogStore } from "$lib/stores/importLogStore";
+  import { manualDownloadStore } from "$lib/stores/manualDownloadStore";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { operationStatusStore } from "$lib/stores/operationStatus";
   import { infoLogStore } from "$lib/stores/infoLogStore";
@@ -253,6 +254,16 @@
   style="background: var(--clr-surface); border-top: 1px solid var(--adw-border-color);"
   class="h-9 px-3 flex items-center text-xs gap-4"
 >
+  {#if $manualDownloadStore.dismissed && $manualDownloadStore.pendingFiles.length > 0}
+    <button
+      on:click={() => manualDownloadStore.reopen()}
+      class="shrink-0 text-xs px-2 py-0.5 rounded flex items-center gap-1"
+      style="color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 40%, transparent); background: color-mix(in srgb, var(--clr-primary-300) 10%, transparent); cursor: pointer;"
+      title="Show manual download files"
+    >
+      Manual download ({$manualDownloadStore.pendingFiles.length})
+    </button>
+  {/if}
   {#if $importLogStore.mods.length > 0 || activeQueue.length > 0}
     <button
       on:click={() => importLogStore.toggle()}

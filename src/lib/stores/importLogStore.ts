@@ -6,7 +6,7 @@ export interface ImportLogMod {
   id: string;
   input: string;
   lines: string[];
-  status: "running" | "done" | "error";
+  status: "queued" | "running" | "done" | "error";
   isActive: boolean;
   expanded: boolean;
   awaitingInput: boolean;
@@ -48,14 +48,35 @@ function createImportLogStore() {
     for (const item of state.items) {
       const prev = prevStatuses.get(item.id);
       if (prev !== item.status) {
-        if (item.status === "running") {
+        if (item.status === "queued") {
+          update((s) => {
+            if (s.mods.some((m) => m.id === item.id)) return s;
+            return {
+              ...s,
+              mods: [
+                ...s.mods,
+                {
+                  id: item.id,
+                  input: item.input,
+                  lines: [],
+                  status: "queued",
+                  isActive: false,
+                  expanded: true,
+                  awaitingInput: false,
+                },
+              ],
+            };
+          });
+        } else if (item.status === "running") {
           currentModId = item.id;
           seenLabels.clear();
           update((s) => ({
             ...s,
             isOpen: true,
             mods: [
-              ...s.mods.map((m) => ({ ...m, isActive: false })),
+              ...s.mods
+                .filter((m) => m.id !== item.id)
+                .map((m) => ({ ...m, isActive: false })),
               {
                 id: item.id,
                 input: item.input,

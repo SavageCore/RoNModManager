@@ -13,7 +13,9 @@
     m.input,
     ...m.lines,
   ]);
-  $: isRunning = $importLogStore.mods.some((m) => m.status === "running");
+  $: isRunning = $importLogStore.mods.some(
+    (m) => m.status === "running" || m.status === "queued",
+  );
 </script>
 
 <LogPanel

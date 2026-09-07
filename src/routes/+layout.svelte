@@ -3,6 +3,7 @@
   import { page } from "$app/stores";
   import {
     applyProfile,
+    cancelNexusDownload,
     checkForUpdate,
     detectGamePath,
     fetchModpackJson,
@@ -112,6 +113,7 @@
   let askedClosePreference = false;
   let showClosePreferenceDialog = false;
   let showCloseWhileRunningDialog = false;
+  let showCloseManualDownloadDialog = false;
   let showSetupWizard = false;
   let closingFromLaunch = false;
   let forceClose = false;
@@ -642,7 +644,14 @@
         }
         if ($importLogStore.mods.some((m) => m.status === "running")) {
           event.preventDefault();
-          showCloseWhileRunningDialog = true;
+          if (
+            $operationStatusStore.operation.includes("download") &&
+            $operationStatusStore.message.includes("Waiting for")
+          ) {
+            showCloseManualDownloadDialog = true;
+          } else {
+            showCloseWhileRunningDialog = true;
+          }
           return;
         }
         if (!askedClosePreference) {
@@ -861,7 +870,21 @@
     confirmLabel="Close anyway"
     onConfirm={() => void handleForceClose()}
     onCancel={() => {
-      showClosePreferenceDialog = false;
+      showCloseWhileRunningDialog = false;
+    }}
+  />
+
+  <ConfirmModal
+    isVisible={showCloseManualDownloadDialog}
+    title="Waiting for manual download"
+    message="A mod is waiting for you to download it from your browser. Cancel the download and close the app?"
+    confirmLabel="Cancel download and close"
+    onConfirm={() => {
+      showCloseManualDownloadDialog = false;
+      void cancelNexusDownload().then(() => void handleForceClose());
+    }}
+    onCancel={() => {
+      showCloseManualDownloadDialog = false;
     }}
   />
 

@@ -170,6 +170,7 @@
   } from "@tauri-apps/api/menu";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
   import { importLogStore } from "$lib/stores/importLogStore";
+  import { manualDownloadStore } from "$lib/stores/manualDownloadStore";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { modSortOrder } from "$lib/stores/modSortOrder";
   import { showBroken } from "$lib/stores/showBroken";
@@ -280,11 +281,6 @@
     prevModInstalledCounter = $addModpackPanelStore.modInstalledCounter;
     void refreshModList();
   }
-  let nexusFreeDownloads: Array<{
-    prettyName: string | null;
-    fileName: string;
-    modUrl: string;
-  }> = [];
   let confirmModal: {
     isVisible: boolean;
     title: string;
@@ -1464,11 +1460,7 @@
       fileName: string;
       modUrl: string;
     }>("nexus_free_download_waiting", (event) => {
-      if (
-        !nexusFreeDownloads.some((d) => d.fileName === event.payload.fileName)
-      ) {
-        nexusFreeDownloads = [...nexusFreeDownloads, event.payload];
-      }
+      manualDownloadStore.add(event.payload);
     }).then((fn) => {
       unlistenFreeDownload = fn;
     });
@@ -1477,9 +1469,7 @@
     void listen<{ fileName: string }>(
       "nexus_free_download_complete",
       (event) => {
-        nexusFreeDownloads = nexusFreeDownloads.filter(
-          (d) => d.fileName !== event.payload.fileName,
-        );
+        manualDownloadStore.remove(event.payload.fileName);
       },
     ).then((fn) => {
       unlistenFreeDownloadComplete = fn;
@@ -1681,12 +1671,10 @@
   />
 {/if}
 
-{#if nexusFreeDownloads.length > 0}
+{#if $manualDownloadStore.pendingFiles.length > 0 && !$manualDownloadStore.dismissed}
   <NexusFreeDownloadModal
-    downloads={nexusFreeDownloads}
-    on:close={() => {
-      nexusFreeDownloads = [];
-    }}
+    downloads={$manualDownloadStore.pendingFiles}
+    on:close={() => manualDownloadStore.dismiss()}
   />
 {/if}
 
