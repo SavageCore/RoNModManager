@@ -24,7 +24,7 @@ install: ## Install npm dependencies
 	npm install
 
 src-tauri/vendor/.cargo-lock-stamp: src-tauri/Cargo.lock
-	cd src-tauri && cargo vendor vendor
+	cd src-tauri && cargo vendor vendor > .cargo/config.toml
 	@touch $@
 
 vendor: src-tauri/vendor/.cargo-lock-stamp ## Vendor Cargo dependencies (auto-skipped if Cargo.lock unchanged)

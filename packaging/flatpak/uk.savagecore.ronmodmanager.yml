@@ -80,8 +80,12 @@ modules:
     buildsystem: simple
     build-commands:
       - >-
+        mkdir -p src-tauri/.cargo &&
+        printf '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "vendor"\n' > src-tauri/.cargo/config.toml
+      - >-
         export CARGO_HOME="$PWD/.cargo-home" &&
         export CARGO_TARGET_DIR="$PWD/src-tauri/target" &&
+        export CARGO_NET_OFFLINE=true &&
         npm run tauri build -- --no-bundle
       - install -Dm755 src-tauri/target/release/ronmodmanager /app/bin/ronmodmanager
       - install -Dm644 packaging/flatpak/uk.savagecore.ronmodmanager.desktop /app/share/applications/uk.savagecore.ronmodmanager.desktop
@@ -97,8 +101,5 @@ modules:
       - type: dir
         path: ../../src-tauri/vendor
         dest: src-tauri/vendor
-      - type: file
-        path: ../../src-tauri/.cargo/config.toml
-        dest: src-tauri/.cargo
       - type: dir
         path: ../..
