@@ -143,7 +143,8 @@ flatpak-install: ## Install the locally built Flatpak via a local OSTree remote
 	flatpak remote-modify --user --no-gpg-verify \
 		--url="file://$(CURDIR)/flatpak-repo" \
 		$(FLATPAK_LOCAL_REMOTE)
-	flatpak install --user --reinstall -y $(FLATPAK_LOCAL_REMOTE) $(FLATPAK_ID)
+	-flatpak uninstall --user -y $(FLATPAK_ID)
+	flatpak install --user -y $(FLATPAK_LOCAL_REMOTE) $(FLATPAK_ID)
 
 flatpak-run: ## Run the installed Flatpak
 	flatpak run $(FLATPAK_ID)
