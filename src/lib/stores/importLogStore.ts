@@ -12,30 +12,6 @@ export interface ImportLogMod {
   awaitingInput: boolean;
 }
 
-// Backend log level mirrored for the Import Log. When "debug" or "trace",
-// phase transitions include archive names + byte totals so the saved log
-// captures what the footer flickered past. Set via setLogLevel(), typically
-// from the Settings page after hydrating the config.
-let currentLogLevel = "info";
-
-const VERBOSE_LEVELS = new Set(["debug", "trace"]);
-
-export function setLogLevel(level: string): void {
-  currentLogLevel = level;
-}
-
-function formatBytes(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "0 B";
-  const units = ["B", "KiB", "MiB", "GiB"];
-  let size = value;
-  let i = 0;
-  while (size >= 1024 && i < units.length - 1) {
-    size /= 1024;
-    i += 1;
-  }
-  return `${size.toFixed(size >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
-}
-
 interface ImportLogState {
   mods: ImportLogMod[];
   isOpen: boolean;
@@ -117,6 +93,9 @@ function createImportLogStore() {
             currentModId = null;
             seenLabels.clear();
           }
+          // Preserve accumulated phase lines and append the completion
+          // message, instead of replacing lines with just the message.
+          // Collapse the entry on completion so the log stays tidy.
           update((s) => ({
             ...s,
             mods: s.mods.map((m) =>
@@ -126,10 +105,8 @@ function createImportLogStore() {
                     status: item.status as "done" | "error",
                     isActive: false,
                     awaitingInput: false,
-                    lines:
-                      item.status === "done"
-                        ? [item.message]
-                        : [...m.lines, item.message],
+                    expanded: false,
+                    lines: [...m.lines, item.message],
                   }
                 : m,
             ),
@@ -155,6 +132,8 @@ function createImportLogStore() {
     // can't be attributed to a single mod - the queue status text already
     // shows waiting/downloading state per row.
     if (state.operation.includes("download")) return;
+    // Only the phase transition is useful here - per-tick byte progress is
+    // already shown in the footer status bar.
     const label = phaseLabel(state.operation, state.message);
     if (!seenLabels.has(label)) {
       seenLabels.add(label);
@@ -162,24 +141,6 @@ function createImportLogStore() {
         ...s,
         mods: s.mods.map((m) =>
           m.id === currentModId ? { ...m, lines: [...m.lines, label] } : m,
-        ),
-      }));
-    }
-    // Verbose: append a timestamped detail line with the archive/file name
-    // and byte totals so the saved log captures what the footer flickered
-    // past. Only at debug/trace to keep the default log concise.
-    if (VERBOSE_LEVELS.has(currentLogLevel) && state.operation) {
-      const detail = `[${new Date().toISOString().slice(11, 19)}] ${
-        state.file ? state.file + " " : ""
-      }${state.message}${
-        state.totalBytes != null && state.processedBytes != null
-          ? ` (${formatBytes(state.processedBytes)}/${formatBytes(state.totalBytes)})`
-          : ""
-      }`;
-      update((s) => ({
-        ...s,
-        mods: s.mods.map((m) =>
-          m.id === currentModId ? { ...m, lines: [...m.lines, detail] } : m,
         ),
       }));
     }

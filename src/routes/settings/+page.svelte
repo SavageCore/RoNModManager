@@ -38,7 +38,6 @@
   import ModalShell from "$lib/components/ModalShell.svelte";
   import SyncAuthModal from "$lib/components/SyncAuthModal.svelte";
   import { syncLogStore } from "$lib/stores/syncLogStore";
-  import { setLogLevel } from "$lib/stores/importLogStore";
   import type {
     CloseAction,
     MinimizeTarget,
@@ -251,7 +250,6 @@
     closeAction = config.close_action ?? "quit";
     minimizeTarget = config.minimize_target ?? "taskbar";
     logLevel = config.log_level ?? "info";
-    setLogLevel(logLevel);
   }
   function openModioApiKeyModal() {
     modioApiKeyInput = modioApiKey;
@@ -888,10 +886,7 @@
           <select
             class="select w-40"
             bind:value={logLevel}
-            on:change={() => {
-              setLogLevel(logLevel);
-              void updateConfig({ log_level: logLevel });
-            }}
+            on:change={() => void updateConfig({ log_level: logLevel })}
             ><option value="error">Error</option><option value="warn"
               >Warn</option
             ><option value="info">Info</option><option value="debug"
