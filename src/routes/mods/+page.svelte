@@ -96,6 +96,23 @@
     // Refresh - backend repopulates addonFiles and modsForActiveProfile is
     // reloaded from disk (installLocalMod added each addon to the profile).
     await refresh();
+
+    // If adding add-ons gave this mod a .sav, drop the exemption so the
+    // missing-world-gen warning can reflect reality on the next refresh.
+    const parentGroup = modGroups.find((g) => g.name === selectedModName);
+    if (
+      parentGroup &&
+      noWorldGenSet.has(selectedModName) &&
+      groupHasSav(parentGroup)
+    ) {
+      try {
+        await clearModNoWorldGen(selectedModName);
+        noWorldGenSet = new Set(await getNoWorldGenMods());
+      } catch (e) {
+        toastStore.error(`Failed to clear world-gen exemption: ${String(e)}`);
+      }
+    }
+
     selectedAddOns = getAddOnsForMod(selectedModName);
 
     // installLocalMod adds each addon to the active profile directly, but addons
@@ -187,6 +204,7 @@
     DUMMY_MOD_UPDATES,
   } from "$lib/stores/incognitoMode";
   import { formatDistanceToNow } from "date-fns";
+  import { isMapTag } from "$lib/utils/mapTags";
   import type {
     InstalledModGroup,
     InstalledModFile,
@@ -501,7 +519,7 @@
       .filter((group) => {
         if (noWorldGenSet.has(group.name)) return false;
         const tags = modToTagsMap[group.name] ?? [];
-        if (!tags.some((t) => t.toLowerCase() === "map")) return false;
+        if (!tags.some(isMapTag)) return false;
         const allFiles = [...group.files, ...(group.addonFiles ?? [])];
         return !allFiles.some((f) => f.name.toLowerCase().endsWith(".sav"));
       })
@@ -658,6 +676,8 @@
       brokenModsMap = broken;
       noWorldGenSet = new Set(noWorldGen);
 
+      await clearNoWorldGenForSavMods(groups);
+
       const previousGroupNames = new Set(allInstalledGroupNames);
       allInstalledGroupNames = new Set(groups.map((group) => group.name));
 
@@ -755,6 +775,26 @@
       }
       toastStore.error(`Failed to load mods: ${msg}`);
     }
+  }
+
+  function groupHasSav(
+    group: InstalledModGroup & { addonFiles?: InstalledModFile[] },
+  ): boolean {
+    const allFiles = [...group.files, ...(group.addonFiles ?? [])];
+    return allFiles.some((f) => f.name.toLowerCase().endsWith(".sav"));
+  }
+
+  async function clearNoWorldGenForSavMods(
+    groups: (InstalledModGroup & { addonFiles?: InstalledModFile[] })[],
+  ): Promise<void> {
+    const exemptWithSav = groups.filter(
+      (g) => noWorldGenSet.has(g.name) && groupHasSav(g),
+    );
+    if (exemptWithSav.length === 0) return;
+    await Promise.all(
+      exemptWithSav.map((g) => clearModNoWorldGen(g.name).catch(() => {})),
+    );
+    noWorldGenSet = new Set(await getNoWorldGenMods().catch(() => []));
   }
 
   async function persistActiveProfileEnabledGroups(enabledGroups: string[]) {
