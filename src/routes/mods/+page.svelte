@@ -259,6 +259,9 @@
   $: updatableGroups = effectiveModGroups.filter(
     (g) => effectiveModUpdates[g.name] && g.sourceUrl,
   );
+  $: enabledModCount = effectiveModGroups.filter((g) =>
+    effectiveProfileMods.includes(g.name),
+  ).length;
 
   // Nexus version strings often already include a leading "v" (e.g. "v2.2") -
   // strip it so we don't double it up when we prepend our own "v".
@@ -1983,7 +1986,7 @@
           <span class="gale-switch-track"></span>
         </label>
         <span style="color: var(--clr-text-secondary);" class="text-sm"
-          >Toggle all</span
+          >Toggle all - {enabledModCount}/{effectiveModGroups.length} enabled</span
         >
       </div>
     {/if}
