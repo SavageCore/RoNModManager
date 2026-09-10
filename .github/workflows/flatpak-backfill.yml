@@ -1,118 +1,22 @@
-name: Release
+name: Flatpak Backfill
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to (re)publish the Flatpak bundle for (e.g. v0.0.12)"
+        required: true
+        type: string
 
 jobs:
-  create-release:
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-    outputs:
-      release-id: ${{ steps.create.outputs.id }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Install git-cliff
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tmp=$(mktemp -d)
-          gh release download --repo orhun/git-cliff \
-            --pattern 'git-cliff-*-x86_64-unknown-linux-musl.tar.gz' \
-            --dir "$tmp"
-          tar xz -C "$tmp" -f "$tmp"/git-cliff-*-x86_64-unknown-linux-musl.tar.gz
-          sudo install -m 755 "$(find "$tmp" -name git-cliff -type f)" /usr/local/bin/git-cliff
-      - name: Generate release notes
-        id: cliff
-        run: |
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#v}"
-          BASE="https://github.com/SavageCore/RoNModManager/releases/download/${TAG}"
-          {
-            echo "content<<EOF"
-            git cliff --latest --strip all
-            echo ""
-            echo "## Downloads"
-            echo ""
-            echo "| Platform | Download |"
-            echo "|----------|----------|"
-            echo "| Windows | [Setup (.exe)](${BASE}/RoN.Mod.Manager_${VERSION}_x64-setup.exe) |"
-            echo "| Linux - AppImage | [AppImage](${BASE}/RoN.Mod.Manager_${VERSION}_amd64.AppImage) |"
-            echo "| Linux - Debian/Ubuntu | [.deb package](${BASE}/RoN.Mod.Manager_${VERSION}_amd64.deb) |"
-            echo "| Linux - Fedora/openSUSE | [.rpm package](${BASE}/RoN.Mod.Manager-${VERSION}-1.x86_64.rpm) |"
-            echo "| Linux - Arch (AUR) | [ronmodmanager-bin](https://aur.archlinux.org/packages/ronmodmanager-bin) |"
-            echo "| Linux - Flatpak | [Flatpak bundle](${BASE}/ronmodmanager.flatpak) |"
-            echo ""
-            echo "> **Not sure which to pick?** Windows: grab the Setup .exe. Linux: use your distro's native package (.deb, .rpm, or AUR), AppImage for anything else, or Flatpak for a sandboxed install."
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-      - name: Create GitHub Release
-        id: create
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          body: ${{ steps.cliff.outputs.content }}
-
-  release:
-    needs: create-release
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-22.04
-          - os: windows-latest
-    runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: ".nvmrc"
-          cache: npm
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-          shared-key: ${{ matrix.os }}-release
-
-      - name: Cache apt packages (Linux)
-        if: matrix.os == 'ubuntu-22.04'
-        uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libglib2.0-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
-          version: 1.0
-
-      - name: Install system dependencies (Linux)
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libglib2.0-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
-      - run: npm config set script-shell bash
-      - run: npm ci
-      - uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          releaseId: ${{ needs.create-release.outputs.release-id }}
-          tauriScript: npm run tauri
-
-  flatpak:
-    needs: create-release
+  flatpak-backfill:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.tag }}
           fetch-depth: 0
       - name: Install git-cliff
         env:
@@ -197,7 +101,7 @@ jobs:
         run: |
           FLATPAK_GPG_KEY=$(gpg --list-keys --keyid-format=long --with-colons | awk -F: '/^fpr/{print $10; exit}')
           # Source downloads (launchpad.net, Flathub CDN) are flaky; retry the
-          # builder so a transient 502/404 does not fail the whole release.
+          # builder so a transient 502/404 does not fail the whole run.
           attempt=1
           max_attempts=3
           until [ "$attempt" -gt "$max_attempts" ]; do
@@ -224,7 +128,7 @@ jobs:
       - name: Upload Flatpak bundle to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ inputs.tag }}
           files: ronmodmanager.flatpak
       - name: Deploy OSTree repo to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
@@ -241,32 +145,5 @@ jobs:
       - name: Upload userscript to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ inputs.tag }}
           files: userscript/dist/*.user.js
-
-  aur-publish:
-    needs: release
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/checkout@v7
-      - name: Compute checksums and update PKGBUILD
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          APPIMAGE_SHA=$(curl -sL "https://github.com/SavageCore/RoNModManager/releases/download/${GITHUB_REF_NAME}/RoN.Mod.Manager_${VERSION}_amd64.AppImage" | sha256sum | cut -d' ' -f1)
-          ICON_SHA=$(curl -sL "https://github.com/SavageCore/RoNModManager/raw/${GITHUB_REF_NAME}/src-tauri/icons/icon.png" | sha256sum | cut -d' ' -f1)
-          DESKTOP_SHA=$(curl -sL "https://github.com/SavageCore/RoNModManager/raw/${GITHUB_REF_NAME}/packaging/aur/uk.savagecore.ronmodmanager.desktop" | sha256sum | cut -d' ' -f1)
-          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" packaging/aur/PKGBUILD
-          sed -i "s/^pkgrel=.*/pkgrel=1/" packaging/aur/PKGBUILD
-          sed -i "s/APPIMAGE_SHA256/${APPIMAGE_SHA}/" packaging/aur/PKGBUILD
-          sed -i "s/ICON_SHA256/${ICON_SHA}/" packaging/aur/PKGBUILD
-          sed -i "s/DESKTOP_SHA256/${DESKTOP_SHA}/" packaging/aur/PKGBUILD
-      - name: Push to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v3
-        with:
-          pkgname: ronmodmanager-bin
-          pkgbuild: ./packaging/aur/PKGBUILD
-          commit_username: SavageCore
-          commit_email: talk@savagecore.uk
-          ssh_private_key: ${{ secrets.AUR_SSH_KEY }}
-          commit_message: "Update to ${{ github.ref_name }}"

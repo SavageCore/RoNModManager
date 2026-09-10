@@ -3,7 +3,6 @@ name: Flatpak
 on:
   push:
     branches: ["main"]
-    tags: ["v*"]
     paths:
       - "src-tauri/**"
       - "src/**"
@@ -60,7 +59,6 @@ jobs:
         with:
           path: |
             ~/.local/share/flatpak
-            /var/lib/flatpak
           key: flatpak-runtimes-${{ hashFiles('packaging/flatpak/uk.savagecore.ronmodmanager.yml') }}
           restore-keys: |
             flatpak-runtimes-
