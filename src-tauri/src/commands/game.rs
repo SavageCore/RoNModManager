@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -8,6 +8,7 @@ use tauri::{AppHandle, State};
 
 use crate::commands::mods::archive_install_key;
 use crate::models::AppError;
+use crate::services::addon_map;
 use crate::services::game_watch;
 use crate::services::manifest;
 use crate::services::steam;
@@ -221,6 +222,28 @@ fn remove_orphan_symlinks(live_mods_path: &Path, live_savegames_path: &Path) -> 
     Ok(())
 }
 
+/// Expand an enabled-groups list with the addon archives of every enabled
+/// parent, mirroring the frontend's `getFullSyncList`. Addon archives are
+/// tracked in `addon_map.json`, not in profiles, so without this any sync
+/// driven by a raw profile list (launch, profile apply, collection toggle)
+/// would tear down addon links in the teardown pass and never re-create them.
+pub(crate) fn expand_enabled_with_addons(
+    enabled_groups: Vec<String>,
+    map: &HashMap<String, Vec<String>>,
+) -> Vec<String> {
+    let mut out = enabled_groups;
+    let enabled: HashSet<String> = out.iter().cloned().collect();
+    for (parent, addons) in map {
+        if enabled.contains(parent) {
+            out.extend(addons.iter().cloned());
+        }
+    }
+    let mut seen = HashSet::new();
+    out.into_iter()
+        .filter(|name| seen.insert(name.clone()))
+        .collect()
+}
+
 pub(crate) fn sync_mod_links_for_game_path(
     game_path: &Path,
     enabled_groups: Vec<String>,
@@ -232,10 +255,24 @@ pub(crate) fn sync_mod_links_for_game_path(
     fs::create_dir_all(&live_mods_path).map_err(|e| e.to_string())?;
     fs::create_dir_all(&live_savegames_path).map_err(|e| e.to_string())?;
 
+    let addon_map = addon_map::read_addon_map().unwrap_or_default();
+    let enabled_groups = expand_enabled_with_addons(enabled_groups, &addon_map);
     let enabled: HashSet<String> = enabled_groups.into_iter().collect();
     let staging_root = get_staging_root()?;
     let manager = manifest::ManifestManager::new(&staging_root);
     let manifests = manager.list_all_manifests().unwrap_or_default();
+
+    // Stale profile entries (no install manifest) would otherwise be skipped
+    // silently, launching without mods the user thinks are enabled.
+    let known_archives: HashSet<&str> = manifests
+        .values()
+        .map(|m| m.source_archive.as_str())
+        .collect();
+    for name in &enabled {
+        if !known_archives.contains(name.as_str()) {
+            log::warn!("sync: enabled mod '{name}' has no install manifest; skipping");
+        }
+    }
 
     // First remove all managed live links/files for tracked staged files.
     // For .bank and .ini files, restore the original from the backup rather than just deleting.
@@ -519,5 +556,44 @@ mod tests {
             .join("GameUserSettings.ini");
 
         assert!(override_paths(&staged_path, staging_root, game_path).is_none());
+    }
+
+    fn sample_addon_map() -> HashMap<String, Vec<String>> {
+        HashMap::from([
+            (
+                "ParentMod.zip".to_string(),
+                vec!["AddonA.zip".to_string(), "AddonB.zip".to_string()],
+            ),
+            (
+                "DisabledParent.zip".to_string(),
+                vec!["OrphanAddon.zip".to_string()],
+            ),
+        ])
+    }
+
+    #[test]
+    fn expand_adds_addons_of_enabled_parents_only() {
+        let out =
+            expand_enabled_with_addons(vec!["ParentMod.zip".to_string()], &sample_addon_map());
+        assert!(out.contains(&"ParentMod.zip".to_string()));
+        assert!(out.contains(&"AddonA.zip".to_string()));
+        assert!(out.contains(&"AddonB.zip".to_string()));
+        assert!(!out.contains(&"OrphanAddon.zip".to_string()));
+    }
+
+    #[test]
+    fn expand_dedups_and_ignores_empty_map() {
+        let map = sample_addon_map();
+        let out = expand_enabled_with_addons(
+            vec!["ParentMod.zip".to_string(), "AddonA.zip".to_string()],
+            &map,
+        );
+        assert_eq!(
+            out.iter().filter(|n| *n == "AddonA.zip").count(),
+            1,
+            "already-listed addon must not be duplicated"
+        );
+        let unchanged = expand_enabled_with_addons(vec!["Solo.zip".to_string()], &HashMap::new());
+        assert_eq!(unchanged, vec!["Solo.zip".to_string()]);
     }
 }
