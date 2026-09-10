@@ -11,8 +11,9 @@ use crate::state::AppState;
 /// How often the watcher polls for the game process.
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
 /// How long to wait for the game to appear after a Steam-URI launch before
-/// giving up and restoring the folder to stock anyway.
-const APPEAR_TIMEOUT: Duration = Duration::from_secs(180);
+/// giving up and restoring the folder to stock anyway. Kept short so a
+/// cancelled Steam launch/dialog does not leave mods linked at rest.
+const APPEAR_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Payload of the `game-running` frontend event.
 #[derive(Debug, Clone, Serialize)]

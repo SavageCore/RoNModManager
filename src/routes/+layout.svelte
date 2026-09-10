@@ -9,6 +9,8 @@
     fetchModpackJson,
     getConfig,
     getStartupUrls,
+    ensureGameStock,
+    isGameRunning as checkGameRunning,
     launchGameWithGroups,
     launchVanillaGame,
     listProfiles,
@@ -90,6 +92,12 @@
 
   const APP_NAME = "RoN Mod Manager";
   const UPDATE_AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+  // How long the launch-close path waits for the game process to appear
+  // before giving up and restoring the folder to stock. Mirrors the backend
+  // game-watcher's APPEAR_TIMEOUT: the watcher thread dies with the app, so
+  // the close path must resolve links itself instead of relying on it.
+  const LAUNCH_APPEAR_TIMEOUT_MS = 60_000;
+  const LAUNCH_APPEAR_POLL_MS = 2_000;
 
   const nav = [
     { href: "/mods", label: "Mods", icon: Package },
@@ -239,6 +247,54 @@
     }
   }
 
+  // Poll until the game process appears (Steam-URI launch is async and may
+  // show a dialog the user can cancel). True when the game was seen, false
+  // on timeout. Never throws; invoke errors are treated as "not running".
+  async function waitForGameAppear(
+    timeoutMs: number = LAUNCH_APPEAR_TIMEOUT_MS,
+  ): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      try {
+        if (await checkGameRunning()) {
+          return true;
+        }
+      } catch {
+        // Treat backend errors as "not running yet" and keep polling.
+      }
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        return false;
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(LAUNCH_APPEAR_POLL_MS, remaining)),
+      );
+    }
+  }
+
+  // Best-effort restore to stock after a failed/cancelled launch. Only
+  // applies in link-on-launch-only mode (otherwise links are meant to stay)
+  // and never rewrites the folder under a running game.
+  async function cleanupLinksAfterCancelledLaunch(): Promise<void> {
+    try {
+      const config = await getConfig();
+      if (!config.link_on_launch_only) {
+        return;
+      }
+      let running = false;
+      try {
+        running = await checkGameRunning();
+      } catch {
+        running = false;
+      }
+      if (!running) {
+        await ensureGameStock();
+      }
+    } catch {
+      // Best-effort only; launch error handling reports the original failure.
+    }
+  }
+
   async function launchWithProfile() {
     if (!hasGamePath) {
       alert("Game path is not configured. Open Settings first.");
@@ -254,9 +310,22 @@
 
       const profile = await applyProfile(selectedProfile);
       await launchGameWithGroups(profile.installed_mod_names);
+      if (onGameLaunch === "close") {
+        // The watcher thread dies with the app, so wait here for the game
+        // to appear before closing. On timeout (cancelled Steam launch) the
+        // folder would otherwise stay modded at rest until next startup.
+        const appeared = await waitForGameAppear();
+        if (!appeared) {
+          console.warn(
+            "Game did not appear after launch; restoring stock folder before close.",
+          );
+          await cleanupLinksAfterCancelledLaunch();
+        }
+      }
       await afterLaunch(true);
     } catch (error) {
       console.error("Failed to launch game:", error);
+      await cleanupLinksAfterCancelledLaunch();
       alert(`Failed to launch game: ${String(error)}`);
     } finally {
       isLaunching = false;
