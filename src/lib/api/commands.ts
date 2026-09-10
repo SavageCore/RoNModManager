@@ -321,13 +321,13 @@ export const getSyncDetails = () => invoke<SyncDetails>("get_sync_details");
 export const setSyncDetails = (host?: string | null, path?: string | null) =>
   invoke<void>("set_sync_details", { host: host ?? null, path: path ?? null });
 
-export const launchGame = () => invoke<void>("launch_game");
 export const syncModLinks = (enabledGroups: string[]) =>
   invoke<void>("sync_mod_links", { enabledGroups });
 export const launchGameWithGroups = (enabledGroups: string[]) =>
   invoke<void>("launch_game_with_groups", { enabledGroups });
 export const ensureGameStock = () => invoke<void>("ensure_game_stock");
 export const launchVanillaGame = () => invoke<void>("launch_vanilla_game");
+export const isGameRunning = () => invoke<boolean>("is_game_running");
 export const suppressExitCleanup = () => invoke<void>("suppress_exit_cleanup");
 
 export const setWindowTitle = (title: string) =>

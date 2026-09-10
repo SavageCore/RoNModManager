@@ -9,6 +9,7 @@ pub mod state;
 use crate::commands::{
     auth, collections, config, game, modpack, mods, profiles, sharing, sync, tags, updater, window,
 };
+use crate::services::game_watch;
 use state::{default_config_path, load_config_from_path, AppState};
 
 /// Resolve the initial backend log level: `RUST_LOG` (if set and parseable)
@@ -55,11 +56,21 @@ pub fn run() {
         // or fail startup over this.
         {
             let state = app.state::<AppState>();
-            let should_cleanup = state
-                .get_config()
-                .is_ok_and(|c| c.link_on_launch_only && c.game_path.is_some());
-            if should_cleanup {
-                game::cleanup_to_stock_on_exit(&state);
+            let watched_path = state.get_config().ok().and_then(|c| {
+                if c.link_on_launch_only {
+                    c.game_path.clone()
+                } else {
+                    None
+                }
+            });
+            if let Some(game_path) = watched_path {
+                if game_watch::is_game_running() {
+                    // Don't yank links from under a running game; the watcher
+                    // restores stock once it exits.
+                    game_watch::spawn_game_exit_watcher(app.handle().clone(), game_path);
+                } else {
+                    game::cleanup_to_stock_on_exit(&state);
+                }
             }
         }
 
@@ -178,11 +189,11 @@ pub fn run() {
             config::disable_optimization,
             game::detect_game_path,
             game::set_game_path,
-            game::launch_game,
             game::sync_mod_links,
             game::launch_game_with_groups,
             game::ensure_game_stock,
             game::launch_vanilla_game,
+            game::is_game_running,
             game::suppress_exit_cleanup,
             modpack::set_modpack_url,
             modpack::sync_modpack,

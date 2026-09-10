@@ -149,7 +149,7 @@ flatpak-install: ## Install the locally built Flatpak via a local OSTree remote
 flatpak-run: ## Run the installed Flatpak
 	flatpak run $(FLATPAK_ID)
 
-flatpak: vendor flatpak-build-clean flatpak-install ## Full local Flatpak pipeline (vendor → build → install)
+flatpak: vendor update-appstream flatpak-build-clean flatpak-install ## Full local Flatpak pipeline (vendor → appstream → build → install)
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
 

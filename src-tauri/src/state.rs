@@ -50,6 +50,9 @@ pub struct AppState {
     /// launch-close path so the Steam-URI launch is not raced by an immediate
     /// unlink of the mods it is about to load.
     pub suppress_exit_cleanup: AtomicBool,
+    /// True while a game-exit watcher thread is active. Ensures only one
+    /// watcher runs at a time across repeated launches.
+    pub game_watcher_running: AtomicBool,
 }
 
 impl AppState {
@@ -101,6 +104,7 @@ impl AppState {
             nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
             nexus_wait_id: Arc::new(AtomicU64::new(1)),
             suppress_exit_cleanup: AtomicBool::new(false),
+            game_watcher_running: AtomicBool::new(false),
         })
     }
 
@@ -179,6 +183,7 @@ impl Default for AppState {
                     nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
                     nexus_wait_id: Arc::new(AtomicU64::new(1)),
                     suppress_exit_cleanup: AtomicBool::new(false),
+                    game_watcher_running: AtomicBool::new(false),
                 }
             }
         }

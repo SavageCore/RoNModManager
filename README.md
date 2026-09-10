@@ -49,6 +49,16 @@ Alternatively, download `ronmodmanager.flatpak` from the [latest release](https:
 flatpak install --user --bundle ronmodmanager.flatpak
 ```
 
+#### Flatpak permissions
+
+The Flatpak build needs permission to talk to `org.freedesktop.Flatpak` (for spawning host commands). The link-on-launch mode uses this to detect when the game exits so mods can be unlinked and the game folder returned to stock. New installs get this permission automatically.
+
+If you installed before this permission was added, grant it manually - either in Flatseal (enable "Talk" on `org.freedesktop.Flatpak` under Session Bus), or via:
+
+```bash
+flatpak override --user --talk-name=org.freedesktop.Flatpak uk.savagecore.ronmodmanager
+```
+
 ## Modpack Export & Hosting
 
 See [docs/HOSTING_MODPACKS.md](docs/HOSTING_MODPACKS.md) for instructions on exporting, self-hosting, and sharing modpacks.

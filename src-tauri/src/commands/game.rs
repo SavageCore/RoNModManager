@@ -4,10 +4,11 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::commands::mods::archive_install_key;
 use crate::models::AppError;
+use crate::services::game_watch;
 use crate::services::manifest;
 use crate::services::steam;
 use crate::state::{app_data_root, AppState};
@@ -184,17 +185,6 @@ pub async fn set_game_path(path: String, state: State<'_, AppState>) -> Result<(
         })
         .map(|_| ())
         .map_err(Into::into)
-}
-
-#[tauri::command]
-pub async fn launch_game(state: State<'_, AppState>) -> Result<(), String> {
-    let config = state.get_config().map_err(|e: AppError| e.to_string())?;
-
-    let game_path = config
-        .game_path
-        .ok_or_else(|| "Game path not configured".to_string())?;
-
-    launch_game_internal(&game_path, config.intro_skip_enabled)
 }
 
 fn remove_orphan_symlinks(live_mods_path: &Path, live_savegames_path: &Path) -> Result<(), String> {
@@ -400,6 +390,7 @@ pub async fn sync_mod_links(
 
 #[tauri::command]
 pub async fn launch_game_with_groups(
+    app: AppHandle,
     state: State<'_, AppState>,
     enabled_groups: Vec<String>,
 ) -> Result<(), String> {
@@ -409,7 +400,13 @@ pub async fn launch_game_with_groups(
         .ok_or_else(|| "Game path not configured".to_string())?;
 
     sync_mod_links_for_game_path(&game_path, enabled_groups)?;
-    launch_game_internal(&game_path, config.intro_skip_enabled)
+    launch_game_internal(&game_path, config.intro_skip_enabled)?;
+    // In link-on-launch-only mode the folder must return to stock once the
+    // game quits, so track the game process in the background.
+    if config.link_on_launch_only {
+        game_watch::spawn_game_exit_watcher(app, game_path);
+    }
+    Ok(())
 }
 
 /// Remove all managed live links and restore backed-up originals, returning the
@@ -434,6 +431,14 @@ pub async fn launch_vanilla_game(state: State<'_, AppState>) -> Result<(), Strin
 
     sync_mod_links_for_game_path(&game_path, Vec::new())?;
     launch_game_internal(&game_path, config.intro_skip_enabled)
+}
+
+/// True while the game process is alive. Used by the frontend to disable
+/// launch/toggle actions that would rewrite the game folder under a running
+/// game, and to show game-running state.
+#[tauri::command]
+pub fn is_game_running() -> bool {
+    game_watch::is_game_running()
 }
 
 /// Tell the backend to skip stock cleanup on the next app exit. Called right

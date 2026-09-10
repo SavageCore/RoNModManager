@@ -17,6 +17,7 @@
     getProfile,
     getSyncDetails,
     installUpdate,
+    isGameRunning,
     isRunningInFlatpak,
     isIntroSkipApplied,
     logout,
@@ -263,6 +264,12 @@
   async function handleLinkOnLaunchChange(event: Event) {
     const target = (event.target as HTMLInputElement).checked;
     try {
+      // Never rewrite the game folder under a running game.
+      if (await isGameRunning()) {
+        linkOnLaunchOnly = !target;
+        toastStore.error("Close the game before changing this setting.");
+        return;
+      }
       await updateConfig({ link_on_launch_only: target });
       linkOnLaunchOnly = target;
       if (target) {

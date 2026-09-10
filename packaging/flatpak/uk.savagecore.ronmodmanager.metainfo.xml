@@ -19,6 +19,88 @@
   <releases>
 
 
+
+    <release version="0.0.11" date="2026-08-22">
+      <description>
+        <ul>
+          <li>Bump the npm-dependencies group with 4 updates</li>
+          <li>Bump log in /src-tauri in the cargo-dependencies group</li>
+          <li>Add AUR package for Arch Linux</li>
+          <li>Restructure README for end users and update related docs</li>
+          <li>Auto-clean flatpak build snapshots and document disk usage</li>
+          <li>Bump the npm-dependencies group with 9 updates</li>
+          <li>Bump the cargo-dependencies group</li>
+          <li>Make watch target run dev</li>
+          <li>Update package-lock.json</li>
+          <li>Show file picker for all MAIN variants, not just is_primary</li>
+          <li>Bump actions/checkout in the actions-dependencies group</li>
+          <li>Bump the cargo-dependencies group</li>
+          <li>Bump the npm-dependencies group across 1 directory with 14 updates</li>
+          <li>Check for and apply mod updates from Nexus/mod.io</li>
+          <li>Backfill version metadata for pre-existing mods</li>
+          <li>Restore "v" prefix on displayed version strings</li>
+          <li>Allow closing manual-download modal without cancelling</li>
+          <li>Bump the cargo-dependencies group across 1 directory with 4 updates</li>
+          <li>Bump tauri-apps/tauri-action</li>
+          <li>Bump the npm-dependencies group across 1 directory with 14 updates</li>
+          <li>Remove stale google-chrome apt repo before apt-get update</li>
+          <li>Bump actions/setup-node in the actions-dependencies group</li>
+          <li>Bump the cargo-dependencies group across 1 directory with 9 updates</li>
+          <li>Bump the npm-dependencies group across 1 directory with 11 updates</li>
+          <li>Pin typescript to ~6.0.3, sveltejs/kit doesn't support v7 yet</li>
+          <li>Support UE4SS-dependent Lua/Blueprint mods</li>
+          <li>Add Update All button and clearer per-mod update badge</li>
+          <li>Start bulk Nexus downloads in parallel instead of serially</li>
+          <li>Dedupe Update All and show mod names in bulk file-variant prompts</li>
+          <li>Turn Manage tags context menu into a checkbox flyout</li>
+          <li>Compare Nexus updates against the installed file variant</li>
+          <li>Seed mods needing updates in screenshot mode</li>
+          <li>Bump the cargo-dependencies group across 1 directory with 5 updates</li>
+          <li>Bump the npm-dependencies group across 1 directory with 10 updates</li>
+          <li>Apply dependabot updates, keep typescript on v6</li>
+          <li>Apply context menu tag changes to multi-selection</li>
+          <li>Open file location via xdg-open on Linux</li>
+          <li>Add per-mod and selection metadata refresh to context menu</li>
+          <li>Preserve source URL on ad-hoc pak mods after refresh</li>
+          <li>Support installing multi-file Nexus mods (Part 1 + Part 2)</li>
+          <li>Match pak selection by full archive path</li>
+          <li>Make Downloads link open the folder in nexus free-download modal</li>
+          <li>Note slow commit hooks in AGENTS.md</li>
+          <li>Install mods in background while download queue continues</li>
+          <li>Clearer sync error when export dir is missing</li>
+          <li>Export only enabled mods in modpack</li>
+          <li>Persist export details and remote sync settings per profile</li>
+          <li>Export modal reactivity and release-only single instance</li>
+          <li>Refresh remote sync details on profile switch</li>
+          <li>Add scroll-to-top FAB on mod list</li>
+          <li>Make mod list scroll internally with pinned filters</li>
+          <li>Show mod counter in remote sync upload progress</li>
+          <li>Extract LZMA-compressed zip entries via liblzma</li>
+          <li>Harden flathub runtime install against transient CDN 404s</li>
+          <li>Fall back to known-good rust-stable extension commit when Flathub publish is broken</li>
+        </ul>
+      </description>
+    </release>
+
+    <release version="0.0.9" date="2026-06-03">
+      <description>
+        <ul>
+          <li>Add Flatpak AppStream metainfo with icon, releases, screenshots and tighten permissions</li>
+          <li>Add dark mode screenshots to AppStream metainfo</li>
+          <li>Improve SFTP upload throughput</li>
+          <li>Install appstream-compose in CI to fix Flatpak build</li>
+          <li>Use ubuntu-24.04 runner for Flatpak CI jobs</li>
+          <li>Auto-check for app updates on startup (once per 24 hours)</li>
+          <li>Ask all batch questions upfront before installing mods</li>
+          <li>Prevent app close and clear during active mod installation</li>
+          <li>Disable Launch Game button during active mod installation</li>
+          <li>Auto-open import log panel when mod installation starts</li>
+          <li>Import log repeated messages, spinner states, and waiting icon</li>
+          <li>Drop MSI target and add download guide to release body</li>
+        </ul>
+      </description>
+    </release>
+
     <release version="0.0.8" date="2026-05-30">
       <description>
         <ul>
@@ -198,7 +280,7 @@
           <li>In-app SFTP sync to remote server</li>
           <li>Show shield icon on mods that contain game file overrides</li>
           <li>Make collection and tag pills clickable to filter mod list</li>
-          <li>Window behaviour settings - minimise/quit on launch and close-to-tray</li>
+          <li>Window behaviour settings — minimise/quit on launch and close-to-tray</li>
           <li>Bundle libayatana-appindicator3 in Flatpak to fix crash on launch</li>
           <li>Force CMAKE_INSTALL_LIBDIR=lib for Ayatana Flatpak modules</li>
           <li>Resolve Flatpak bundle pipeline failures and warnings</li>

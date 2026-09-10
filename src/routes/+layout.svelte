@@ -122,6 +122,7 @@
   let closingFromLaunch = false;
   let forceClose = false;
   let showLaunchDropdown = false;
+  let isGameRunning = false;
 
   function resolveSelectedProfile(
     activeProfile: string | null | undefined,
@@ -754,6 +755,12 @@
       unlistenFunctions.push(fn);
     });
 
+    void listen<{ running: boolean }>("game-running", (event) => {
+      isGameRunning = event.payload.running;
+    }).then((fn) => {
+      unlistenFunctions.push(fn);
+    });
+
     return () => {
       cleanup();
       if (resizeDebounce) {
@@ -851,11 +858,18 @@
           }}
           disabled={!hasGamePath ||
             isLaunching ||
+            isGameRunning ||
             $importLogStore.mods.some((m) => m.status === "running")}
-          title="Launch Ready or Not with selected profile"
+          title={isGameRunning
+            ? "Game is running - links unlock when it quits"
+            : "Launch Ready or Not with selected profile"}
         >
           <Play size={16} class="inline mr-1" />
-          {isLaunching ? "Launching..." : "Launch Game"}
+          {isLaunching
+            ? "Launching..."
+            : isGameRunning
+              ? "Game running"
+              : "Launch modded"}
         </button>
         <button
           class="btn primary btn-sm h-9 rounded-l-none"
@@ -865,8 +879,11 @@
           }}
           disabled={!hasGamePath ||
             isLaunching ||
+            isGameRunning ||
             $importLogStore.mods.some((m) => m.status === "running")}
-          title="Choose launch mode"
+          title={isGameRunning
+            ? "Game is running - links unlock when it quits"
+            : "Choose launch mode"}
           aria-label="Choose launch mode"
         >
           <ChevronDown size={16} />
@@ -880,20 +897,20 @@
               class="block w-full text-left px-4 py-2 text-sm hover:opacity-80"
               style="color:var(--clr-text);"
               on:click={() => {
-                void launchWithProfile();
+                void launchVanilla();
               }}
             >
-              Launch modded
+              Launch vanilla
             </button>
             <div style="border-top:1px solid var(--adw-border-color);"></div>
             <button
               class="block w-full text-left px-4 py-2 text-sm hover:opacity-80"
               style="color:var(--clr-text);"
               on:click={() => {
-                void launchVanilla();
+                void launchWithProfile();
               }}
             >
-              Launch vanilla
+              Launch modded
             </button>
           </div>
         {/if}
