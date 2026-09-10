@@ -80,6 +80,7 @@ export interface InstalledModFile {
   path: string;
   exists: boolean;
   archiveName?: string;
+  size?: number | null;
 }
 
 export interface InstalledModGroup {
@@ -92,6 +93,7 @@ export interface InstalledModGroup {
   addonFiles?: InstalledModFile[]; // Add-on files for this mod group
   hasOverrideFiles?: boolean;
   installedVersion?: string;
+  totalSize?: number;
 }
 
 export interface ModProgressEvent {

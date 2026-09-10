@@ -205,6 +205,7 @@
   } from "$lib/stores/incognitoMode";
   import { formatDistanceToNow } from "date-fns";
   import { isMapTag } from "$lib/utils/mapTags";
+  import { formatBytes } from "$lib/utils/format";
   import type {
     InstalledModGroup,
     InstalledModFile,
@@ -2297,6 +2298,12 @@
                       1
                         ? ""
                         : "s"}
+                      {#if group.totalSize}
+                        <span class="mx-1">·</span><span
+                          title={`${group.totalSize} bytes`}
+                          >{formatBytes(group.totalSize)}</span
+                        >
+                      {/if}
                       {#if group.installedVersion}
                         <span class="mx-1">·</span><span
                           >v{stripVersionPrefix(group.installedVersion)}</span
@@ -2509,13 +2516,26 @@
                         {file.name}
                       </button>
                       <span
-                        style="color: {file.exists
-                          ? 'var(--clr-success-300)'
-                          : 'var(--clr-danger-300)'};"
-                        class="flex-shrink-0"
-                        title={file.path}
+                        class="flex-shrink-0 inline-flex items-center gap-2"
                       >
-                        {file.exists ? "installed" : "missing"}
+                        <span
+                          style="color: var(--clr-text-secondary);"
+                          title={file.size != null
+                            ? `${file.size} bytes`
+                            : file.path}
+                        >
+                          {file.exists && file.size != null
+                            ? formatBytes(file.size)
+                            : "-"}
+                        </span>
+                        <span
+                          style="color: {file.exists
+                            ? 'var(--clr-success-300)'
+                            : 'var(--clr-danger-300)'};"
+                          title={file.path}
+                        >
+                          {file.exists ? "installed" : "missing"}
+                        </span>
                       </span>
                     </div>
                   {/each}
@@ -2541,13 +2561,26 @@
                           {file.name}
                         </button>
                         <span
-                          style="color: {file.exists
-                            ? 'var(--clr-success-300)'
-                            : 'var(--clr-danger-300)'};"
-                          class="flex-shrink-0"
-                          title={file.path}
+                          class="flex-shrink-0 inline-flex items-center gap-2"
                         >
-                          {file.exists ? "installed" : "missing"}
+                          <span
+                            style="color: var(--clr-text-secondary);"
+                            title={file.size != null
+                              ? `${file.size} bytes`
+                              : file.path}
+                          >
+                            {file.exists && file.size != null
+                              ? formatBytes(file.size)
+                              : "-"}
+                          </span>
+                          <span
+                            style="color: {file.exists
+                              ? 'var(--clr-success-300)'
+                              : 'var(--clr-danger-300)'};"
+                            title={file.path}
+                          >
+                            {file.exists ? "installed" : "missing"}
+                          </span>
                         </span>
                       </div>
                     {/each}

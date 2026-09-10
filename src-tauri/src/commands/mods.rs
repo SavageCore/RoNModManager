@@ -2410,6 +2410,13 @@ pub async fn replace_mod_archive(
     Ok(())
 }
 
+fn installed_file_size(path: &Path) -> Option<u64> {
+    fs::metadata(path)
+        .ok()
+        .filter(|m| m.is_file())
+        .map(|m| m.len())
+}
+
 #[tauri::command]
 pub async fn get_installed_mod_groups(
     state: State<'_, AppState>,
@@ -2467,6 +2474,7 @@ pub async fn get_installed_mod_groups(
                     path: path.to_string_lossy().to_string(),
                     exists: path.exists(),
                     archive_name: None,
+                    size: installed_file_size(path),
                 }
             })
             .collect();
@@ -2503,6 +2511,7 @@ pub async fn get_installed_mod_groups(
             addon_files: Vec::new(),
             has_override_files,
             installed_version: manifest_data.installed_version.clone(),
+            total_size: 0,
         });
     }
 
@@ -2548,6 +2557,7 @@ pub async fn get_installed_mod_groups(
                             path: path.to_string_lossy().to_string(),
                             exists: path.exists(),
                             archive_name: None,
+                            size: installed_file_size(&path),
                         });
                     }
                 }
@@ -2564,10 +2574,12 @@ pub async fn get_installed_mod_groups(
                     path: path.to_string_lossy().to_string(),
                     exists: path.exists(),
                     archive_name: None,
+                    size: installed_file_size(&path),
                 }],
                 addon_files: Vec::new(),
                 has_override_files: false,
                 installed_version: None,
+                total_size: 0,
             });
         }
     }
@@ -2597,6 +2609,12 @@ pub async fn get_installed_mod_groups(
                     })
                     .collect();
             }
+            group.total_size = group
+                .files
+                .iter()
+                .chain(group.addon_files.iter())
+                .filter_map(|f| f.size)
+                .sum();
             group
         })
         .collect();

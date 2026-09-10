@@ -16,11 +16,13 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     managedByManifest: true,
     installedAt: 1736899200,
     installedVersion: "1.4",
+    totalSize: 134217728,
     files: [
       {
         name: "CQB_Tactics_Pack_P.pak",
         path: "/mods/CQB_Tactics_Pack_P.pak",
         exists: true,
+        size: 134217728,
       },
     ],
   },
@@ -31,16 +33,19 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     managedByManifest: true,
     installedAt: 1738540800,
     installedVersion: "2.0.1",
+    totalSize: 356515840,
     files: [
       {
         name: "Urban_Warfare_Bundle_P.pak",
         path: "/mods/Urban_Warfare_Bundle_P.pak",
         exists: true,
+        size: 251658240,
       },
       {
         name: "Urban_Warfare_Bundle_Audio_P.pak",
         path: "/mods/Urban_Warfare_Bundle_Audio_P.pak",
         exists: true,
+        size: 104857600,
       },
     ],
   },

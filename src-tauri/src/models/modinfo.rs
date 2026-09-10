@@ -36,6 +36,8 @@ pub struct InstalledModFile {
     pub exists: bool,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub archive_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub size: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -52,4 +54,6 @@ pub struct InstalledModGroup {
     pub has_override_files: bool,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub installed_version: Option<String>,
+    #[serde(default)]
+    pub total_size: u64,
 }

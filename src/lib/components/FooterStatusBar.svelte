@@ -9,23 +9,7 @@
   import { syncLogStore } from "$lib/stores/syncLogStore";
   import ChevronDown from "lucide-svelte/icons/chevron-down";
   import ChevronUp from "lucide-svelte/icons/chevron-up";
-
-  function formatBytes(value: number): string {
-    if (!Number.isFinite(value) || value <= 0) {
-      return "0 B";
-    }
-
-    const units = ["B", "KiB", "MiB", "GiB"];
-    let size = value;
-    let unitIndex = 0;
-
-    while (size >= 1024 && unitIndex < units.length - 1) {
-      size /= 1024;
-      unitIndex += 1;
-    }
-
-    return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
-  }
+  import { formatBytes } from "$lib/utils/format";
 
   // Track the file currently owning the byte counters. When the backend
   // switches to a different file (sequential installs), reset the counters
