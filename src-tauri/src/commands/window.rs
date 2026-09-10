@@ -1,7 +1,15 @@
 use serde::Serialize;
+use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
 
 use crate::state::AppState;
+
+pub struct StartupUrls(pub Mutex<Option<Vec<String>>>);
+
+#[tauri::command]
+pub fn get_startup_urls(state: State<'_, StartupUrls>) -> Vec<String> {
+    state.0.lock().unwrap().take().unwrap_or_default()
+}
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]

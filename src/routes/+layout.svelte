@@ -8,6 +8,7 @@
     detectGamePath,
     fetchModpackJson,
     getConfig,
+    getStartupUrls,
     launchGameWithGroups,
     listProfiles,
     isScreenshotMode,
@@ -41,7 +42,7 @@
   } from "$lib/types";
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import { listen } from "@tauri-apps/api/event";
-  import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
+  import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
   import {
     LogicalPosition,
     LogicalSize,
@@ -380,7 +381,7 @@
       void refreshShellConfigState();
     };
 
-    void onOpenUrl((urls) => {
+    const handleDeepLinkUrls = (urls: string[]) => {
       for (const url of urls) {
         if (url.startsWith("ronmm://install/nexus/")) {
           const id = url
@@ -401,7 +402,30 @@
           addModpackPanelStore.open("add", { url: urlStr });
         }
       }
-    });
+    };
+
+    void onOpenUrl(handleDeepLinkUrls);
+
+    void (async () => {
+      let startupUrls: string[] = [];
+      try {
+        startupUrls = await getStartupUrls();
+      } catch {
+        // command unavailable - ignore
+      }
+      try {
+        const currentUrls = await getCurrent();
+        if (currentUrls) {
+          startupUrls.push(...currentUrls.map((u) => u.toString()));
+        }
+      } catch {
+        // plugin unavailable - ignore
+      }
+      const unique = [...new Set(startupUrls)];
+      if (unique.length > 0) {
+        handleDeepLinkUrls(unique);
+      }
+    })();
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {

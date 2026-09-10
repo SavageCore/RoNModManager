@@ -59,12 +59,30 @@ pub fn run() {
             }
         }
 
+        #[cfg(not(debug_assertions))]
         {
             use tauri_plugin_deep_link::DeepLinkExt;
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             if let Err(e) = app.deep_link().register_all() {
                 log::warn!("Failed to register deep-link handlers: {e}");
             }
+        }
+
+        #[cfg(not(debug_assertions))]
+        {
+            let urls: Vec<String> = std::env::args()
+                .skip(1)
+                .filter(|a| a.starts_with("ronmm://"))
+                .collect();
+            if !urls.is_empty() {
+                log::info!("Startup deep-link URLs: {:?}", urls);
+            }
+            app.manage(window::StartupUrls(std::sync::Mutex::new(Some(urls))));
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            app.manage(window::StartupUrls(std::sync::Mutex::new(None)));
         }
 
         use tauri::menu::{Menu, MenuItem};
@@ -224,6 +242,7 @@ pub fn run() {
             window::is_screenshot_mode,
             window::is_wizard_screenshot_mode,
             window::screenshot_theme,
+            window::get_startup_urls,
             commands::fetch::fetch_modpack_json,
             commands::fetch_archive::download_mod_archive,
             commands::fs::file_exists,

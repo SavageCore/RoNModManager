@@ -42,6 +42,7 @@ import type {
 } from "../types";
 
 export const getConfig = () => invoke<AppConfig>("get_config");
+export const getStartupUrls = () => invoke<string[]>("get_startup_urls");
 export const setTheme = (theme: "light" | "dark" | "system") =>
   invoke<void>("set_theme", { theme });
 export const applyIntroSkip = () => invoke<void>("apply_intro_skip");
