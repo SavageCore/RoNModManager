@@ -276,7 +276,9 @@ pub async fn apply_modpack_profile_metadata(
 
     profiles::save_profile(&profile)?;
 
-    if disabled_changed {
+    // When link-on-launch-only is enabled, modpack metadata updates stay
+    // staging-only; the game folder is (un)linked at launch time.
+    if disabled_changed && !config.link_on_launch_only {
         if let Some(game_path) = config.game_path.as_ref() {
             let _ = super::game::sync_mod_links_for_game_path(
                 game_path,

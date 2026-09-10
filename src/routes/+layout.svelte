@@ -10,6 +10,7 @@
     getConfig,
     getStartupUrls,
     launchGameWithGroups,
+    launchVanillaGame,
     listProfiles,
     isScreenshotMode,
     isWizardScreenshotMode,
@@ -19,6 +20,7 @@
     saveWindowState,
     setGamePath,
     setWindowTitle,
+    suppressExitCleanup,
     updateConfig,
   } from "$lib/api/commands";
   import FooterStatusBar from "$lib/components/FooterStatusBar.svelte";
@@ -52,6 +54,7 @@
     primaryMonitor,
   } from "@tauri-apps/api/window";
   import {
+    ChevronDown,
     Layers,
     Package,
     Play,
@@ -118,6 +121,7 @@
   let showSetupWizard = false;
   let closingFromLaunch = false;
   let forceClose = false;
+  let showLaunchDropdown = false;
 
   function resolveSelectedProfile(
     activeProfile: string | null | undefined,
@@ -219,11 +223,27 @@
     }
   }
 
+  // Shared post-launch behavior (minimize / close) for both modded and vanilla
+  // launches. For the close path we suppress exit cleanup so a modded launch's
+  // freshly-linked mods are not immediately unlinked while the game starts.
+  async function afterLaunch(suppressCleanup: boolean) {
+    if (onGameLaunch === "minimize") {
+      await doMinimize();
+    } else if (onGameLaunch === "close") {
+      if (suppressCleanup) {
+        await suppressExitCleanup();
+      }
+      window.dispatchEvent(new CustomEvent("ron:launch-close"));
+      await getCurrentWindow().close();
+    }
+  }
+
   async function launchWithProfile() {
     if (!hasGamePath) {
       alert("Game path is not configured. Open Settings first.");
       return;
     }
+    showLaunchDropdown = false;
 
     try {
       isLaunching = true;
@@ -233,15 +253,30 @@
 
       const profile = await applyProfile(selectedProfile);
       await launchGameWithGroups(profile.installed_mod_names);
-
-      if (onGameLaunch === "minimize") {
-        await doMinimize();
-      } else if (onGameLaunch === "close") {
-        window.dispatchEvent(new CustomEvent("ron:launch-close"));
-        await getCurrentWindow().close();
-      }
+      await afterLaunch(true);
     } catch (error) {
       console.error("Failed to launch game:", error);
+      alert(`Failed to launch game: ${String(error)}`);
+    } finally {
+      isLaunching = false;
+    }
+  }
+
+  async function launchVanilla() {
+    if (!hasGamePath) {
+      alert("Game path is not configured. Open Settings first.");
+      return;
+    }
+    showLaunchDropdown = false;
+
+    try {
+      isLaunching = true;
+      await launchVanillaGame();
+      // Vanilla launch already unlinked everything, so exit cleanup would be a
+      // no-op; suppress it anyway to keep the two paths consistent.
+      await afterLaunch(true);
+    } catch (error) {
+      console.error("Failed to launch game vanilla:", error);
       alert(`Failed to launch game: ${String(error)}`);
     } finally {
       isLaunching = false;
@@ -448,6 +483,17 @@
         incognitoMode.update((v) => !v);
       }
     };
+
+    // Close the launch dropdown when clicking anywhere outside it.
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!showLaunchDropdown) return;
+      const target = e.target as Node;
+      const dropdown = document.getElementById("launch-dropdown-root");
+      if (dropdown && !dropdown.contains(target)) {
+        showLaunchDropdown = false;
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
 
     window.addEventListener("focus", handleAppFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -723,6 +769,7 @@
       if (unlistenMove) {
         unlistenMove();
       }
+      document.removeEventListener("mousedown", handleClickOutside);
       window.removeEventListener("focus", handleAppFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("ron:profile-changed", handleProfileChanged);
@@ -791,20 +838,66 @@
         </select>
       </div>
 
-      <!-- Launch Game button -->
-      <button
-        class="btn primary btn-sm h-9"
-        on:click={() => {
-          void launchWithProfile();
-        }}
-        disabled={!hasGamePath ||
-          isLaunching ||
-          $importLogStore.mods.some((m) => m.status === "running")}
-        title="Launch Ready or Not with selected profile"
+      <!-- Launch Game split-button: modded (default) + vanilla -->
+      <div
+        id="launch-dropdown-root"
+        class="flex items-center"
+        style="position:relative;"
       >
-        <Play size={16} class="inline mr-1" />
-        {isLaunching ? "Launching..." : "Launch Game"}
-      </button>
+        <button
+          class="btn primary btn-sm h-9 rounded-r-none"
+          on:click={() => {
+            void launchWithProfile();
+          }}
+          disabled={!hasGamePath ||
+            isLaunching ||
+            $importLogStore.mods.some((m) => m.status === "running")}
+          title="Launch Ready or Not with selected profile"
+        >
+          <Play size={16} class="inline mr-1" />
+          {isLaunching ? "Launching..." : "Launch Game"}
+        </button>
+        <button
+          class="btn primary btn-sm h-9 rounded-l-none"
+          style="border-left:none;padding-inline:0.4rem;"
+          on:click={() => {
+            if (!isLaunching) showLaunchDropdown = !showLaunchDropdown;
+          }}
+          disabled={!hasGamePath ||
+            isLaunching ||
+            $importLogStore.mods.some((m) => m.status === "running")}
+          title="Choose launch mode"
+          aria-label="Choose launch mode"
+        >
+          <ChevronDown size={16} />
+        </button>
+        {#if showLaunchDropdown}
+          <div
+            class="absolute right-0 mt-1 min-w-56 rounded-lg shadow-lg"
+            style="top:100%;background:var(--clr-surface);border:1px solid var(--adw-border-color);z-index:100;"
+          >
+            <button
+              class="block w-full text-left px-4 py-2 text-sm hover:opacity-80"
+              style="color:var(--clr-text);"
+              on:click={() => {
+                void launchWithProfile();
+              }}
+            >
+              Launch modded
+            </button>
+            <div style="border-top:1px solid var(--adw-border-color);"></div>
+            <button
+              class="block w-full text-left px-4 py-2 text-sm hover:opacity-80"
+              style="color:var(--clr-text);"
+              on:click={() => {
+                void launchVanilla();
+              }}
+            >
+              Launch vanilla
+            </button>
+          </div>
+        {/if}
+      </div>
     </div>
   </header>
 

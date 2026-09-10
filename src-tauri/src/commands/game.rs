@@ -412,6 +412,68 @@ pub async fn launch_game_with_groups(
     launch_game_internal(&game_path, config.intro_skip_enabled)
 }
 
+/// Remove all managed live links and restore backed-up originals, returning the
+/// game folder to a stock state. Used for startup/exit cleanup and vanilla launch.
+#[tauri::command]
+pub async fn ensure_game_stock(state: State<'_, AppState>) -> Result<(), String> {
+    let config = state.get_config().map_err(|e: AppError| e.to_string())?;
+    let game_path = config
+        .game_path
+        .ok_or_else(|| "Game path not configured".to_string())?;
+
+    sync_mod_links_for_game_path(&game_path, Vec::new())
+}
+
+/// Unlink all mods (stock folder) then launch the game vanilla.
+#[tauri::command]
+pub async fn launch_vanilla_game(state: State<'_, AppState>) -> Result<(), String> {
+    let config = state.get_config().map_err(|e: AppError| e.to_string())?;
+    let game_path = config
+        .game_path
+        .ok_or_else(|| "Game path not configured".to_string())?;
+
+    sync_mod_links_for_game_path(&game_path, Vec::new())?;
+    launch_game_internal(&game_path, config.intro_skip_enabled)
+}
+
+/// Tell the backend to skip stock cleanup on the next app exit. Called right
+/// before the launch-close path so the freshly-linked mods are not immediately
+/// unlinked while the Steam-URI launch is still starting the game.
+#[tauri::command]
+pub fn suppress_exit_cleanup(state: State<'_, AppState>) {
+    state
+        .suppress_exit_cleanup
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Best-effort stock cleanup used on app exit. Returns Ok even on failure so
+/// it can never block shutdown; logs warnings instead.
+pub(crate) fn cleanup_to_stock_on_exit(state: &AppState) {
+    if state
+        .suppress_exit_cleanup
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
+        log::debug!("exit cleanup suppressed (launch-close path)");
+        return;
+    }
+    let config = match state.get_config() {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("exit cleanup: failed to read config: {e}");
+            return;
+        }
+    };
+    if !config.link_on_launch_only {
+        return;
+    }
+    let Some(game_path) = config.game_path else {
+        return;
+    };
+    if let Err(e) = sync_mod_links_for_game_path(&game_path, Vec::new()) {
+        log::warn!("exit cleanup: failed to restore stock folder: {e}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

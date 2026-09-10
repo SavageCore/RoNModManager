@@ -49,6 +49,20 @@ pub fn run() {
         .is_test(false)
         .try_init();
     let builder = tauri::Builder::default().setup(|app| {
+        // When link-on-launch-only is enabled, the game folder must be stock at
+        // rest. A previous session (or a pre-upgrade install) may have left it
+        // modded, so restore to stock on every startup. Best-effort: never block
+        // or fail startup over this.
+        {
+            let state = app.state::<AppState>();
+            let should_cleanup = state
+                .get_config()
+                .is_ok_and(|c| c.link_on_launch_only && c.game_path.is_some());
+            if should_cleanup {
+                game::cleanup_to_stock_on_exit(&state);
+            }
+        }
+
         #[cfg(debug_assertions)]
         {
             if std::env::var("SCREENSHOT_MODE").is_err()
@@ -142,7 +156,7 @@ pub fn run() {
             }
         },
     ));
-    builder
+    let app = builder
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -167,6 +181,9 @@ pub fn run() {
             game::launch_game,
             game::sync_mod_links,
             game::launch_game_with_groups,
+            game::ensure_game_stock,
+            game::launch_vanilla_game,
+            game::suppress_exit_cleanup,
             modpack::set_modpack_url,
             modpack::sync_modpack,
             modpack::get_modpack_collections,
@@ -256,6 +273,16 @@ pub fn run() {
             commands::fs::reveal_in_file_manager,
             commands::fs::open_dir,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle: &tauri::AppHandle, event: tauri::RunEvent| {
+        if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit = &event {
+            // Best-effort stock cleanup on real quit. Skipped on the
+            // launch-close path (see game::suppress_exit_cleanup) and when the
+            // feature is disabled. Never blocks shutdown.
+            let state = app_handle.state::<AppState>();
+            game::cleanup_to_stock_on_exit(&state);
+        }
+    });
 }

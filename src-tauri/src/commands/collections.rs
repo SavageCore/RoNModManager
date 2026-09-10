@@ -270,9 +270,16 @@ pub async fn toggle_collection(
     apply_collection_state(&mut profile, &name, enabled);
     profiles::save_profile(&profile)?;
 
-    if let Some(ref game_path) = config.game_path {
-        super::game::sync_mod_links_for_game_path(game_path, profile.installed_mod_names.clone())
+    // When link-on-launch-only is enabled, toggling a collection only updates the
+    // profile; the game folder is (un)linked at launch time.
+    if !config.link_on_launch_only {
+        if let Some(ref game_path) = config.game_path {
+            super::game::sync_mod_links_for_game_path(
+                game_path,
+                profile.installed_mod_names.clone(),
+            )
             .map_err(crate::models::AppError::Validation)?;
+        }
     }
 
     Ok(())

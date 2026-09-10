@@ -234,6 +234,7 @@ export const updateConfig = (updates: {
   asked_close_preference?: boolean;
   setup_wizard_complete?: boolean;
   log_level?: "error" | "warn" | "info" | "debug" | "trace";
+  link_on_launch_only?: boolean;
 }) => invoke<void>("update_config", { updates });
 
 export const verifyNexusApiKey = (apiKey: string) =>
@@ -325,6 +326,9 @@ export const syncModLinks = (enabledGroups: string[]) =>
   invoke<void>("sync_mod_links", { enabledGroups });
 export const launchGameWithGroups = (enabledGroups: string[]) =>
   invoke<void>("launch_game_with_groups", { enabledGroups });
+export const ensureGameStock = () => invoke<void>("ensure_game_stock");
+export const launchVanillaGame = () => invoke<void>("launch_vanilla_game");
+export const suppressExitCleanup = () => invoke<void>("suppress_exit_cleanup");
 
 export const setWindowTitle = (title: string) =>
   invoke<void>("set_window_title", { title });

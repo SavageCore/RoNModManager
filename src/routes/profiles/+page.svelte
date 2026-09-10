@@ -91,7 +91,9 @@
         );
         const profile = await commands.applyProfile(name);
         const config = await commands.getConfig();
-        if (config.game_path)
+        // When link-on-launch-only is on, creating/applying a profile is
+        // staging-only; the game folder is (un)linked at launch time.
+        if (config.game_path && !config.link_on_launch_only)
           await commands.syncModLinks(profile.installed_mod_names);
         window.dispatchEvent(
           new CustomEvent("ron:profile-changed", { detail: { name } }),
@@ -127,7 +129,9 @@
       error = null;
       const profile = await commands.applyProfile(name);
       const config = await commands.getConfig();
-      if (config.game_path)
+      // When link-on-launch-only is on, applying a profile is staging-only; the
+      // game folder is (un)linked at launch time.
+      if (config.game_path && !config.link_on_launch_only)
         await commands.syncModLinks(profile.installed_mod_names);
       window.dispatchEvent(
         new CustomEvent("ron:profile-changed", { detail: { name } }),

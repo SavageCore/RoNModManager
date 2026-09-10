@@ -349,6 +349,11 @@ fn is_mod_used_by_any_profile(mod_name: &str) -> Result<bool> {
 
 fn sync_active_profile_links(state: &State<'_, AppState>) -> Result<()> {
     let config = state.get_config()?;
+    // When link-on-launch-only is enabled, toggles stay staging-only: the game
+    // folder is only (un)linked at launch time, not on every enable/disable.
+    if config.link_on_launch_only {
+        return Ok(());
+    }
     let Some(game_path) = config.game_path.as_ref() else {
         return Ok(());
     };
@@ -925,6 +930,9 @@ pub async fn uninstall_mods(_app: AppHandle, state: State<'_, AppState>) -> Resu
     // 2. Remove game-folder files while manifests still exist so the path
     //    mapping is available. On Windows, files may be hard links or copies
     //    (not symlinks), so remove_orphan_symlinks() won't catch them later.
+    //    When link-on-launch-only is enabled, the folder is already stock at
+    //    rest, but we still run the teardown to clean up any strays (e.g. from
+    //    a pre-upgrade install).
     game::sync_mod_links_for_game_path(&game_path, Vec::new()).map_err(AppError::Validation)?;
 
     // 3. Delete files and manifests

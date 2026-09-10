@@ -30,6 +30,7 @@ export interface AppConfig {
   optimization_enabled: boolean;
   optimization_profile: string | null;
   log_level: LogLevel;
+  link_on_launch_only: boolean;
 }
 
 export interface Collection {
