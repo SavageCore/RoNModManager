@@ -1,6 +1,7 @@
 pub mod addon_map;
 pub mod config_tweaks;
 pub mod downloader;
+pub mod flatpak;
 pub mod hasher;
 pub mod installer;
 pub mod manifest;

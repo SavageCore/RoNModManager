@@ -73,5 +73,5 @@ pub async fn install_update(app: AppHandle) -> Result<UpdateInfo, String> {
 
 #[tauri::command]
 pub fn is_flatpak() -> bool {
-    std::env::var("FLATPAK_ID").is_ok()
+    crate::services::flatpak::is_flatpak_sandbox()
 }
