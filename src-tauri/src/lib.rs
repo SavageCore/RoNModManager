@@ -63,8 +63,14 @@ pub fn run() {
         {
             use tauri_plugin_deep_link::DeepLinkExt;
             #[cfg(any(target_os = "linux", target_os = "windows"))]
-            if let Err(e) = app.deep_link().register_all() {
-                log::warn!("Failed to register deep-link handlers: {e}");
+            if crate::services::flatpak::is_flatpak_sandbox() {
+                log::info!(
+                    "Flatpak sandbox detected; skipping runtime deep-link registration (handled by exported .desktop file)"
+                );
+            } else if let Err(e) = app.deep_link().register_all() {
+                log::warn!(
+                    "Failed to register deep-link handlers (need xdg-mime/update-desktop-database): {e}"
+                );
             }
         }
 
