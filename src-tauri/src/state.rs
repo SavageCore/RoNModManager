@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use reqwest::Client;
@@ -46,6 +46,13 @@ pub struct AppState {
     /// Map value is the cancel signal: false = waiting, true = cancelled.
     pub nexus_cancel: Arc<Mutex<HashMap<u64, bool>>>,
     pub nexus_wait_id: Arc<AtomicU64>,
+    /// When true, the next app exit skips stock cleanup. Set during the
+    /// launch-close path so the Steam-URI launch is not raced by an immediate
+    /// unlink of the mods it is about to load.
+    pub suppress_exit_cleanup: AtomicBool,
+    /// True while a game-exit watcher thread is active. Ensures only one
+    /// watcher runs at a time across repeated launches.
+    pub game_watcher_running: AtomicBool,
 }
 
 impl AppState {
@@ -96,6 +103,8 @@ impl AppState {
             config_path,
             nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
             nexus_wait_id: Arc::new(AtomicU64::new(1)),
+            suppress_exit_cleanup: AtomicBool::new(false),
+            game_watcher_running: AtomicBool::new(false),
         })
     }
 
@@ -173,6 +182,8 @@ impl Default for AppState {
                     config_path,
                     nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
                     nexus_wait_id: Arc::new(AtomicU64::new(1)),
+                    suppress_exit_cleanup: AtomicBool::new(false),
+                    game_watcher_running: AtomicBool::new(false),
                 }
             }
         }

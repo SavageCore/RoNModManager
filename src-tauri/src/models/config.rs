@@ -118,6 +118,8 @@ pub struct AppConfig {
     pub optimization_profile: Option<String>,
     #[serde(default)]
     pub log_level: LogLevel,
+    #[serde(default)]
+    pub link_on_launch_only: bool,
 }
 
 impl Default for AppConfig {
@@ -149,6 +151,7 @@ impl Default for AppConfig {
             optimization_enabled: false,
             optimization_profile: None,
             log_level: LogLevel::Info,
+            link_on_launch_only: false,
         }
     }
 }

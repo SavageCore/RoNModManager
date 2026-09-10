@@ -9,7 +9,10 @@
     fetchModpackJson,
     getConfig,
     getStartupUrls,
+    ensureGameStock,
+    isGameRunning as checkGameRunning,
     launchGameWithGroups,
+    launchVanillaGame,
     listProfiles,
     isScreenshotMode,
     isWizardScreenshotMode,
@@ -19,6 +22,7 @@
     saveWindowState,
     setGamePath,
     setWindowTitle,
+    suppressExitCleanup,
     updateConfig,
   } from "$lib/api/commands";
   import FooterStatusBar from "$lib/components/FooterStatusBar.svelte";
@@ -52,6 +56,7 @@
     primaryMonitor,
   } from "@tauri-apps/api/window";
   import {
+    ChevronDown,
     Layers,
     Package,
     Play,
@@ -87,6 +92,12 @@
 
   const APP_NAME = "RoN Mod Manager";
   const UPDATE_AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+  // How long the launch-close path waits for the game process to appear
+  // before giving up and restoring the folder to stock. Mirrors the backend
+  // game-watcher's APPEAR_TIMEOUT: the watcher thread dies with the app, so
+  // the close path must resolve links itself instead of relying on it.
+  const LAUNCH_APPEAR_TIMEOUT_MS = 60_000;
+  const LAUNCH_APPEAR_POLL_MS = 2_000;
 
   const nav = [
     { href: "/mods", label: "Mods", icon: Package },
@@ -118,6 +129,8 @@
   let showSetupWizard = false;
   let closingFromLaunch = false;
   let forceClose = false;
+  let showLaunchDropdown = false;
+  let isGameRunning = false;
 
   function resolveSelectedProfile(
     activeProfile: string | null | undefined,
@@ -219,11 +232,75 @@
     }
   }
 
+  // Shared post-launch behavior (minimize / close) for both modded and vanilla
+  // launches. For the close path we suppress exit cleanup so a modded launch's
+  // freshly-linked mods are not immediately unlinked while the game starts.
+  async function afterLaunch(suppressCleanup: boolean) {
+    if (onGameLaunch === "minimize") {
+      await doMinimize();
+    } else if (onGameLaunch === "close") {
+      if (suppressCleanup) {
+        await suppressExitCleanup();
+      }
+      window.dispatchEvent(new CustomEvent("ron:launch-close"));
+      await getCurrentWindow().close();
+    }
+  }
+
+  // Poll until the game process appears (Steam-URI launch is async and may
+  // show a dialog the user can cancel). True when the game was seen, false
+  // on timeout. Never throws; invoke errors are treated as "not running".
+  async function waitForGameAppear(
+    timeoutMs: number = LAUNCH_APPEAR_TIMEOUT_MS,
+  ): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      try {
+        if (await checkGameRunning()) {
+          return true;
+        }
+      } catch {
+        // Treat backend errors as "not running yet" and keep polling.
+      }
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        return false;
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(LAUNCH_APPEAR_POLL_MS, remaining)),
+      );
+    }
+  }
+
+  // Best-effort restore to stock after a failed/cancelled launch. Only
+  // applies in link-on-launch-only mode (otherwise links are meant to stay)
+  // and never rewrites the folder under a running game.
+  async function cleanupLinksAfterCancelledLaunch(): Promise<void> {
+    try {
+      const config = await getConfig();
+      if (!config.link_on_launch_only) {
+        return;
+      }
+      let running = false;
+      try {
+        running = await checkGameRunning();
+      } catch {
+        running = false;
+      }
+      if (!running) {
+        await ensureGameStock();
+      }
+    } catch {
+      // Best-effort only; launch error handling reports the original failure.
+    }
+  }
+
   async function launchWithProfile() {
     if (!hasGamePath) {
       alert("Game path is not configured. Open Settings first.");
       return;
     }
+    showLaunchDropdown = false;
 
     try {
       isLaunching = true;
@@ -233,15 +310,43 @@
 
       const profile = await applyProfile(selectedProfile);
       await launchGameWithGroups(profile.installed_mod_names);
-
-      if (onGameLaunch === "minimize") {
-        await doMinimize();
-      } else if (onGameLaunch === "close") {
-        window.dispatchEvent(new CustomEvent("ron:launch-close"));
-        await getCurrentWindow().close();
+      if (onGameLaunch === "close") {
+        // The watcher thread dies with the app, so wait here for the game
+        // to appear before closing. On timeout (cancelled Steam launch) the
+        // folder would otherwise stay modded at rest until next startup.
+        const appeared = await waitForGameAppear();
+        if (!appeared) {
+          console.warn(
+            "Game did not appear after launch; restoring stock folder before close.",
+          );
+          await cleanupLinksAfterCancelledLaunch();
+        }
       }
+      await afterLaunch(true);
     } catch (error) {
       console.error("Failed to launch game:", error);
+      await cleanupLinksAfterCancelledLaunch();
+      alert(`Failed to launch game: ${String(error)}`);
+    } finally {
+      isLaunching = false;
+    }
+  }
+
+  async function launchVanilla() {
+    if (!hasGamePath) {
+      alert("Game path is not configured. Open Settings first.");
+      return;
+    }
+    showLaunchDropdown = false;
+
+    try {
+      isLaunching = true;
+      await launchVanillaGame();
+      // Vanilla launch already unlinked everything, so exit cleanup would be a
+      // no-op; suppress it anyway to keep the two paths consistent.
+      await afterLaunch(true);
+    } catch (error) {
+      console.error("Failed to launch game vanilla:", error);
       alert(`Failed to launch game: ${String(error)}`);
     } finally {
       isLaunching = false;
@@ -448,6 +553,17 @@
         incognitoMode.update((v) => !v);
       }
     };
+
+    // Close the launch dropdown when clicking anywhere outside it.
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!showLaunchDropdown) return;
+      const target = e.target as Node;
+      const dropdown = document.getElementById("launch-dropdown-root");
+      if (dropdown && !dropdown.contains(target)) {
+        showLaunchDropdown = false;
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
 
     window.addEventListener("focus", handleAppFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -708,6 +824,12 @@
       unlistenFunctions.push(fn);
     });
 
+    void listen<{ running: boolean }>("game-running", (event) => {
+      isGameRunning = event.payload.running;
+    }).then((fn) => {
+      unlistenFunctions.push(fn);
+    });
+
     return () => {
       cleanup();
       if (resizeDebounce) {
@@ -723,6 +845,7 @@
       if (unlistenMove) {
         unlistenMove();
       }
+      document.removeEventListener("mousedown", handleClickOutside);
       window.removeEventListener("focus", handleAppFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("ron:profile-changed", handleProfileChanged);
@@ -791,20 +914,76 @@
         </select>
       </div>
 
-      <!-- Launch Game button -->
-      <button
-        class="btn primary btn-sm h-9"
-        on:click={() => {
-          void launchWithProfile();
-        }}
-        disabled={!hasGamePath ||
-          isLaunching ||
-          $importLogStore.mods.some((m) => m.status === "running")}
-        title="Launch Ready or Not with selected profile"
+      <!-- Launch Game split-button: modded (default) + vanilla -->
+      <div
+        id="launch-dropdown-root"
+        class="flex items-center"
+        style="position:relative;"
       >
-        <Play size={16} class="inline mr-1" />
-        {isLaunching ? "Launching..." : "Launch Game"}
-      </button>
+        <button
+          class="btn primary btn-sm h-9 rounded-r-none"
+          on:click={() => {
+            void launchWithProfile();
+          }}
+          disabled={!hasGamePath ||
+            isLaunching ||
+            isGameRunning ||
+            $importLogStore.mods.some((m) => m.status === "running")}
+          title={isGameRunning
+            ? "Game is running - links unlock when it quits"
+            : "Launch Ready or Not with selected profile"}
+        >
+          <Play size={16} class="inline mr-1" />
+          {isLaunching
+            ? "Launching..."
+            : isGameRunning
+              ? "Game running"
+              : "Launch modded"}
+        </button>
+        <button
+          class="btn primary btn-sm h-9 rounded-l-none"
+          style="border-left:none;padding-inline:0.4rem;"
+          on:click={() => {
+            if (!isLaunching) showLaunchDropdown = !showLaunchDropdown;
+          }}
+          disabled={!hasGamePath ||
+            isLaunching ||
+            isGameRunning ||
+            $importLogStore.mods.some((m) => m.status === "running")}
+          title={isGameRunning
+            ? "Game is running - links unlock when it quits"
+            : "Choose launch mode"}
+          aria-label="Choose launch mode"
+        >
+          <ChevronDown size={16} />
+        </button>
+        {#if showLaunchDropdown}
+          <div
+            class="absolute right-0 mt-1 min-w-56 rounded-lg shadow-lg"
+            style="top:100%;background:var(--clr-surface);border:1px solid var(--adw-border-color);z-index:100;"
+          >
+            <button
+              class="block w-full text-left px-4 py-2 text-sm hover:opacity-80"
+              style="color:var(--clr-text);"
+              on:click={() => {
+                void launchVanilla();
+              }}
+            >
+              Launch vanilla
+            </button>
+            <div style="border-top:1px solid var(--adw-border-color);"></div>
+            <button
+              class="block w-full text-left px-4 py-2 text-sm hover:opacity-80"
+              style="color:var(--clr-text);"
+              on:click={() => {
+                void launchWithProfile();
+              }}
+            >
+              Launch modded
+            </button>
+          </div>
+        {/if}
+      </div>
     </div>
   </header>
 

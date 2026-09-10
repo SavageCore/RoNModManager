@@ -4,6 +4,7 @@
     applyOptimization,
     detectGpuProfile,
     disableOptimization,
+    ensureGameStock,
     getAppliedOptimizationProfile,
     getGpuProfiles,
     buildModpackFromInstalled,
@@ -13,8 +14,10 @@
     getAuthStatus,
     getConfig,
     getModpackMeta,
+    getProfile,
     getSyncDetails,
     installUpdate,
+    isGameRunning,
     isRunningInFlatpak,
     isIntroSkipApplied,
     logout,
@@ -23,6 +26,7 @@
     setModpackMeta,
     setSyncDetails,
     setTheme,
+    syncModLinks,
     syncModpackToRemote,
     undoIntroSkip,
     updateConfig,
@@ -131,6 +135,7 @@
   let onGameLaunch: OnGameLaunchAction = "nothing";
   let closeAction: CloseAction = "quit";
   let minimizeTarget: MinimizeTarget = "taskbar";
+  let linkOnLaunchOnly = false;
   let scrollEl: HTMLElement | null = null;
   let showScrollTop = false;
 
@@ -250,7 +255,47 @@
     closeAction = config.close_action ?? "quit";
     minimizeTarget = config.minimize_target ?? "taskbar";
     logLevel = config.log_level ?? "info";
+    linkOnLaunchOnly = config.link_on_launch_only ?? false;
   }
+
+  // Applies immediately on toggle: enabling unlinks all mods (stock),
+  // disabling re-links the active profile so the folder matches the
+  // previous behavior.
+  async function handleLinkOnLaunchChange(event: Event) {
+    const target = (event.target as HTMLInputElement).checked;
+    try {
+      // Never rewrite the game folder under a running game.
+      if (await isGameRunning()) {
+        linkOnLaunchOnly = !target;
+        toastStore.error("Close the game before changing this setting.");
+        return;
+      }
+      await updateConfig({ link_on_launch_only: target });
+      linkOnLaunchOnly = target;
+      if (target) {
+        await ensureGameStock();
+      } else {
+        const cfg = await getConfig();
+        const activeName = cfg.active_profile;
+        if (activeName) {
+          const profile = await getProfile(activeName);
+          if (profile && profile.installed_mod_names.length > 0) {
+            await syncModLinks(profile.installed_mod_names);
+          }
+        }
+      }
+      toastStore.success(
+        target
+          ? "Link on launch enabled. Game folder is now stock."
+          : "Link on launch disabled. Active profile re-linked.",
+      );
+    } catch (error) {
+      // Revert the checkbox if anything failed.
+      linkOnLaunchOnly = !target;
+      toastStore.error(`Failed to apply change: ${String(error)}`);
+    }
+  }
+
   function openModioApiKeyModal() {
     modioApiKeyInput = modioApiKey;
     showModioApiKeyModal = true;
@@ -810,6 +855,27 @@
               >Light</option
             ><option value="dark">Dark</option></select
           >
+        </div>
+      </div>
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">Link mods only on launch</div>
+          <div class="prefs-row-subtitle">
+            When on, the game folder stays stock until you press Launch in this
+            app. Toggling mods only updates staging. Launching via Steam
+            directly will be vanilla. When off, mods link immediately and
+            Steam-direct launches stay modded.
+          </div>
+        </div>
+        <div class="prefs-row-suffix">
+          <label class="gale-switch">
+            <input
+              type="checkbox"
+              checked={linkOnLaunchOnly}
+              on:change={handleLinkOnLaunchChange}
+            />
+            <span class="gale-switch-track"></span>
+          </label>
         </div>
       </div>
       <div class="prefs-row">

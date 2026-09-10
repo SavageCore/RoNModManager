@@ -128,7 +128,7 @@
     }
 
     // Sync: creates addon symlinks only if the parent is enabled.
-    if (hasGamePath) {
+    if (hasGamePath && !linkOnLaunchOnly) {
       await syncModLinks(getFullSyncList(modsForActiveProfile));
     }
   }
@@ -172,7 +172,7 @@
     await refresh();
     selectedAddOns = getAddOnsForMod(selectedModName);
 
-    if (hasGamePath) {
+    if (hasGamePath && !linkOnLaunchOnly) {
       await syncModLinks(getFullSyncList(modsForActiveProfile));
     }
   }
@@ -321,6 +321,7 @@
   let allInstalledGroupNames = new Set<string>();
   let pendingIncludeNewModsForActiveProfile = false;
   let hasGamePath = false;
+  let linkOnLaunchOnly = false;
   let showUe4ssLaunchOptionBanner = false;
   const UE4SS_LAUNCH_OPTION = 'WINEDLLOVERRIDES="dwmapi=n,b" %command%';
 
@@ -737,6 +738,7 @@
       // Backend already filters addon groups and populates addonFiles on parents
       modGroups = sortModGroups(groups);
       hasGamePath = config.game_path != null;
+      linkOnLaunchOnly = config.link_on_launch_only;
       showUe4ssLaunchOptionBanner = false;
       if (
         hasGamePath &&
@@ -825,7 +827,7 @@
 
       await refresh();
 
-      if (hasGamePath) {
+      if (hasGamePath && !linkOnLaunchOnly) {
         const enabledGroups = [...profile.installed_mod_names];
         await syncModLinks(getFullSyncList(enabledGroups));
       }
@@ -835,38 +837,6 @@
       toastStore.error(`Failed to apply profile: ${String(error)}`);
     } finally {
       isApplyingProfile = false;
-    }
-  }
-
-  async function launchWithSelection() {
-    if (!hasGamePath) {
-      toastStore.error("Game path is not configured. Open Settings first.");
-      return;
-    }
-
-    try {
-      if (selectedProfile) {
-        const profile = await applyProfile(selectedProfile);
-        await refresh();
-        await launchGameWithGroups([...profile.installed_mod_names]);
-        toastStore.success(`Launched game with profile: ${selectedProfile}`);
-
-        const cfg = await getConfig();
-        const appWindow = getCurrentWindow();
-        if (cfg.on_game_launch === "minimize") {
-          if (cfg.minimize_target === "tray") {
-            await appWindow.hide();
-          } else {
-            await appWindow.minimize();
-          }
-        } else if (cfg.on_game_launch === "close") {
-          window.dispatchEvent(new CustomEvent("ron:launch-close"));
-          await appWindow.close();
-        }
-        return;
-      }
-    } catch (error) {
-      toastStore.error(`Failed to launch game: ${String(error)}`);
     }
   }
 
@@ -913,8 +883,9 @@
       await persistActiveProfileEnabledGroups(enabledGroups);
       modsForActiveProfile = enabledGroups;
 
-      // Sync game links - includes addon archives for all enabled mods
-      if (hasGamePath) {
+      // Sync game links - includes addon archives for all enabled mods.
+      // Skipped when link-on-launch-only is on: toggles stay staging-only.
+      if (hasGamePath && !linkOnLaunchOnly) {
         await syncModLinks(getFullSyncList(enabledGroups));
       }
     } catch (error) {
@@ -1094,7 +1065,7 @@
       toastStore.success(`Uninstalled: ${filename}`);
 
       await refresh();
-      if (hasGamePath) {
+      if (hasGamePath && !linkOnLaunchOnly) {
         await syncModLinks(getFullSyncList(modsForActiveProfile));
       }
     } catch (error) {
@@ -1123,7 +1094,7 @@
           }
           toastStore.success(`Uninstalled: ${group.name}`);
           await refresh();
-          if (hasGamePath) {
+          if (hasGamePath && !linkOnLaunchOnly) {
             await syncModLinks(getFullSyncList(modsForActiveProfile));
           }
         } catch (error) {
@@ -1149,7 +1120,7 @@
           toastStore.success("Uninstalled all mods");
           modsForActiveProfile = [];
           await refresh();
-          if (hasGamePath) {
+          if (hasGamePath && !linkOnLaunchOnly) {
             await syncModLinks([]);
           }
         } catch (error) {
@@ -1230,7 +1201,7 @@
           );
           clearSelection();
           await refresh();
-          if (hasGamePath) {
+          if (hasGamePath && !linkOnLaunchOnly) {
             await syncModLinks(getFullSyncList(modsForActiveProfile));
           }
         } catch (error) {
@@ -1254,7 +1225,7 @@
     try {
       await persistActiveProfileEnabledGroups(enabledGroups);
       modsForActiveProfile = enabledGroups;
-      if (hasGamePath) {
+      if (hasGamePath && !linkOnLaunchOnly) {
         await syncModLinks(getFullSyncList(enabledGroups));
       }
       toastStore.success(allEnabled ? "Disabled all mods" : "Enabled all mods");
@@ -1988,7 +1959,8 @@
 
     <p style="color: var(--clr-text-secondary);" class="text-sm mb-4">
       Each profile has its own set of active mods. Use the checkboxes to enable
-      or disable mods for this profile.
+      or disable mods for this profile. {#if linkOnLaunchOnly}Changes take
+        effect on next launch; the game folder stays stock until then.{/if}
     </p>
 
     {#if filteredModGroups.length > 0}

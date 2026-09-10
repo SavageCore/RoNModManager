@@ -261,9 +261,13 @@ pub async fn apply_profile(name: String, state: State<'_, AppState>) -> Result<P
         config.active_profile = Some(profile.name.clone());
     })?;
 
-    if let Some(ref game_path) = updated_config.game_path {
-        game::sync_mod_links_for_game_path(game_path, profile.installed_mod_names.clone())
-            .map_err(AppError::Validation)?;
+    // When link-on-launch-only is enabled, applying a profile only updates the
+    // active profile; the game folder is (un)linked at launch time.
+    if !updated_config.link_on_launch_only {
+        if let Some(ref game_path) = updated_config.game_path {
+            game::sync_mod_links_for_game_path(game_path, profile.installed_mod_names.clone())
+                .map_err(AppError::Validation)?;
+        }
     }
 
     Ok(profile)

@@ -24,6 +24,7 @@ pub struct ConfigUpdate {
     pub asked_close_preference: Option<bool>,
     pub setup_wizard_complete: Option<bool>,
     pub log_level: Option<LogLevel>,
+    pub link_on_launch_only: Option<bool>,
 }
 
 #[tauri::command]
@@ -91,6 +92,9 @@ pub async fn update_config(state: State<'_, AppState>, updates: ConfigUpdate) ->
             config.log_level = level;
             // Apply at runtime so no restart is needed.
             log::set_max_level(level.into());
+        }
+        if let Some(v) = updates.link_on_launch_only {
+            config.link_on_launch_only = v;
         }
     })?;
 

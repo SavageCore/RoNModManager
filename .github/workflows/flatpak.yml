@@ -29,6 +29,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history + tags: git-cliff needs them to generate releases.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
@@ -91,6 +94,20 @@ jobs:
           ostree --repo=rust-stable-repo refs --create=runtime/org.freedesktop.Sdk.Extension.rust-stable/x86_64/25.08 "${GOOD_COMMIT}"
           flatpak build-bundle --runtime rust-stable-repo rust-stable.flatpak org.freedesktop.Sdk.Extension.rust-stable 25.08
           flatpak install --user -y --bundle rust-stable.flatpak
+
+      - name: Install git-cliff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tmp=$(mktemp -d)
+          gh release download --repo orhun/git-cliff \
+            --pattern 'git-cliff-*-x86_64-unknown-linux-musl.tar.gz' \
+            --dir "$tmp"
+          tar xz -C "$tmp" -f "$tmp"/git-cliff-*-x86_64-unknown-linux-musl.tar.gz
+          sudo install -m 755 "$(find "$tmp" -name git-cliff -type f)" /usr/local/bin/git-cliff
+
+      - name: Update AppStream releases
+        run: make update-appstream
 
       - name: Build Flatpak
         run: |
