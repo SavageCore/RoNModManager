@@ -1692,6 +1692,7 @@ pub async fn add_nexus_mod(
     state: State<'_, AppState>,
     input: String,
     file_id: Option<u64>,
+    #[allow(non_snake_case)] skip_open: Option<bool>,
 ) -> Result<AddNexusResult> {
     let config = state.get_config()?;
     let api_key = config.nexus_api_key.ok_or_else(|| {
@@ -1877,8 +1878,14 @@ pub async fn add_nexus_mod(
                 },
             );
 
-            let _ =
-                tauri_plugin_opener::OpenerExt::opener(&app).open_url(&files_url, None::<String>);
+            // When launched from the userscript one-press flow, the browser
+            // download was already started in-page, so don't open a duplicate
+            // tab here - the manual-download wait loop below still scans
+            // ~/Downloads for the file.
+            if skip_open != Some(true) {
+                let _ = tauri_plugin_opener::OpenerExt::opener(&app)
+                    .open_url(&files_url, None::<String>);
+            }
 
             let _ = app.emit(
                 "nexus_free_download_waiting",

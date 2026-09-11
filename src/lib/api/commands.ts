@@ -176,8 +176,16 @@ export interface NexusFileOption {
 
 export const addModIoMod = (input: string) =>
   invoke<ModAddResult>("add_modio_mod", { input });
-export const addNexusMod = (input: string, fileId?: number) =>
-  invoke<ModAddResult>("add_nexus_mod", { input, fileId: fileId ?? null });
+export const addNexusMod = (
+  input: string,
+  fileId?: number,
+  skipOpen?: boolean,
+) =>
+  invoke<ModAddResult>("add_nexus_mod", {
+    input,
+    fileId: fileId ?? null,
+    skipOpen: skipOpen ?? null,
+  });
 export const listNexusFileOptions = (input: string) =>
   invoke<NexusFileOption[]>("list_nexus_file_options", { input });
 export const cancelNexusDownload = (waitId?: number | null) =>

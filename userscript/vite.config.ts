@@ -13,7 +13,19 @@ export default defineConfig(({ mode }) => ({
           "https://www.nexusmods.com/readyornot/mods/*",
           "https://mod.io/g/readyornot/m/*",
         ],
-        grant: [],
+        grant: [
+          "GM_getValue",
+          "GM_setValue",
+          "GM_registerMenuCommand",
+          "GM_xmlhttpRequest",
+        ],
+        connect: [
+          "https://www.nexusmods.com",
+          "https://nexusmods.com",
+          "https://*.nexusmods.com",
+          "https://*.nexus-cdn.com",
+          "https://files.nexus-cdn.com",
+        ],
         updateURL:
           "https://github.com/SavageCore/RoNModManager/releases/latest/download/ron-mod-manager-userscript.user.js",
         downloadURL:

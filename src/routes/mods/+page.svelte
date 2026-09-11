@@ -40,7 +40,7 @@
   import { ue4ssBannerDismissed } from "$lib/stores/ue4ssBannerDismissed";
   import AddModModal from "$lib/components/AddModModal.svelte";
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
-  import { pendingInstallUrl } from "$lib/stores/pendingInstall";
+  import { pendingInstall } from "$lib/stores/pendingInstall";
   import PakFileSelectionModal from "$lib/components/PakFileSelectionModal.svelte";
   import {
     pakSelectionStore,
@@ -291,6 +291,10 @@
     url: string;
     replacing: string | null;
     displayName?: string;
+    /** Pre-selected Nexus file IDs resolved upstream (userscript). */
+    fileIds?: number[];
+    /** When true, backend won't open a duplicate browser download tab. */
+    skipBrowserOpen?: boolean;
   }> = [];
   let prevDoneCounter = $addModpackPanelStore.doneCounter;
   $: if ($addModpackPanelStore.doneCounter !== prevDoneCounter) {
@@ -1445,10 +1449,18 @@
       updateScrollTopVisibility();
     }
 
-    const unsubPending = pendingInstallUrl.subscribe((url) => {
-      if (url) {
-        pendingInstallUrl.set(null);
-        autoSubmitEntries = [{ url, replacing: null }];
+    const unsubPending = pendingInstall.subscribe((entry) => {
+      if (entry) {
+        pendingInstall.set(null);
+        autoSubmitEntries = [
+          {
+            url: entry.url,
+            replacing: null,
+            displayName: entry.url,
+            fileIds: entry.fileIds,
+            skipBrowserOpen: entry.skipBrowserOpen ?? false,
+          },
+        ];
         showAddModModal = true;
       }
     });

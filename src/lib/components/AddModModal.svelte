@@ -29,6 +29,12 @@
     url: string;
     replacing: string | null;
     displayName?: string;
+    /** Pre-selected Nexus file IDs resolved upstream (userscript). Skips the
+     * in-app file-variant picker. */
+    fileIds?: number[];
+    /** When true, the backend will not open a duplicate browser tab for the
+     * free (non-premium) download - the userscript already started it. */
+    skipBrowserOpen?: boolean;
   }> = [];
 
   $: if (isVisible && autoSubmitEntries.length > 0) {
@@ -51,6 +57,10 @@
     queueId: string;
     replacingArchiveName?: string;
     displayName?: string;
+    /** Pre-selected file IDs to download (skips in-app variant picker). */
+    fileIds?: number[];
+    /** When true, backend won't open a duplicate browser download tab. */
+    skipBrowserOpen?: boolean;
   }> = [];
 
   $: activeQueueCount = $modAddQueueStore.items.filter(
@@ -189,6 +199,8 @@
       url: string;
       replacing: string | null;
       displayName?: string;
+      fileIds?: number[];
+      skipBrowserOpen?: boolean;
     }>,
   ) {
     for (const entry of entries) {
@@ -197,6 +209,8 @@
         queueId: modAddQueueStore.enqueue(entry.url),
         replacingArchiveName: entry.replacing ?? undefined,
         displayName: entry.displayName,
+        fileIds: entry.fileIds,
+        skipBrowserOpen: entry.skipBrowserOpen ?? false,
       });
     }
     closeModal();
@@ -285,6 +299,8 @@
           queueId: string;
           replacingArchiveName?: string;
           displayName?: string;
+          fileIds?: number[];
+          skipBrowserOpen?: boolean;
         };
         chosenFileIds: number[];
         downloads: Download[];
@@ -328,41 +344,48 @@
           // Serialised so prompts never overlap.
           if (isNexusUrl(plan.entry.input)) {
             try {
-              const fileOptions = await withInteractionLock(async () => {
-                modAddQueueStore.markRunning(
-                  plan.entry.queueId,
-                  "Checking available files...",
-                );
-                return listNexusFileOptions(plan.entry.input);
-              });
-              let chosenFileIds: number[] = [];
-              if (fileOptions.length > 1) {
-                const chosen = await withInteractionLock(async () => {
+              // If the userscript already resolved variant(s), skip the
+              // in-app picker and the browser-tab open.
+              if (plan.entry.fileIds && plan.entry.fileIds.length > 0) {
+                plan.chosenFileIds = [...plan.entry.fileIds];
+                modAddQueueStore.markRunning(plan.entry.queueId, "Starting...");
+              } else {
+                const fileOptions = await withInteractionLock(async () => {
                   modAddQueueStore.markRunning(
                     plan.entry.queueId,
-                    "Select file variant...",
+                    "Checking available files...",
                   );
-                  importLogStore.setWaitingForInput(plan.entry.queueId);
-                  const result = await requestNexusFileSelection(
-                    plan.entry.displayName ||
-                      nexusPreviewName ||
-                      plan.entry.input,
-                    fileOptions,
-                  );
-                  importLogStore.clearWaitingForInput(plan.entry.queueId);
-                  return result;
+                  return listNexusFileOptions(plan.entry.input);
                 });
-                if (chosen === null) {
-                  modAddQueueStore.markError(plan.entry.queueId, "Cancelled");
-                  plan.failed = true;
-                  continue;
+                let chosenFileIds: number[] = [];
+                if (fileOptions.length > 1) {
+                  const chosen = await withInteractionLock(async () => {
+                    modAddQueueStore.markRunning(
+                      plan.entry.queueId,
+                      "Select file variant...",
+                    );
+                    importLogStore.setWaitingForInput(plan.entry.queueId);
+                    const result = await requestNexusFileSelection(
+                      plan.entry.displayName ||
+                        nexusPreviewName ||
+                        plan.entry.input,
+                      fileOptions,
+                    );
+                    importLogStore.clearWaitingForInput(plan.entry.queueId);
+                    return result;
+                  });
+                  if (chosen === null) {
+                    modAddQueueStore.markError(plan.entry.queueId, "Cancelled");
+                    plan.failed = true;
+                    continue;
+                  }
+                  chosenFileIds = chosen.map((f) => f.fileId);
+                } else if (fileOptions.length === 1) {
+                  chosenFileIds = [fileOptions[0].fileId];
                 }
-                chosenFileIds = chosen.map((f) => f.fileId);
-              } else if (fileOptions.length === 1) {
-                chosenFileIds = [fileOptions[0].fileId];
+                plan.chosenFileIds = chosenFileIds;
+                modAddQueueStore.markRunning(plan.entry.queueId, "Queued");
               }
-              plan.chosenFileIds = chosenFileIds;
-              modAddQueueStore.markRunning(plan.entry.queueId, "Queued");
             } catch (error) {
               modAddQueueStore.markError(
                 plan.entry.queueId,
@@ -392,7 +415,11 @@
               plan.chosenFileIds.length > 0 ? plan.chosenFileIds : [undefined];
             for (const fileId of fileIds) {
               const download: Download = {
-                promise: addNexusMod(plan.entry.input, fileId),
+                promise: addNexusMod(
+                  plan.entry.input,
+                  fileId,
+                  plan.entry.skipBrowserOpen,
+                ),
               };
               trackSettled(download);
               plan.downloads.push(download);

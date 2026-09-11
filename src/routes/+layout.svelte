@@ -31,11 +31,12 @@
   import Toast from "$lib/components/Toast.svelte";
   import AuthSetupModal from "$lib/components/AuthSetupModal.svelte";
   import { operationStatusStore } from "$lib/stores/operationStatus";
-  import { pendingInstallUrl } from "$lib/stores/pendingInstall";
+  import { pendingInstall } from "$lib/stores/pendingInstall";
   import { toastStore } from "$lib/stores/toast";
   import { tokenStore } from "$lib/stores/token";
   import { updateCheckStore } from "$lib/stores/updateCheck";
   import { initTheme } from "$lib/theme";
+  import { parseNexusDeepLink } from "$lib/utils/parseNexusDeepLink";
   import type {
     CloseAction,
     MinimizeTarget,
@@ -489,18 +490,20 @@
     const handleDeepLinkUrls = (urls: string[]) => {
       for (const url of urls) {
         if (url.startsWith("ronmm://install/nexus/")) {
-          const id = url
-            .replace("ronmm://install/nexus/", "")
-            .replace(/\/$/, "");
-          pendingInstallUrl.set(
-            `https://www.nexusmods.com/readyornot/mods/${id}`,
-          );
-          void goto("/mods");
+          const parsed = parseNexusDeepLink(url);
+          if (parsed) {
+            pendingInstall.set({
+              url: parsed.url,
+              fileIds: parsed.fileIds,
+              skipBrowserOpen: parsed.skipBrowserOpen,
+            });
+            void goto("/mods");
+          }
         } else if (url.startsWith("ronmm://install/modio/")) {
           const id = url
             .replace("ronmm://install/modio/", "")
             .replace(/\/$/, "");
-          pendingInstallUrl.set(id);
+          pendingInstall.set({ url: id });
           void goto("/mods");
         } else if (url.startsWith("ronmm://modpack/")) {
           const urlStr = url.replace("ronmm://modpack/", "");
