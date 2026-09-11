@@ -10,7 +10,8 @@
 
   $: flatLog = $importLogStore.mods.flatMap((m, i) => [
     ...(i > 0 ? ["---"] : []),
-    m.input,
+    m.name || m.input,
+    ...(m.name && m.name !== m.input ? [`Source: ${m.input}`] : []),
     ...m.lines,
   ]);
   $: isRunning = $importLogStore.mods.some(
@@ -86,10 +87,18 @@
           />
         {/if}
         <span class="font-semibold truncate" style="color: var(--clr-text);"
-          >{mod.input}</span
+          >{mod.name || mod.input}</span
         >
       </button>
       {#if mod.expanded}
+        {#if mod.name && mod.name !== mod.input}
+          <div
+            class="pl-5 leading-relaxed"
+            style="color: var(--clr-text-secondary);"
+          >
+            Source: {mod.input}
+          </div>
+        {/if}
         {#each mod.lines as line}
           <div
             class="pl-5 leading-relaxed"

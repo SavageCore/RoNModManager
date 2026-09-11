@@ -5,6 +5,8 @@ import { operationStatusStore } from "./operationStatus";
 export interface ImportLogMod {
   id: string;
   input: string;
+  /** Display name of the mod, once known. Falls back to `input`. */
+  name?: string;
   lines: string[];
   status: "queued" | "running" | "done" | "error";
   isActive: boolean;
@@ -58,6 +60,7 @@ function createImportLogStore() {
                 {
                   id: item.id,
                   input: item.input,
+                  name: item.name,
                   lines: [],
                   status: "queued",
                   isActive: false,
@@ -80,6 +83,7 @@ function createImportLogStore() {
               {
                 id: item.id,
                 input: item.input,
+                name: item.name,
                 lines: [],
                 status: "running",
                 isActive: true,
@@ -119,6 +123,21 @@ function createImportLogStore() {
     const ids = new Set(state.items.map((i) => i.id));
     for (const id of [...prevStatuses.keys()]) {
       if (!ids.has(id)) prevStatuses.delete(id);
+    }
+    // Names can be resolved after an item is queued (upfront lookup or the
+    // post-download result), so sync them onto existing log entries.
+    for (const item of state.items) {
+      if (!item.name) continue;
+      update((s) => {
+        const target = s.mods.find((m) => m.id === item.id);
+        if (!target || target.name === item.name) return s;
+        return {
+          ...s,
+          mods: s.mods.map((m) =>
+            m.id === item.id ? { ...m, name: item.name } : m,
+          ),
+        };
+      });
     }
   });
 

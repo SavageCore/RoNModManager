@@ -2,6 +2,7 @@
   import {
     addModIoMod,
     addNexusMod,
+    fetchModioRemoteInfo,
     fetchNexusModInfo,
     getArchivePakFiles,
     getTags,
@@ -113,6 +114,22 @@
     return value.includes("nexusmods.com/") && value.includes("/mods/");
   }
 
+  // Look up a mod's display name from its Nexus/mod.io input. Used so the
+  // import log shows the mod name instead of the URL/slug. Failures are
+  // non-fatal - the log falls back to the raw input.
+  async function resolveModName(input: string): Promise<string | null> {
+    try {
+      if (isNexusUrl(input)) {
+        const info = await fetchNexusModInfo(input);
+        return info.name || null;
+      }
+      const info = await fetchModioRemoteInfo(input);
+      return info.name || null;
+    } catch {
+      return null;
+    }
+  }
+
   async function previewNexusName(input: string): Promise<void> {
     const lookupId = ++nexusLookupToken;
     nexusPreviewName = "";
@@ -181,7 +198,10 @@
     for (const modInput of modInputs) {
       pendingLinkQueue.push({
         input: modInput,
-        queueId: modAddQueueStore.enqueue(modInput),
+        queueId: modAddQueueStore.enqueue(
+          modInput,
+          nexusPreviewName || undefined,
+        ),
         replacingArchiveName,
       });
     }
@@ -206,7 +226,7 @@
     for (const entry of entries) {
       pendingLinkQueue.push({
         input: entry.url,
-        queueId: modAddQueueStore.enqueue(entry.url),
+        queueId: modAddQueueStore.enqueue(entry.url, entry.displayName),
         replacingArchiveName: entry.replacing ?? undefined,
         displayName: entry.displayName,
         fileIds: entry.fileIds,
@@ -340,6 +360,17 @@
           };
           allPlans.push(plan);
 
+          // Resolve the display name up front so the import log shows the mod
+          // name rather than the URL/slug while the download runs. The
+          // post-download result re-applies it as a safety net.
+          if (!plan.entry.displayName) {
+            const resolvedName = await resolveModName(plan.entry.input);
+            if (resolvedName) {
+              plan.entry.displayName = resolvedName;
+              modAddQueueStore.setName(plan.entry.queueId, resolvedName);
+            }
+          }
+
           // Phase 1: Ask Nexus file variant questions before downloading.
           // Serialised so prompts never overlap.
           if (isNexusUrl(plan.entry.input)) {
@@ -461,6 +492,14 @@
                 download.failed = true;
                 plan.failed = true;
                 return;
+              }
+              // Safety net: the upfront lookup may have failed (or returned a
+              // generic name) - prefer the authoritative name from the result.
+              if (download.result?.name) {
+                modAddQueueStore.setName(
+                  plan.entry.queueId,
+                  download.result.name,
+                );
               }
               try {
                 const result = download.result;

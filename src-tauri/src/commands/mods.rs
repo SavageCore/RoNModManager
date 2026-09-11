@@ -3,6 +3,7 @@ use tauri::State;
 pub struct ModioRemoteMd5Result {
     pub remote_md5: Option<String>,
     pub archive_name: String,
+    pub name: String,
 }
 
 #[tauri::command]
@@ -36,6 +37,7 @@ pub async fn get_modio_remote_info(
     Ok(ModioRemoteMd5Result {
         remote_md5: mod_details.remote_md5,
         archive_name: mod_details.filename,
+        name: mod_details.name,
     })
 }
 #[tauri::command]

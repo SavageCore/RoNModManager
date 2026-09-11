@@ -5,6 +5,8 @@ export type QueueStatus = "queued" | "running" | "done" | "error";
 export interface ModAddQueueItem {
   id: string;
   input: string;
+  /** Display name of the mod, once known. */
+  name?: string;
   status: QueueStatus;
   message: string;
   createdAt: number;
@@ -36,7 +38,7 @@ function createModAddQueueStore() {
 
   return {
     subscribe,
-    enqueue: (input: string) => {
+    enqueue: (input: string, name?: string) => {
       const id = Math.random().toString(36).slice(2, 11);
       const now = Date.now();
       update((state) => ({
@@ -45,6 +47,7 @@ function createModAddQueueStore() {
           {
             id,
             input,
+            name,
             status: "queued",
             message: "Queued",
             createdAt: now,
@@ -53,6 +56,14 @@ function createModAddQueueStore() {
         totalQueued: state.totalQueued + 1,
       }));
       return id;
+    },
+    setName: (id: string, name: string) => {
+      update((state) => ({
+        items: state.items.map((item) =>
+          item.id === id && item.name !== name ? { ...item, name } : item,
+        ),
+        totalQueued: state.totalQueued,
+      }));
     },
     markRunning: (id: string, message = "Downloading") => {
       update((state) => ({

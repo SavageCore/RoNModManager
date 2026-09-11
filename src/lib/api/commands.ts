@@ -203,6 +203,7 @@ export const fetchNexusModInfo = (input: string) =>
 export interface ModioRemoteInfo {
   remote_md5: string | null;
   archive_name: string;
+  name: string;
 }
 export const fetchModioRemoteInfo = (input: string): Promise<ModioRemoteInfo> =>
   invoke<ModioRemoteInfo>("get_modio_remote_info", { input });

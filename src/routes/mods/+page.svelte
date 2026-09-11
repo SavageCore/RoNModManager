@@ -1456,7 +1456,6 @@
           {
             url: entry.url,
             replacing: null,
-            displayName: entry.url,
             fileIds: entry.fileIds,
             skipBrowserOpen: entry.skipBrowserOpen ?? false,
           },

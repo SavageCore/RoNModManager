@@ -500,9 +500,15 @@
             void goto("/mods");
           }
         } else if (url.startsWith("ronmm://install/modio/")) {
-          const id = url
+          const raw = url
             .replace("ronmm://install/modio/", "")
             .replace(/\/$/, "");
+          // Expand a slug into a canonical URL so the import log's Source
+          // line is a real link. Numeric mod ids are left as-is (the backend
+          // parses those directly).
+          const id = /^\d+$/.test(raw)
+            ? raw
+            : `https://mod.io/g/readyornot/m/${raw}`;
           pendingInstall.set({ url: id });
           void goto("/mods");
         } else if (url.startsWith("ronmm://modpack/")) {
