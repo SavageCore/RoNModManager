@@ -26,6 +26,7 @@
     updateConfig,
   } from "$lib/api/commands";
   import FooterStatusBar from "$lib/components/FooterStatusBar.svelte";
+  import LaunchButton from "$lib/components/LaunchButton.svelte";
   import ImportLogPanel from "$lib/components/ImportLogPanel.svelte";
   import SyncPanel from "$lib/components/SyncPanel.svelte";
   import Toast from "$lib/components/Toast.svelte";
@@ -56,15 +57,7 @@
     getCurrentWindow,
     primaryMonitor,
   } from "@tauri-apps/api/window";
-  import {
-    ChevronDown,
-    Layers,
-    Package,
-    Play,
-    RefreshCw,
-    Settings,
-    User,
-  } from "lucide-svelte";
+  import { Layers, Package, RefreshCw, Settings, User } from "lucide-svelte";
   import semver from "semver";
   import { onMount } from "svelte";
   // Self-hosted Adwaita fonts (OFL-1.1, via Fontsource) - must load before app.css.
@@ -130,7 +123,6 @@
   let showSetupWizard = false;
   let closingFromLaunch = false;
   let forceClose = false;
-  let showLaunchDropdown = false;
   let isGameRunning = false;
 
   function resolveSelectedProfile(
@@ -301,7 +293,6 @@
       alert("Game path is not configured. Open Settings first.");
       return;
     }
-    showLaunchDropdown = false;
 
     try {
       isLaunching = true;
@@ -338,7 +329,6 @@
       alert("Game path is not configured. Open Settings first.");
       return;
     }
-    showLaunchDropdown = false;
 
     try {
       isLaunching = true;
@@ -562,17 +552,6 @@
         incognitoMode.update((v) => !v);
       }
     };
-
-    // Close the launch dropdown when clicking anywhere outside it.
-    const handleClickOutside = (e: MouseEvent) => {
-      if (!showLaunchDropdown) return;
-      const target = e.target as Node;
-      const dropdown = document.getElementById("launch-dropdown-root");
-      if (dropdown && !dropdown.contains(target)) {
-        showLaunchDropdown = false;
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
 
     window.addEventListener("focus", handleAppFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -854,7 +833,6 @@
       if (unlistenMove) {
         unlistenMove();
       }
-      document.removeEventListener("mousedown", handleClickOutside);
       window.removeEventListener("focus", handleAppFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("ron:profile-changed", handleProfileChanged);
@@ -924,75 +902,16 @@
       </div>
 
       <!-- Launch Game split-button: modded (default) + vanilla -->
-      <div
-        id="launch-dropdown-root"
-        class="flex items-center"
-        style="position:relative;"
-      >
-        <button
-          class="btn primary btn-sm h-9 rounded-r-none"
-          on:click={() => {
-            void launchWithProfile();
-          }}
-          disabled={!hasGamePath ||
-            isLaunching ||
-            isGameRunning ||
-            $importLogStore.mods.some((m) => m.status === "running")}
-          title={isGameRunning
-            ? "Game is running - links unlock when it quits"
-            : "Launch Ready or Not with selected profile"}
-        >
-          <Play size={16} class="inline mr-1" />
-          {isLaunching
-            ? "Launching..."
-            : isGameRunning
-              ? "Game running"
-              : "Launch modded"}
-        </button>
-        <button
-          class="btn primary btn-sm h-9 rounded-l-none"
-          style="border-left:none;padding-inline:0.4rem;"
-          on:click={() => {
-            if (!isLaunching) showLaunchDropdown = !showLaunchDropdown;
-          }}
-          disabled={!hasGamePath ||
-            isLaunching ||
-            isGameRunning ||
-            $importLogStore.mods.some((m) => m.status === "running")}
-          title={isGameRunning
-            ? "Game is running - links unlock when it quits"
-            : "Choose launch mode"}
-          aria-label="Choose launch mode"
-        >
-          <ChevronDown size={16} />
-        </button>
-        {#if showLaunchDropdown}
-          <div
-            class="absolute right-0 mt-1 min-w-56 rounded-lg shadow-lg"
-            style="top:100%;background:var(--clr-surface);border:1px solid var(--adw-border-color);z-index:100;"
-          >
-            <button
-              class="block w-full text-left px-4 py-2 text-sm hover:opacity-80"
-              style="color:var(--clr-text);"
-              on:click={() => {
-                void launchVanilla();
-              }}
-            >
-              Launch vanilla
-            </button>
-            <div style="border-top:1px solid var(--adw-border-color);"></div>
-            <button
-              class="block w-full text-left px-4 py-2 text-sm hover:opacity-80"
-              style="color:var(--clr-text);"
-              on:click={() => {
-                void launchWithProfile();
-              }}
-            >
-              Launch modded
-            </button>
-          </div>
-        {/if}
-      </div>
+      <LaunchButton
+        disabled={!hasGamePath ||
+          isLaunching ||
+          isGameRunning ||
+          $importLogStore.mods.some((m) => m.status === "running")}
+        {isLaunching}
+        {isGameRunning}
+        onLaunchModded={() => void launchWithProfile()}
+        onLaunchVanilla={() => void launchVanilla()}
+      />
     </div>
   </header>
 
