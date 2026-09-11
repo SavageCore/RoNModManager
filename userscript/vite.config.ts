@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import monkey from "vite-plugin-monkey";
+import { version } from "./package.json";
 
 export default defineConfig(({ mode }) => ({
   plugins: [
@@ -8,7 +9,7 @@ export default defineConfig(({ mode }) => ({
       userscript: {
         name: "Ready or Not Mod Manager Companion",
         namespace: "savagecore/ron-mod-manager",
-        version: "1.0.0",
+        version,
         match: [
           "https://www.nexusmods.com/readyornot/mods/*",
           "https://mod.io/g/readyornot/m/*",
