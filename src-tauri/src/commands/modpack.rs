@@ -528,3 +528,18 @@ pub async fn export_modpack_to_file(
     let _ = app.emit("export_complete", dir_path.to_string_lossy().to_string());
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_speed_picks_units() {
+        assert_eq!(format_speed(0), "0 B/s");
+        assert_eq!(format_speed(512), "512 B/s");
+        assert_eq!(format_speed(1024), "1.0 KiB/s");
+        assert_eq!(format_speed(1_048_576), "1.0 MiB/s");
+        assert_eq!(format_speed(1_073_741_824), "1.0 GiB/s");
+        assert_eq!(format_speed(2_684_354_560), "2.5 GiB/s");
+    }
+}

@@ -191,9 +191,9 @@ pub async fn set_modpack_meta(
     Ok(())
 }
 
-pub fn resolve_sync_details(
-    state: &State<'_, AppState>,
-) -> Result<(Option<String>, Option<String>)> {
+/// Resolved against a plain `&AppState` (rather than Tauri's `State`) so the
+/// fallback logic stays unit-testable without an app handle.
+pub fn resolve_sync_details(state: &AppState) -> Result<(Option<String>, Option<String>)> {
     let config = state.get_config()?;
     let Some(active_profile_name) = config.active_profile.clone() else {
         return Ok((
@@ -271,4 +271,64 @@ pub async fn apply_profile(name: String, state: State<'_, AppState>) -> Result<P
     }
 
     Ok(profile)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::AppConfig;
+    use reqwest::Client;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicBool, AtomicU64};
+    use std::sync::{Arc, Mutex, RwLock};
+    use tempfile::TempDir;
+
+    fn state_with_config(config: AppConfig) -> (TempDir, AppState) {
+        let dir = TempDir::new().unwrap();
+        let state = AppState {
+            config: RwLock::new(config),
+            client: Client::new(),
+            config_path: dir.path().join("config.json"),
+            nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
+            nexus_wait_id: Arc::new(AtomicU64::new(1)),
+            suppress_exit_cleanup: AtomicBool::new(false),
+            game_watcher_running: AtomicBool::new(false),
+        };
+        (dir, state)
+    }
+
+    #[test]
+    fn normalize_trims_and_drops_empties() {
+        assert_eq!(
+            normalize(Some("  host  ".to_string())),
+            Some("host".to_string())
+        );
+        assert_eq!(normalize(Some("   ".to_string())), None);
+        assert_eq!(normalize(Some(String::new())), None);
+        assert_eq!(normalize(None), None);
+    }
+
+    #[test]
+    fn resolve_sync_details_falls_back_to_global_without_active_profile() {
+        let config = AppConfig {
+            sync_remote_host: Some("deploy@example.com".to_string()),
+            sync_remote_path: Some("/srv/mods".to_string()),
+            ..AppConfig::default()
+        };
+        let (_dir, state) = state_with_config(config);
+
+        assert_eq!(
+            resolve_sync_details(&state).unwrap(),
+            (
+                Some("deploy@example.com".to_string()),
+                Some("/srv/mods".to_string())
+            )
+        );
+    }
+
+    #[test]
+    fn resolve_sync_details_returns_none_when_nothing_configured() {
+        let (_dir, state) = state_with_config(AppConfig::default());
+        assert_eq!(resolve_sync_details(&state).unwrap(), (None, None));
+    }
 }

@@ -21,6 +21,7 @@
     "format": "prettier --write .",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
+    "test:unit:coverage": "vitest run --coverage",
     "tauri": "tauri",
     "prepare": "husky",
     "release": "dotenvx run -- npm run tauri build",

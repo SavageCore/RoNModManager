@@ -155,3 +155,56 @@ impl Default for AppConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn log_level_maps_to_filter() {
+        assert_eq!(LevelFilter::from(LogLevel::Error), LevelFilter::Error);
+        assert_eq!(LevelFilter::from(LogLevel::Warn), LevelFilter::Warn);
+        assert_eq!(LevelFilter::from(LogLevel::Info), LevelFilter::Info);
+        assert_eq!(LevelFilter::from(LogLevel::Debug), LevelFilter::Debug);
+        assert_eq!(LevelFilter::from(LogLevel::Trace), LevelFilter::Trace);
+    }
+
+    #[test]
+    fn log_level_serde_round_trip() {
+        for level in [
+            LogLevel::Error,
+            LogLevel::Warn,
+            LogLevel::Info,
+            LogLevel::Debug,
+            LogLevel::Trace,
+        ] {
+            let json = serde_json::to_string(&level).unwrap();
+            assert_eq!(serde_json::from_str::<LogLevel>(&json).unwrap(), level);
+        }
+    }
+
+    #[test]
+    fn app_config_deserializes_sparse_json_with_defaults() {
+        let config: AppConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(config.active_profile, None);
+        assert_eq!(config.sync_remote_host, None);
+        assert_eq!(config.log_level, LogLevel::Info);
+        assert!(!config.setup_wizard_complete);
+    }
+
+    #[test]
+    fn app_config_round_trip() {
+        let config = AppConfig {
+            sync_remote_host: Some("deploy@example.com".to_string()),
+            active_profile: Some("main".to_string()),
+            ..AppConfig::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let back: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.sync_remote_host,
+            Some("deploy@example.com".to_string())
+        );
+        assert_eq!(back.active_profile, Some("main".to_string()));
+    }
+}

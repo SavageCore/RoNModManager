@@ -284,3 +284,69 @@ pub async fn toggle_collection(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::Profile;
+
+    fn profile_with_collections() -> crate::models::Profile {
+        let mut profile = Profile::new("test".to_string(), Vec::new());
+        profile.collections.insert(
+            "Favourites".to_string(),
+            vec!["a.zip".to_string(), "b.zip".to_string()],
+        );
+        profile
+            .collections
+            .insert("Maps".to_string(), vec!["c.zip".to_string()]);
+        profile
+    }
+
+    #[test]
+    fn enabling_collection_adds_its_mods() {
+        let mut profile = profile_with_collections();
+        apply_collection_state(&mut profile, "Favourites", true);
+        let mut installed = profile.installed_mod_names.clone();
+        installed.sort();
+        assert_eq!(installed, vec!["a.zip".to_string(), "b.zip".to_string()]);
+        assert!(profile
+            .enabled_collections
+            .contains(&"Favourites".to_string()));
+    }
+
+    #[test]
+    fn enabling_second_collection_unions_mods() {
+        let mut profile = profile_with_collections();
+        apply_collection_state(&mut profile, "Favourites", true);
+        apply_collection_state(&mut profile, "Maps", true);
+        let mut installed = profile.installed_mod_names.clone();
+        installed.sort();
+        assert_eq!(
+            installed,
+            vec![
+                "a.zip".to_string(),
+                "b.zip".to_string(),
+                "c.zip".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn disabling_collection_removes_its_mods() {
+        let mut profile = profile_with_collections();
+        apply_collection_state(&mut profile, "Favourites", true);
+        apply_collection_state(&mut profile, "Favourites", false);
+        assert!(profile.installed_mod_names.is_empty());
+        assert!(!profile
+            .enabled_collections
+            .contains(&"Favourites".to_string()));
+    }
+
+    #[test]
+    fn enabling_unknown_collection_is_stable() {
+        let mut profile = profile_with_collections();
+        apply_collection_state(&mut profile, "Missing", true);
+        assert!(profile.installed_mod_names.is_empty());
+        assert!(profile.enabled_collections.contains(&"Missing".to_string()));
+    }
+}

@@ -449,3 +449,49 @@ fn expand_tilde(path: &str) -> String {
     }
     path.to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_user_host_splits_on_first_at() {
+        assert_eq!(
+            parse_user_host("deploy@example.com").unwrap(),
+            ("deploy".to_string(), "example.com".to_string())
+        );
+        assert_eq!(
+            parse_user_host("a@b@c").unwrap(),
+            ("a".to_string(), "b@c".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_user_host_rejects_missing_parts() {
+        assert!(parse_user_host("example.com").is_err());
+        assert!(parse_user_host("@example.com").is_err());
+        assert!(parse_user_host("deploy@").is_err());
+        assert!(parse_user_host("").is_err());
+    }
+
+    #[test]
+    fn expand_tilde_leaves_plain_paths_alone() {
+        assert_eq!(expand_tilde("/abs/path"), "/abs/path");
+        assert_eq!(expand_tilde("relative"), "relative");
+        // "~user/..." is not the current user's home, so it passes through.
+        assert_eq!(expand_tilde("~other/x"), "~other/x");
+    }
+
+    #[test]
+    fn expand_tilde_expands_home_prefix() {
+        match dirs::home_dir() {
+            Some(home) => {
+                let expanded = expand_tilde("~/mods");
+                assert_eq!(expanded, home.join("mods").to_string_lossy().into_owned());
+            }
+            None => {
+                assert_eq!(expand_tilde("~/mods"), "~/mods");
+            }
+        }
+    }
+}

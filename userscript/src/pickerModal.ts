@@ -281,5 +281,6 @@ function formatBytes(bytes: number): string {
   const k = 1024;
   const units = ["KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+  const unitIndex = Math.min(i - 1, units.length - 1);
+  return `${(bytes / Math.pow(k, unitIndex + 1)).toFixed(1)} ${units[unitIndex]}`;
 }

@@ -146,4 +146,25 @@ mod tests {
         // MD5 of 1MB of zeros
         assert_eq!(hash, "b6d81b360a5672d80c27430f39153e2c");
     }
+
+    #[test]
+    fn test_copy_file_with_hash_and_progress() {
+        let mut src = NamedTempFile::new().unwrap();
+        write!(src, "hello world").unwrap();
+        src.flush().unwrap();
+        let dst = NamedTempFile::new().unwrap();
+
+        let mut calls = Vec::new();
+        let (bytes, hash) = copy_file_with_hash_and_progress(src.path(), dst.path(), |p, t| {
+            calls.push((p, t));
+        })
+        .unwrap();
+
+        assert_eq!(bytes, 11);
+        assert_eq!(hash, "5eb63bbbe01eeed093cb22bb8f5acdc3");
+        assert_eq!(std::fs::read(dst.path()).unwrap(), b"hello world");
+        assert!(!calls.is_empty());
+        assert_eq!(calls[0], (0, 11));
+        assert_eq!(*calls.last().unwrap(), (11, 11));
+    }
 }

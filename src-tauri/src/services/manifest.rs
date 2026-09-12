@@ -175,6 +175,24 @@ fn sanitize_filename(filename: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+
+    fn example_manifest() -> InstallManifest {
+        InstallManifest {
+            source_archive: "cool-mod.zip".to_string(),
+            display_name: Some("Cool Mod".to_string()),
+            source_url: None,
+            installed_files: vec![PathBuf::from("/mods/cool-mod_P.pak")],
+            installed_at: 123,
+            content_hash: Some("abc123".to_string()),
+            nexus_file_id: Some(42),
+            installed_version: Some("1.0".to_string()),
+        }
+    }
+
+    fn manager_in(dir: &TempDir) -> ManifestManager {
+        ManifestManager::new(dir.path())
+    }
 
     #[test]
     fn test_sanitize_filename() {
@@ -182,5 +200,79 @@ mod tests {
         assert_eq!(sanitize_filename("test/file.zip"), "test_file.zip");
         assert_eq!(sanitize_filename("C:\\test\\file.zip"), "C__test_file.zip");
         assert_eq!(sanitize_filename("file*name?.zip"), "file_name_.zip");
+    }
+
+    #[test]
+    fn test_save_and_load_manifest_round_trip() {
+        let dir = TempDir::new().unwrap();
+        let manager = manager_in(&dir);
+        manager.save_manifest(&example_manifest()).unwrap();
+
+        let loaded = manager.load_manifest("cool-mod.zip").unwrap().unwrap();
+        assert_eq!(loaded.source_archive, "cool-mod.zip");
+        assert_eq!(loaded.display_name.as_deref(), Some("Cool Mod"));
+        assert_eq!(loaded.content_hash.as_deref(), Some("abc123"));
+        assert_eq!(loaded.nexus_file_id, Some(42));
+    }
+
+    #[test]
+    fn test_load_missing_manifest_returns_none() {
+        let dir = TempDir::new().unwrap();
+        let manager = manager_in(&dir);
+        assert!(manager.load_manifest("nope.zip").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_get_manifest_for_pak() {
+        let dir = TempDir::new().unwrap();
+        let manager = manager_in(&dir);
+        manager.save_manifest(&example_manifest()).unwrap();
+
+        let found = manager
+            .get_manifest_for_pak("cool-mod_P.pak")
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.0, "cool-mod.zip");
+        assert!(manager.get_manifest_for_pak("other.pak").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_delete_manifest() {
+        let dir = TempDir::new().unwrap();
+        let manager = manager_in(&dir);
+        manager.save_manifest(&example_manifest()).unwrap();
+        manager.delete_manifest("cool-mod.zip").unwrap();
+        assert!(manager.load_manifest("cool-mod.zip").unwrap().is_none());
+        // Deleting a missing manifest is a no-op.
+        manager.delete_manifest("cool-mod.zip").unwrap();
+    }
+
+    #[test]
+    fn test_list_all_manifests_skips_non_json() {
+        let dir = TempDir::new().unwrap();
+        let manager = manager_in(&dir);
+        manager.save_manifest(&example_manifest()).unwrap();
+        fs::write(dir.path().join(".manifests").join("notes.txt"), b"hi").unwrap();
+
+        let all = manager.list_all_manifests().unwrap();
+        assert_eq!(all.len(), 1);
+        assert!(all.contains_key("cool-mod.zip"));
+    }
+
+    #[test]
+    fn test_find_by_content_hash() {
+        let dir = TempDir::new().unwrap();
+        let manager = manager_in(&dir);
+        manager.save_manifest(&example_manifest()).unwrap();
+
+        assert_eq!(
+            manager
+                .find_by_content_hash("abc123")
+                .unwrap()
+                .unwrap()
+                .source_archive,
+            "cool-mod.zip"
+        );
+        assert!(manager.find_by_content_hash("missing").unwrap().is_none());
     }
 }
