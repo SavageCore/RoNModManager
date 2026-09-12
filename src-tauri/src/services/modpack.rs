@@ -140,6 +140,26 @@ mod tests {
         assert!(!is_newer_version("1.1.9", "1.2.0").unwrap());
     }
 
+    #[test]
+    fn normalize_urls_trim_trailing_slashes() {
+        assert_eq!(
+            normalize_modpack_url("https://example.com/packs/"),
+            "https://example.com/packs/modpack.json"
+        );
+        assert_eq!(
+            normalize_modpack_url("https://example.com/packs"),
+            "https://example.com/packs/modpack.json"
+        );
+        assert_eq!(
+            normalize_manifest_url("https://example.com/packs/"),
+            "https://example.com/packs/ronmod.manifest"
+        );
+        assert_eq!(
+            normalize_manifest_url("https://example.com/packs"),
+            "https://example.com/packs/ronmod.manifest"
+        );
+    }
+
     #[tokio::test]
     async fn fetch_modpack_uses_modpack_json_url() {
         let mut server = Server::new_async().await;

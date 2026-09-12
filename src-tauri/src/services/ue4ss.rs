@@ -85,3 +85,21 @@ pub async fn ensure_installed(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_is_installed_detects_dll() {
+        let dir = TempDir::new().unwrap();
+        assert!(!is_installed(dir.path()));
+
+        let dll = dir.path().join("ReadyOrNot/Binaries/Win64/UE4SS.dll");
+        fs::create_dir_all(dll.parent().unwrap()).unwrap();
+        fs::write(&dll, b"fake").unwrap();
+        assert!(is_installed(dir.path()));
+    }
+}

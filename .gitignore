@@ -12,3 +12,4 @@ src-tauri/.cargo/
 *.flatpak
 .opencode/
 ronmm.log
+coverage/

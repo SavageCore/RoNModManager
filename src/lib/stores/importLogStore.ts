@@ -19,7 +19,7 @@ interface ImportLogState {
   isOpen: boolean;
 }
 
-function phaseLabel(operation: string, message: string): string {
+export function phaseLabel(operation: string, message: string): string {
   if (operation.includes("download")) {
     if (
       message.startsWith("Waiting for") ||

@@ -6,6 +6,13 @@ import type { Plugin } from "vite";
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+// Vitest resolves modules with node conditions, which makes `svelte` (and
+// `svelte/store`) resolve to their server builds - mounting components then
+// fails with `lifecycle_function_unavailable`. Force browser conditions for
+// test runs so @testing-library/svelte mounts client components.
+// @ts-expect-error process is a nodejs global
+const isVitest = process.env.VITEST;
+
 // When vite-plugin-svelte can't find cached CSS for a virtual style module
 // (e.g. no <style> block, or cache not yet populated on startup/HMR), its
 // load hook returns undefined and Vite falls back to the raw .svelte source.
@@ -28,6 +35,7 @@ const svelteCssGuard: Plugin = {
 export default defineConfig({
   plugins: [svelteCssGuard, tailwindcss(), sveltekit()],
   clearScreen: false,
+  resolve: isVitest ? { conditions: ["browser"] } : undefined,
   server: {
     port: 1420,
     strictPort: true,
@@ -52,5 +60,16 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["tests/unit/**/*.test.ts"],
+    setupFiles: ["tests/setup.ts"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "lcov"],
+      thresholds: {
+        statements: 78,
+        branches: 72,
+        functions: 55,
+        lines: 80,
+      },
+    },
   },
 });

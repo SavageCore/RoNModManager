@@ -516,4 +516,100 @@ mod tests {
             999
         );
     }
+
+    fn file_option(
+        file_id: u64,
+        category_id: Option<u32>,
+        is_primary: Option<bool>,
+        uploaded_timestamp: Option<u64>,
+    ) -> NexusModFile {
+        NexusModFile {
+            file_id,
+            file_name: format!("file-{file_id}.zip"),
+            name: None,
+            version: None,
+            description: None,
+            category_id,
+            category_name: None,
+            is_primary,
+            uploaded_timestamp,
+            size_in_bytes: None,
+        }
+    }
+
+    #[test]
+    fn test_get_file_options_drops_old_deleted_and_archived() {
+        let files = vec![
+            file_option(1, Some(1), None, None),
+            file_option(2, Some(4), None, None),
+            file_option(3, Some(6), None, None),
+            file_option(4, Some(7), None, None),
+        ];
+        let ids: Vec<u64> = get_file_options(&files).iter().map(|f| f.file_id).collect();
+        assert_eq!(ids, vec![1]);
+    }
+
+    #[test]
+    fn test_get_file_options_keeps_only_main_when_present() {
+        let files = vec![
+            file_option(1, Some(1), None, None),
+            file_option(2, Some(3), None, None),
+        ];
+        let ids: Vec<u64> = get_file_options(&files).iter().map(|f| f.file_id).collect();
+        assert_eq!(ids, vec![1]);
+    }
+
+    #[test]
+    fn test_get_file_options_keeps_all_active_without_main() {
+        let files = vec![
+            file_option(1, Some(3), None, None),
+            file_option(2, Some(2), None, None),
+            file_option(3, Some(7), None, None),
+        ];
+        let ids: Vec<u64> = get_file_options(&files).iter().map(|f| f.file_id).collect();
+        assert_eq!(ids, vec![1, 2]);
+    }
+
+    #[test]
+    fn test_get_file_options_treats_unknown_category_as_active() {
+        let files = vec![
+            file_option(1, None, None, None),
+            file_option(2, None, None, None),
+        ];
+        assert_eq!(get_file_options(&files).len(), 2);
+    }
+
+    #[test]
+    fn test_get_file_options_sorts_primary_first_then_newest() {
+        let files = vec![
+            file_option(1, Some(1), Some(false), Some(100)),
+            file_option(2, Some(1), Some(true), Some(50)),
+            file_option(3, Some(1), Some(false), Some(200)),
+        ];
+        let ids: Vec<u64> = get_file_options(&files).iter().map(|f| f.file_id).collect();
+        assert_eq!(ids, vec![2, 3, 1]);
+    }
+
+    #[test]
+    fn test_pick_primary_file_prefers_primary_then_newest_main() {
+        let files = vec![
+            file_option(1, Some(1), Some(false), Some(300)),
+            file_option(2, Some(1), Some(true), Some(50)),
+        ];
+        assert_eq!(pick_primary_file(&files).map(|f| f.file_id), Some(2));
+
+        let no_primary = vec![
+            file_option(1, Some(1), Some(false), Some(100)),
+            file_option(2, Some(1), Some(false), Some(200)),
+        ];
+        assert_eq!(pick_primary_file(&no_primary).map(|f| f.file_id), Some(2));
+    }
+
+    #[test]
+    fn test_pick_primary_file_returns_none_when_nothing_active() {
+        let files = vec![file_option(1, Some(4), None, None)];
+        assert!(pick_primary_file(&files).is_none());
+        let empty: Vec<NexusModFile> = vec![];
+        assert!(pick_primary_file(&empty).is_none());
+    }
 }

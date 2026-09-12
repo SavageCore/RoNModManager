@@ -596,4 +596,26 @@ mod tests {
         let unchanged = expand_enabled_with_addons(vec!["Solo.zip".to_string()], &HashMap::new());
         assert_eq!(unchanged, vec!["Solo.zip".to_string()]);
     }
+
+    #[test]
+    fn target_path_routes_pak_and_sav() {
+        let mods = Path::new("/live/mods");
+        let saves = Path::new("/live/savegames");
+        assert_eq!(
+            target_path_for_staged_file(Path::new("/staged/a_P.pak"), mods, saves),
+            Some(mods.join("a_P.pak"))
+        );
+        assert_eq!(
+            target_path_for_staged_file(Path::new("/staged/Map.SAV"), mods, saves),
+            Some(saves.join("Map.SAV"))
+        );
+        assert_eq!(
+            target_path_for_staged_file(Path::new("/staged/readme.txt"), mods, saves),
+            None
+        );
+        assert_eq!(
+            target_path_for_staged_file(Path::new("/staged/PAK"), mods, saves),
+            None
+        );
+    }
 }

@@ -334,3 +334,99 @@ pub fn detect_gpu() -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn fake_game_path() -> TempDir {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("ReadyOrNot/Content/Movies")).unwrap();
+        dir
+    }
+
+    fn movies_dir(game_path: &Path) -> PathBuf {
+        game_path.join("ReadyOrNot/Content/Movies")
+    }
+
+    #[test]
+    fn test_intro_skip_round_trip() {
+        let game = fake_game_path();
+        let movies = movies_dir(game.path());
+        fs::write(movies.join("ReadyOrNot_StartupMovie.mp4"), b"a").unwrap();
+        fs::write(movies.join("RoNLogo.mp4"), b"b").unwrap();
+
+        assert!(!is_intro_skip_applied(game.path()).unwrap());
+        apply_intro_skip(game.path()).unwrap();
+        assert!(is_intro_skip_applied(game.path()).unwrap());
+        assert!(!movies.join("ReadyOrNot_StartupMovie.mp4").exists());
+        assert!(movies.join("ReadyOrNot_StartupMovie.mp4.bak").exists());
+
+        undo_intro_skip(game.path()).unwrap();
+        assert!(!is_intro_skip_applied(game.path()).unwrap());
+        assert!(movies.join("ReadyOrNot_StartupMovie.mp4").exists());
+        assert!(!movies.join("ReadyOrNot_StartupMovie.mp4.bak").exists());
+    }
+
+    #[test]
+    fn test_intro_skip_is_noop_without_movies() {
+        let game = TempDir::new().unwrap();
+        apply_intro_skip(game.path()).unwrap();
+        undo_intro_skip(game.path()).unwrap();
+        assert!(!is_intro_skip_applied(game.path()).unwrap());
+    }
+
+    #[test]
+    fn test_apply_intro_skip_discards_restored_copy_when_backup_exists() {
+        let game = fake_game_path();
+        let movies = movies_dir(game.path());
+        // Game update restored the mp4 while our backup is still around.
+        fs::write(movies.join("ReadyOrNot_StartupMovie.mp4"), b"new").unwrap();
+        fs::write(movies.join("ReadyOrNot_StartupMovie.mp4.bak"), b"old").unwrap();
+
+        apply_intro_skip(game.path()).unwrap();
+        assert!(!movies.join("ReadyOrNot_StartupMovie.mp4").exists());
+        assert_eq!(
+            fs::read(movies.join("ReadyOrNot_StartupMovie.mp4.bak")).unwrap(),
+            b"old"
+        );
+    }
+
+    #[test]
+    fn test_backup_path_appends_suffix() {
+        let ini = Path::new("/some/dir/Engine.ini");
+        assert_eq!(
+            backup_path(ini),
+            PathBuf::from("/some/dir/Engine.ini.ronmm.bak")
+        );
+    }
+
+    #[test]
+    fn test_available_profiles_all_have_content() {
+        let profiles = available_gpu_profiles();
+        assert!(!profiles.is_empty());
+        assert!(profiles.contains(&"RX_7900_XTX".to_string()));
+        for profile in &profiles {
+            assert!(
+                !get_profile_content(profile).unwrap().is_empty(),
+                "profile {profile} has no content"
+            );
+        }
+        assert!(get_profile_content("NOT_A_GPU").is_err());
+    }
+
+    #[test]
+    fn test_normalize_bytes_converts_crlf() {
+        assert_eq!(normalize_bytes(b"a\r\nb\r\n"), b"a\nb\n");
+        assert_eq!(normalize_bytes(b"a\nb"), b"a\nb");
+        assert_eq!(normalize_bytes(b"a\rb"), b"a\rb");
+    }
+
+    #[test]
+    fn test_normalize_gpu_name() {
+        assert_eq!(normalize_gpu_name("RTX_4070-Ti"), "rtx 4070 ti");
+        assert_eq!(normalize_gpu_name("GTX970"), "gtx970");
+    }
+}

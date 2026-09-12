@@ -250,3 +250,92 @@ pub fn default_config_path() -> Result<PathBuf> {
 pub fn load_config_fallback() -> Result<AppConfig> {
     load_config_from_path(&default_config_path()?)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// AppState pointed at a throwaway config file, so `update_config`
+    /// exercises the real file round-trip without touching the user profile.
+    fn test_state() -> (TempDir, AppState) {
+        let dir = TempDir::new().unwrap();
+        let config_path = dir.path().join("config.json");
+        let state = AppState {
+            config: RwLock::new(AppConfig::default()),
+            client: Client::new(),
+            config_path,
+            nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
+            nexus_wait_id: Arc::new(AtomicU64::new(1)),
+            suppress_exit_cleanup: AtomicBool::new(false),
+            game_watcher_running: AtomicBool::new(false),
+        };
+        (dir, state)
+    }
+
+    #[test]
+    fn app_directory_name_is_debug_suffixed_in_tests() {
+        assert_eq!(app_directory_name(), "ronmodmanager-dev");
+    }
+
+    #[test]
+    fn update_config_persists_and_reloads() {
+        let (_dir, state) = test_state();
+        assert_eq!(state.get_config().unwrap().sync_remote_host, None);
+
+        let updated = state
+            .update_config(|config| {
+                config.sync_remote_host = Some("deploy@example.com".to_string());
+                config.active_profile = Some("main".to_string());
+            })
+            .unwrap();
+        assert_eq!(
+            updated.sync_remote_host,
+            Some("deploy@example.com".to_string())
+        );
+
+        let reloaded = load_config_from_path(&state.config_path).unwrap();
+        assert_eq!(
+            reloaded.sync_remote_host,
+            Some("deploy@example.com".to_string())
+        );
+        assert_eq!(reloaded.active_profile, Some("main".to_string()));
+    }
+
+    #[test]
+    fn load_config_from_path_missing_file_returns_default() {
+        let dir = TempDir::new().unwrap();
+        let config = load_config_from_path(&dir.path().join("missing.json")).unwrap();
+        assert_eq!(config.active_profile, None);
+    }
+
+    #[test]
+    fn load_config_from_path_rejects_invalid_json() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        fs::write(&path, b"{not json").unwrap();
+        assert!(load_config_from_path(&path).is_err());
+    }
+
+    #[test]
+    fn nexus_wait_lifecycle() {
+        let (_dir, state) = test_state();
+        // Unknown waits read as not cancelled.
+        assert!(!state.is_nexus_wait_cancelled(999));
+
+        let wait_id = state.register_nexus_wait();
+        assert!(!state.is_nexus_wait_cancelled(wait_id));
+
+        // Simulate cancellation, then cleanup.
+        state.nexus_cancel.lock().unwrap().insert(wait_id, true);
+        assert!(state.is_nexus_wait_cancelled(wait_id));
+        state.clear_nexus_wait(wait_id);
+        assert!(!state.is_nexus_wait_cancelled(wait_id));
+    }
+
+    #[test]
+    fn nexus_wait_ids_are_unique() {
+        let (_dir, state) = test_state();
+        assert_ne!(state.register_nexus_wait(), state.register_nexus_wait());
+    }
+}

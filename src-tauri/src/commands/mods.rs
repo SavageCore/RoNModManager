@@ -3584,3 +3584,69 @@ mod update_check_tests {
         )));
     }
 }
+
+#[cfg(test)]
+mod pure_helper_tests {
+    use super::*;
+
+    #[test]
+    fn parse_modio_input_accepts_numeric_id() {
+        assert_eq!(
+            parse_modio_input_to_slug_or_id("  12345  ").unwrap(),
+            (Some(12345), None)
+        );
+    }
+
+    #[test]
+    fn parse_modio_input_extracts_slug_from_url() {
+        assert_eq!(
+            parse_modio_input_to_slug_or_id("https://mod.io/g/readyornot/m/realistic-swat")
+                .unwrap(),
+            (None, Some("realistic-swat".to_string()))
+        );
+        assert_eq!(
+            parse_modio_input_to_slug_or_id("https://mod.io/g/readyornot/m/nightvision/?tab=x#y")
+                .unwrap(),
+            (None, Some("nightvision".to_string()))
+        );
+        assert_eq!(
+            parse_modio_input_to_slug_or_id("just-a-slug").unwrap(),
+            (None, Some("just-a-slug".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_modio_input_rejects_empty() {
+        assert!(parse_modio_input_to_slug_or_id("   ").is_err());
+        assert!(parse_modio_input_to_slug_or_id("#").is_err());
+    }
+
+    #[test]
+    fn sanitize_filename_replaces_reserved_chars() {
+        assert_eq!(
+            sanitize_filename_for_download("a/b\\c:d*e?f<g>h|i"),
+            "a_b_c_d_e_f_g_h_i"
+        );
+        assert_eq!(
+            sanitize_filename_for_download("  spaced.zip  "),
+            "spaced.zip"
+        );
+        assert_eq!(sanitize_filename_for_download(""), "modio-download.zip");
+        assert_eq!(sanitize_filename_for_download("   "), "modio-download.zip");
+        assert_eq!(sanitize_filename_for_download("///"), "___");
+    }
+
+    #[test]
+    fn bytes_to_mib_converts() {
+        assert!((bytes_to_mib(1_048_576) - 1.0).abs() < f64::EPSILON);
+        assert_eq!(bytes_to_mib(0), 0.0);
+    }
+
+    #[test]
+    fn archive_install_key_strips_extension_and_sanitizes() {
+        assert_eq!(archive_install_key("cool-mod.zip"), "cool-mod");
+        // file_stem operates on the final path component, then reserved chars are replaced.
+        assert_eq!(archive_install_key("a/b:c.zip"), "b_c");
+        assert_eq!(archive_install_key("no-extension"), "no-extension");
+    }
+}

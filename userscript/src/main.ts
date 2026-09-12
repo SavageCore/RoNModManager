@@ -1,3 +1,4 @@
+/// <reference path="./gm-types.d.ts" />
 import { isNexusPremium, setupPremiumMenu } from "./premiumToggle";
 import {
   scrapeNexusFileVariants,
@@ -53,11 +54,15 @@ function gmRequest(opts: {
 
     if (typeof GM_xmlhttpRequest === "function") {
       (GM_xmlhttpRequest as (opts: unknown) => void)(xhrOpts);
-    } else if (
-      typeof GM !== "undefined" &&
-      typeof GM.xmlHttpRequest === "function"
-    ) {
-      (GM.xmlHttpRequest as (opts: unknown) => void)(xhrOpts);
+      return;
+    }
+    // Greasemonkey 4 style API (`@types/greasemonkey` in the userscript
+    // project; reached via globalThis so the app typecheck, which lacks those
+    // types, does not need a bare `GM` global).
+    const gm4 = (globalThis as { GM?: unknown }).GM as
+      { xmlHttpRequest?: unknown } | undefined;
+    if (typeof gm4?.xmlHttpRequest === "function") {
+      (gm4.xmlHttpRequest as (opts: unknown) => void)(xhrOpts);
     } else {
       resolve(empty);
     }
@@ -69,7 +74,7 @@ function gmRequest(opts: {
  * though some responses are a bare URL or a hidden `#dl_link` input. Handle
  * all three.
  */
-function parseDownloadUrlFromResponse(text: string): string | null {
+export function parseDownloadUrlFromResponse(text: string): string | null {
   if (!text) return null;
   try {
     const json = JSON.parse(text);
@@ -92,7 +97,7 @@ function parseDownloadUrlFromResponse(text: string): string | null {
  * endpoint: POST /Core/Libs/Common/Managers/Downloads?GenerateDownloadUrl
  * with `fid` and `game_id`. Works for free accounts when logged in.
  */
-async function requestGenerateDownloadUrl(
+export async function requestGenerateDownloadUrl(
   fileId: number,
   gameId: string,
 ): Promise<string | null> {
@@ -119,7 +124,9 @@ async function requestGenerateDownloadUrl(
  * download page carrying `file_id=`), fetch it and dig out the real download
  * URL from the embedded file JSON or a nexus-cdn.com link.
  */
-async function scrapeDeepDownloadLink(pageUrl: string): Promise<string | null> {
+export async function scrapeDeepDownloadLink(
+  pageUrl: string,
+): Promise<string | null> {
   const res = await gmRequest({
     url: pageUrl,
     headers: { "X-Requested-With": "XMLHttpRequest" },
@@ -155,7 +162,7 @@ async function scrapeDeepDownloadLink(pageUrl: string): Promise<string | null> {
 }
 
 /** Follow any intermediate Nexus page to a final, directly-downloadable URL. */
-async function normalizeDownloadUrl(
+export async function normalizeDownloadUrl(
   url: string | null,
   gameId: string,
 ): Promise<string | null> {
@@ -188,7 +195,7 @@ async function normalizeDownloadUrl(
 
 /** Resolve a chosen file to a direct download URL, falling back to any URL
  * the page already surfaced for it. */
-async function resolveFileUrl(
+export async function resolveFileUrl(
   fileId: number,
   gameId: string,
   fallbackUrl?: string,
@@ -213,7 +220,9 @@ async function resolveFileUrl(
  * Nexus file categories. We merge in anything found in the live DOM too (e.g.
  * a richer download URL on the current page).
  */
-async function collectFileVariants(modId: string): Promise<NexusFileVariant[]> {
+export async function collectFileVariants(
+  modId: string,
+): Promise<NexusFileVariant[]> {
   const byId = new Map<number, NexusFileVariant>();
   const add = (v: NexusFileVariant | null) => {
     if (!v) return;
@@ -247,7 +256,7 @@ async function collectFileVariants(modId: string): Promise<NexusFileVariant[]> {
 }
 
 /** Fetch the files tab and parse categorised file data out of the HTML. */
-async function fetchFilesTabVariants(
+export async function fetchFilesTabVariants(
   modId: string,
 ): Promise<NexusFileVariant[]> {
   const res = await gmRequest({
@@ -268,7 +277,7 @@ async function fetchFilesTabVariants(
  * Extract the Nexus game_id from the page. Ready Or Not's id is 1111, used as
  * a last-resort default.
  */
-function getNexusGameId(): string | null {
+export function getNexusGameId(): string | null {
   const comp = document.querySelector(
     "mod-download-buttons[game-id], mod-file-download[game-id]",
   );
@@ -303,7 +312,7 @@ function getNexusGameId(): string | null {
  * Content-Disposition attachment URL. Keeps the userscript alive so a mod
  * with multiple selected files can kick off each part.
  */
-function triggerDownload(url: string): void {
+export function triggerDownload(url: string): void {
   const iframe = document.createElement("iframe");
   iframe.style.display = "none";
   iframe.style.position = "absolute";
@@ -321,7 +330,7 @@ function triggerDownload(url: string): void {
  * Fire a ronmm:// deep link to the app without navigating the current page.
  * Tries a hidden iframe then a programmatic anchor click.
  */
-function fireDeepLink(url: string): void {
+export function fireDeepLink(url: string): void {
   const iframe = document.createElement("iframe");
   iframe.style.display = "none";
   iframe.style.position = "absolute";
@@ -347,7 +356,7 @@ function fireDeepLink(url: string): void {
   }, 50);
 }
 
-function buildDeepLink(
+export function buildDeepLink(
   modId: string,
   fileIds: number[],
   skipBrowserOpen: boolean,
@@ -357,7 +366,7 @@ function buildDeepLink(
   return `ronmm://install/nexus/${modId}?fileId=${ids}${skip}`;
 }
 
-function getModName(): string {
+export function getModName(): string {
   const titleEl = document.querySelector("h1");
   if (titleEl?.textContent) return titleEl.textContent.trim();
 
