@@ -81,6 +81,8 @@ export interface InstalledModFile {
   exists: boolean;
   archiveName?: string;
   size?: number | null;
+  /** Path inside the mod (relative to the install key), e.g. `Mods/VoiceCommanderMod/Scripts/main.lua`. */
+  relativePath?: string | null;
 }
 
 export interface InstalledModGroup {
@@ -92,6 +94,7 @@ export interface InstalledModGroup {
   files: InstalledModFile[];
   addonFiles?: InstalledModFile[]; // Add-on files for this mod group
   hasOverrideFiles?: boolean;
+  isUe4ssMod?: boolean;
   installedVersion?: string;
   totalSize?: number;
 }

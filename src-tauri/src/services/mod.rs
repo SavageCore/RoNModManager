@@ -11,4 +11,5 @@ pub mod modpack;
 pub mod nexus_api;
 pub mod profiles;
 pub mod steam;
+pub mod steam_launch;
 pub mod ue4ss;

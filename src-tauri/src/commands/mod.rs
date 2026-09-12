@@ -11,6 +11,7 @@ pub mod profiles;
 pub mod sharing;
 pub mod sync;
 pub mod tags;
+pub mod ue4ss;
 pub mod updater;
 pub mod window;
 pub use fs::get_archive_root_path;

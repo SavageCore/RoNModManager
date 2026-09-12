@@ -7,6 +7,7 @@
     ensureGameStock,
     getAppliedOptimizationProfile,
     getGpuProfiles,
+    getUe4ssSettings,
     buildModpackFromInstalled,
     checkForUpdate,
     detectGamePath,
@@ -26,6 +27,7 @@
     setModpackMeta,
     setSyncDetails,
     setTheme,
+    setUe4ssSettings,
     syncModLinks,
     syncModpackToRemote,
     undoIntroSkip,
@@ -136,6 +138,25 @@
   let closeAction: CloseAction = "quit";
   let minimizeTarget: MinimizeTarget = "taskbar";
   let linkOnLaunchOnly = false;
+  let ue4ssPresent = false;
+  let ue4ssUseObjectArrayCache = false;
+  let ue4ssEngineMajorVersion = "5";
+  let ue4ssEngineMinorVersion = "3";
+  let ue4ssGraphicsApi = "dx11";
+  let ue4ssHookBeginPlay = false;
+  let ue4ssConsoleMode: "text" | "gui" | "none" = "gui";
+  let ue4ssSaving = false;
+
+  function currentUe4ssSettings() {
+    return {
+      useObjectArrayCache: ue4ssUseObjectArrayCache,
+      engineMajorVersion: ue4ssEngineMajorVersion,
+      engineMinorVersion: ue4ssEngineMinorVersion,
+      graphicsApi: ue4ssGraphicsApi,
+      hookBeginPlay: ue4ssHookBeginPlay,
+      consoleMode: ue4ssConsoleMode,
+    };
+  }
   let scrollEl: HTMLElement | null = null;
   let showScrollTop = false;
 
@@ -256,6 +277,48 @@
     minimizeTarget = config.minimize_target ?? "taskbar";
     logLevel = config.log_level ?? "info";
     linkOnLaunchOnly = config.link_on_launch_only ?? false;
+    try {
+      const ue4ss = await getUe4ssSettings();
+      ue4ssPresent = ue4ss.settingsPresent;
+      ue4ssUseObjectArrayCache = ue4ss.useObjectArrayCache;
+      ue4ssEngineMajorVersion = ue4ss.engineMajorVersion;
+      ue4ssEngineMinorVersion = ue4ss.engineMinorVersion;
+      ue4ssGraphicsApi = ue4ss.graphicsApi;
+      ue4ssHookBeginPlay = ue4ss.hookBeginPlay;
+      ue4ssConsoleMode = ue4ss.consoleMode;
+    } catch {
+      ue4ssPresent = false;
+    }
+  }
+
+  async function saveUe4ssSettings() {
+    ue4ssSaving = true;
+    try {
+      const result = await setUe4ssSettings(currentUe4ssSettings());
+      if (result.staleShimsRemoved > 0) {
+        toastStore.success(
+          `UE4SS settings saved - removed ${result.staleShimsRemoved} stale UE4SS 2.x shim(s)`,
+        );
+      } else {
+        toastStore.success("UE4SS settings saved");
+      }
+    } catch (error) {
+      toastStore.error(`Failed to save UE4SS settings: ${String(error)}`);
+      // Re-read so the UI reflects what is actually on disk.
+      try {
+        const ue4ss = await getUe4ssSettings();
+        ue4ssUseObjectArrayCache = ue4ss.useObjectArrayCache;
+        ue4ssEngineMajorVersion = ue4ss.engineMajorVersion;
+        ue4ssEngineMinorVersion = ue4ss.engineMinorVersion;
+        ue4ssGraphicsApi = ue4ss.graphicsApi;
+        ue4ssHookBeginPlay = ue4ss.hookBeginPlay;
+        ue4ssConsoleMode = ue4ss.consoleMode;
+      } catch {
+        // Error already surfaced above.
+      }
+    } finally {
+      ue4ssSaving = false;
+    }
   }
 
   // Applies immediately on toggle: enabling unlinks all mods (stock),
@@ -1119,6 +1182,154 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- UE4SS -->
+  <div class="prefs-group">
+    <div class="prefs-group-title">UE4SS Runtime</div>
+    {#if !ue4ssPresent}
+      <div class="prefs-boxed-list">
+        <div class="prefs-row">
+          <div class="prefs-row-text">
+            <div class="prefs-row-title">Not installed</div>
+            <div class="prefs-row-subtitle">
+              Install any UE4SS Lua mod and the runtime appears here
+            </div>
+          </div>
+        </div>
+      </div>
+    {:else}
+      <div class="prefs-boxed-list">
+        <div class="prefs-row">
+          <div class="prefs-row-text">
+            <div class="prefs-row-title">UObject array cache</div>
+            <div class="prefs-row-subtitle">
+              Off fixes startup crashes on Ready or Not (recommended)
+            </div>
+          </div>
+          <div class="prefs-row-suffix">
+            <label class="gale-switch" class:opacity-50={ue4ssSaving}
+              ><input
+                type="checkbox"
+                checked={ue4ssUseObjectArrayCache}
+                disabled={ue4ssSaving}
+                on:change={(e) => {
+                  const target = (e.target as HTMLInputElement).checked;
+                  // Revert the visual toggle until the save lands.
+                  (e.target as HTMLInputElement).checked =
+                    ue4ssUseObjectArrayCache;
+                  ue4ssUseObjectArrayCache = target;
+                  void saveUe4ssSettings();
+                }}
+              /><span class="gale-switch-track"></span></label
+            >
+          </div>
+        </div>
+        <div class="prefs-row">
+          <div class="prefs-row-text" style="flex:1">
+            <div class="prefs-row-title">Engine version override</div>
+            <div class="prefs-row-subtitle">
+              Ready or Not runs on UE 5.3 - pin it so UE4SS never misdetects
+            </div>
+          </div>
+          <div class="prefs-row-suffix flex items-center gap-2">
+            <input
+              class="input w-20"
+              inputmode="numeric"
+              aria-label="Engine major version"
+              bind:value={ue4ssEngineMajorVersion}
+              disabled={ue4ssSaving}
+              on:blur={() => {
+                if (!/^\d+$/.test(ue4ssEngineMajorVersion.trim())) {
+                  ue4ssEngineMajorVersion = "5";
+                }
+                void saveUe4ssSettings();
+              }}
+            /><span style="color: var(--clr-text-secondary);">.</span><input
+              class="input w-20"
+              inputmode="numeric"
+              aria-label="Engine minor version"
+              bind:value={ue4ssEngineMinorVersion}
+              disabled={ue4ssSaving}
+              on:blur={() => {
+                if (!/^\d+$/.test(ue4ssEngineMinorVersion.trim())) {
+                  ue4ssEngineMinorVersion = "3";
+                }
+                void saveUe4ssSettings();
+              }}
+            />
+          </div>
+        </div>
+        <div class="prefs-row">
+          <div class="prefs-row-text" style="flex:1">
+            <div class="prefs-row-title">Graphics API</div>
+            <div class="prefs-row-subtitle">
+              dx11 is the working value for Ready or Not
+            </div>
+          </div>
+          <div class="prefs-row-suffix">
+            <select
+              class="select w-48"
+              bind:value={ue4ssGraphicsApi}
+              disabled={ue4ssSaving}
+              on:change={() => {
+                void saveUe4ssSettings();
+              }}
+              ><option value="dx11">dx11</option><option value="dx12"
+                >dx12</option
+              ><option value="vulkan">vulkan</option><option value="opengl"
+                >opengl</option
+              ></select
+            >
+          </div>
+        </div>
+        <div class="prefs-row">
+          <div class="prefs-row-text">
+            <div class="prefs-row-title">Hook BeginPlay</div>
+            <div class="prefs-row-subtitle">
+              Off fixes startup crashes on Ready or Not (recommended)
+            </div>
+          </div>
+          <div class="prefs-row-suffix">
+            <label class="gale-switch" class:opacity-50={ue4ssSaving}
+              ><input
+                type="checkbox"
+                checked={ue4ssHookBeginPlay}
+                disabled={ue4ssSaving}
+                on:change={(e) => {
+                  const target = (e.target as HTMLInputElement).checked;
+                  (e.target as HTMLInputElement).checked = ue4ssHookBeginPlay;
+                  ue4ssHookBeginPlay = target;
+                  void saveUe4ssSettings();
+                }}
+              /><span class="gale-switch-track"></span></label
+            >
+          </div>
+        </div>
+        <div class="prefs-row">
+          <div class="prefs-row-text" style="flex:1">
+            <div class="prefs-row-title">Debug console</div>
+            <div class="prefs-row-subtitle">
+              Text console opens a terminal window; GUI console renders in-game;
+              none disables it entirely
+            </div>
+          </div>
+          <div class="prefs-row-suffix">
+            <select
+              class="select w-48"
+              bind:value={ue4ssConsoleMode}
+              disabled={ue4ssSaving}
+              on:change={() => {
+                void saveUe4ssSettings();
+              }}
+              ><option value="text">Text console</option><option value="gui"
+                >GUI console</option
+              ><option value="none">None</option></select
+            >
+          </div>
+        </div>
+      </div>
+    {/if}
   </div>
 
   <!-- Sync & Export -->

@@ -35,6 +35,8 @@
     fileExists,
     revealInFileManager,
     refreshModMetadata,
+    setUe4ssLaunchOption,
+    ue4ssLaunchOptionStatus,
     type ModUpdateInfo,
   } from "$lib/api/commands";
   import { ue4ssBannerDismissed } from "$lib/stores/ue4ssBannerDismissed";
@@ -227,6 +229,7 @@
     Plus,
     Shield,
     Tag,
+    Terminal,
     Trash2,
     X,
   } from "lucide-svelte";
@@ -331,6 +334,7 @@
   let hasGamePath = false;
   let linkOnLaunchOnly = false;
   let showUe4ssLaunchOptionBanner = false;
+  let ue4ssLaunchOptionSaving = false;
   const UE4SS_LAUNCH_OPTION = 'WINEDLLOVERRIDES="dwmapi=n,b" %command%';
 
   async function copyUe4ssLaunchOption() {
@@ -341,6 +345,26 @@
   function dismissUe4ssLaunchOptionBanner() {
     ue4ssBannerDismissed.set(true);
     showUe4ssLaunchOptionBanner = false;
+  }
+
+  async function autoSetUe4ssLaunchOption() {
+    ue4ssLaunchOptionSaving = true;
+    try {
+      const result = await setUe4ssLaunchOption();
+      if (result.filesUpdated > 0) {
+        toastStore.success(
+          `Launch option set in ${result.filesUpdated} Steam config file${result.filesUpdated === 1 ? "" : "s"} - restart Steam to apply it`,
+        );
+      } else {
+        toastStore.success("Launch option already set");
+      }
+      showUe4ssLaunchOptionBanner = false;
+      ue4ssBannerDismissed.set(true);
+    } catch (error) {
+      toastStore.error(`Could not set launch option: ${error}`);
+    } finally {
+      ue4ssLaunchOptionSaving = false;
+    }
   }
   let isApplyingProfile = false;
   let expandedGroups: Record<string, boolean> = {};
@@ -754,9 +778,15 @@
         navigator.userAgent.includes("Linux") &&
         !get(ue4ssBannerDismissed)
       ) {
-        showUe4ssLaunchOptionBanner = await fileExists(
-          `${config.game_path}/ReadyOrNot/Binaries/Win64/UE4SS.dll`,
+        const ue4ssPresent = await fileExists(
+          `${config.game_path}/ReadyOrNot/Binaries/Win64/ue4ss/UE4SS.dll`,
         ).catch(() => false);
+        if (ue4ssPresent) {
+          // Hide the banner when Steam already launches the game with the
+          // dwmapi override (set here or by hand) - no action needed.
+          const status = await ue4ssLaunchOptionStatus().catch(() => null);
+          showUe4ssLaunchOptionBanner = status?.alreadySet !== true;
+        }
       }
       profiles = await ensureDefaultProfile(profileList);
       expandedGroups = Object.fromEntries(
@@ -1879,9 +1909,10 @@
           UE4SS needs a Steam launch option on Linux
         </div>
         <div style="color: var(--clr-text-secondary);" class="text-xs mt-1">
-          Proton loads its own dwmapi.dll, so UE4SS mods won't load until you
-          add this launch option to Ready or Not in Steam (Properties → General
-          → Launch Options):
+          Proton loads its own dwmapi.dll, so UE4SS mods won't load until Ready
+          or Not launches with this option. Set it automatically (Steam must be
+          closed), or copy it into Steam → Properties → General → Launch Options
+          yourself:
         </div>
         <code
           style="background: var(--adw-border-color); color: var(--clr-text);"
@@ -1891,6 +1922,14 @@
         </code>
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
+        <button
+          on:click={autoSetUe4ssLaunchOption}
+          class="btn btn-sm btn-primary"
+          title="Write the launch option into Steam's config automatically (close Steam first)"
+          disabled={ue4ssLaunchOptionSaving}
+        >
+          {ue4ssLaunchOptionSaving ? "Setting…" : "Set automatically"}
+        </button>
         <button
           on:click={copyUe4ssLaunchOption}
           class="btn btn-sm"
@@ -2227,7 +2266,7 @@
                             <AlertTriangle size={14} style="flex-shrink: 0;" />
                           </span>
                         {/if}
-                        {#if group.hasOverrideFiles}
+                        {#if group.hasOverrideFiles && !group.isUe4ssMod}
                           <span
                             title="Contains game file overrides"
                             class="flex items-center"
@@ -2235,6 +2274,17 @@
                             <Shield
                               size={14}
                               style="color: #f59e0b; flex-shrink: 0;"
+                            />
+                          </span>
+                        {/if}
+                        {#if group.isUe4ssMod}
+                          <span
+                            title="UE4SS script mod (Lua)"
+                            class="flex items-center"
+                          >
+                            <Terminal
+                              size={14}
+                              style="color: #a78bfa; flex-shrink: 0;"
                             />
                           </span>
                         {/if}
@@ -2519,12 +2569,22 @@
                       <button
                         style="color: var(--clr-text);"
                         class="truncate text-left hover:underline"
-                        title={file.path}
+                        title={file.relativePath
+                          ? `${file.relativePath}\n${file.path}`
+                          : file.path}
                         on:click={() => {
                           void openInstalledFile(file.path, file.exists);
                         }}
                       >
                         {file.name}
+                        {#if file.relativePath && file.relativePath !== file.name}
+                          <span
+                            style="color: var(--clr-text-secondary);"
+                            class="ml-1.5"
+                          >
+                            {file.relativePath}
+                          </span>
+                        {/if}
                       </button>
                       <span
                         class="flex-shrink-0 inline-flex items-center gap-2"
@@ -2564,12 +2624,22 @@
                         <button
                           style="color: var(--clr-text);"
                           class="truncate text-left hover:underline"
-                          title={file.path}
+                          title={file.relativePath
+                            ? `${file.relativePath}\n${file.path}`
+                            : file.path}
                           on:click={() => {
                             void openInstalledFile(file.path, file.exists);
                           }}
                         >
                           {file.name}
+                          {#if file.relativePath && file.relativePath !== file.name}
+                            <span
+                              style="color: var(--clr-text-secondary);"
+                              class="ml-1.5"
+                            >
+                              {file.relativePath}
+                            </span>
+                          {/if}
                         </button>
                         <span
                           class="flex-shrink-0 inline-flex items-center gap-2"

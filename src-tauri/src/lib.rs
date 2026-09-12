@@ -7,7 +7,8 @@ pub mod services;
 pub mod state;
 
 use crate::commands::{
-    auth, collections, config, game, modpack, mods, profiles, sharing, sync, tags, updater, window,
+    auth, collections, config, game, modpack, mods, profiles, sharing, sync, tags,
+    ue4ss as ue4ss_commands, updater, window,
 };
 use crate::services::game_watch;
 use state::{default_config_path, load_config_from_path, AppState};
@@ -195,6 +196,10 @@ pub fn run() {
             game::launch_vanilla_game,
             game::is_game_running,
             game::suppress_exit_cleanup,
+            game::ue4ss_launch_option_status,
+            game::set_ue4ss_launch_option,
+            ue4ss_commands::get_ue4ss_settings,
+            ue4ss_commands::set_ue4ss_settings,
             modpack::set_modpack_url,
             modpack::sync_modpack,
             modpack::get_modpack_collections,

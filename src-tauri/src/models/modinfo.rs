@@ -38,6 +38,13 @@ pub struct InstalledModFile {
     pub archive_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub size: Option<u64>,
+    /// Path of the file inside the mod, e.g.
+    /// `Mods/VoiceCommanderMod/Scripts/main.lua` (the redundant
+    /// `ReadyOrNot/Binaries/Win64/` prefix is stripped). Lets the UI tell
+    /// apart same-named files (a dozen `main.lua`s in one UE4SS group)
+    /// without showing the full staged absolute path.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub relative_path: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -52,6 +59,8 @@ pub struct InstalledModGroup {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub addon_files: Vec<InstalledModFile>,
     pub has_override_files: bool,
+    #[serde(default)]
+    pub is_ue4ss_mod: bool,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub installed_version: Option<String>,
     #[serde(default)]

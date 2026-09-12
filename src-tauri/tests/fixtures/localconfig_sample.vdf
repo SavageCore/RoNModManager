@@ -1,0 +1,30 @@
+"UserLocalConfigStore"
+{
+	"Software"
+	{
+		"Valve"
+		{
+			"Steam"
+			{
+				"apps"
+				{
+					"427410"
+					{
+						"LastPlayed"		"1595296276"
+						"LaunchOptions"		"gamemoderun %command%"
+					}
+					"1144200"
+					{
+						"LastPlayed"		"1789008297"
+						"Playtime"		"17143"
+						"LaunchOptions"		""
+					}
+					"1151640"
+					{
+						"LastPlayed"		"1674069374"
+					}
+				}
+			}
+		}
+	}
+}

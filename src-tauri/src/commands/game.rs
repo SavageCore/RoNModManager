@@ -12,6 +12,7 @@ use crate::services::addon_map;
 use crate::services::game_watch;
 use crate::services::manifest;
 use crate::services::steam;
+use crate::services::steam_launch;
 use crate::state::{app_data_root, AppState};
 
 fn get_local_store_root() -> Result<PathBuf, String> {
@@ -130,6 +131,19 @@ fn launch_game_internal(game_path: &Path, intro_skip_enabled: bool) -> Result<()
                 let _ = crate::services::config_tweaks::apply_optimization(&p);
             }
         }
+    }
+    // UE4SS crash guard, best-effort: force `bUseUObjectArrayCache = false`
+    // (stock `true` crashes Ready or Not on startup) while preserving the
+    // user's other UE4SS settings, and sweep stale UE4SS 2.x `xinput1_3.dll`
+    // shims. Re-applied here (not just at install) so manual ini edits or
+    // leftover shims can't sneak a crash past the user.
+    {
+        let mut settings = crate::services::ue4ss::read_settings(game_path);
+        if settings.settings_present {
+            settings.use_object_array_cache = false;
+            let _ = crate::services::ue4ss::apply_settings(game_path, &settings);
+        }
+        crate::services::ue4ss::remove_stale_shims(game_path);
     }
 
     #[cfg(target_os = "windows")]
@@ -478,6 +492,69 @@ pub fn is_game_running() -> bool {
     game_watch::is_game_running()
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Ue4ssLaunchOptionStatus {
+    /// Supported on this OS at all (Linux only - Proton quirk).
+    pub supported: bool,
+    /// At least one local `localconfig.vdf` already carries a `dwmapi` override.
+    pub already_set: bool,
+}
+
+/// Whether the UE4SS Steam launch option can be managed here and whether it
+/// is already present. Linux only - on Windows `dwmapi.dll` loads natively.
+#[tauri::command]
+pub fn ue4ss_launch_option_status() -> Ue4ssLaunchOptionStatus {
+    #[cfg(target_os = "linux")]
+    {
+        Ue4ssLaunchOptionStatus {
+            supported: true,
+            already_set: steam_launch::ue4ss_launch_option_set(),
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Ue4ssLaunchOptionStatus {
+            supported: false,
+            already_set: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Ue4ssLaunchOptionResult {
+    pub files_updated: usize,
+    pub files_already_set: usize,
+}
+
+/// Write the UE4SS `dwmapi` launch option into every local Steam
+/// `localconfig.vdf` (one per logged-in account), preserving any existing
+/// launch flags. Fails while Steam is running - Steam rewrites the file on
+/// exit and would discard the change - so the UI should ask the user to close
+/// Steam first. A `.vdf.ronmm.bak` backup is written next to each file once.
+#[tauri::command]
+pub fn set_ue4ss_launch_option() -> Result<Ue4ssLaunchOptionResult, String> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        return Err("UE4SS launch option is only needed on Linux".to_string());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if game_watch::is_game_running() {
+            return Err("Close the game first - Steam rewrites its config on exit".to_string());
+        }
+        steam_launch::ensure_ue4ss_launch_option()
+            .map(
+                |(files_updated, files_already_set)| Ue4ssLaunchOptionResult {
+                    files_updated,
+                    files_already_set,
+                },
+            )
+            .map_err(|e| e.to_string())
+    }
+}
+
 /// Tell the backend to skip stock cleanup on the next app exit. Called right
 /// before the launch-close path so the freshly-linked mods are not immediately
 /// unlinked while the Steam-URI launch is still starting the game.
@@ -522,24 +599,25 @@ mod tests {
 
     #[test]
     fn override_paths_routes_nested_ini_under_win64_not_flat_config() {
-        // A UE4SS mod archive routes UE4SS-settings.ini to
-        // staged/mods/<key>/ReadyOrNot/Binaries/Win64/UE4SS-settings.ini (nested, since
-        // installer::classify_archive_entry treats it as an Override, not a ConfigMod).
+        // The experimental UE4SS runtime routes its ini to
+        // staged/mods/<key>/ReadyOrNot/Binaries/Win64/ue4ss/UE4SS-settings.ini
+        // (nested, since installer::classify_archive_entry treats it as an
+        // Override, not a ConfigMod).
         // sync_mod_links_for_game_path must check override_paths() before its is_ini
         // extension check, or this would get symlinked into Saved/Config/Windows instead.
         let staging_root = Path::new("/staged");
         let game_path = Path::new("/game");
         let staged_path = staging_root
             .join("mods")
-            .join("UE4SS_v3.0.1.zip")
-            .join("ReadyOrNot/Binaries/Win64/UE4SS-settings.ini");
+            .join("UE4SS_v3.0.1-1133-gb4cefa18")
+            .join("ReadyOrNot/Binaries/Win64/ue4ss/UE4SS-settings.ini");
 
         let (game_target, _backup) = override_paths(&staged_path, staging_root, game_path)
             .expect("nested .ini under a mod key should be treated as an override");
 
         assert_eq!(
             game_target,
-            game_path.join("ReadyOrNot/Binaries/Win64/UE4SS-settings.ini")
+            game_path.join("ReadyOrNot/Binaries/Win64/ue4ss/UE4SS-settings.ini")
         );
     }
 

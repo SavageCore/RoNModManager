@@ -339,6 +339,46 @@ export const launchVanillaGame = () => invoke<void>("launch_vanilla_game");
 export const isGameRunning = () => invoke<boolean>("is_game_running");
 export const suppressExitCleanup = () => invoke<void>("suppress_exit_cleanup");
 
+export interface Ue4ssLaunchOptionStatus {
+  supported: boolean;
+  alreadySet: boolean;
+}
+export interface Ue4ssLaunchOptionResult {
+  filesUpdated: number;
+  filesAlreadySet: number;
+}
+export const ue4ssLaunchOptionStatus = () =>
+  invoke<Ue4ssLaunchOptionStatus>("ue4ss_launch_option_status");
+export const setUe4ssLaunchOption = () =>
+  invoke<Ue4ssLaunchOptionResult>("set_ue4ss_launch_option");
+
+export type Ue4ssConsoleMode = "text" | "gui" | "none";
+export interface Ue4ssSettings {
+  useObjectArrayCache: boolean;
+  engineMajorVersion: string;
+  engineMinorVersion: string;
+  graphicsApi: string;
+  hookBeginPlay: boolean;
+  consoleMode: Ue4ssConsoleMode;
+  settingsPresent: boolean;
+}
+export interface Ue4ssSettingsUpdate {
+  useObjectArrayCache: boolean;
+  engineMajorVersion: string;
+  engineMinorVersion: string;
+  graphicsApi: string;
+  hookBeginPlay: boolean;
+  consoleMode: Ue4ssConsoleMode;
+}
+export interface Ue4ssSettingsApplyResult {
+  changed: boolean;
+  staleShimsRemoved: number;
+}
+export const getUe4ssSettings = () =>
+  invoke<Ue4ssSettings>("get_ue4ss_settings");
+export const setUe4ssSettings = (updates: Ue4ssSettingsUpdate) =>
+  invoke<Ue4ssSettingsApplyResult>("set_ue4ss_settings", { updates });
+
 export const setWindowTitle = (title: string) =>
   invoke<void>("set_window_title", { title });
 export const saveWindowState = (

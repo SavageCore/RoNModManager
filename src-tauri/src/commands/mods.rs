@@ -68,7 +68,7 @@ use crate::models::{
 };
 use crate::services::{
     addon_map, downloader, hasher, installer, manifest, modio_api::ModioApiService,
-    modpack as modpack_service, nexus_api, profiles, steam,
+    modpack as modpack_service, nexus_api, profiles, steam, ue4ss,
 };
 use crate::state::{app_data_root, app_temp_root, AppState};
 
@@ -2426,6 +2426,52 @@ fn installed_file_size(path: &Path) -> Option<u64> {
         .map(|m| m.len())
 }
 
+/// Path of a staged file relative to its install key dir
+/// (`staging/mods/<key>/...` or `staging/savegames/<key>/...`), e.g.
+/// `Mods/VoiceCommanderMod/Scripts/main.lua`. The redundant
+/// `ReadyOrNot/Binaries/Win64/` prefix is stripped - every UE4SS file lives
+/// there, so showing it adds noise. `None` for flat files (the basename
+/// already identifies them) and paths outside staging.
+fn staged_relative_path(path: &Path, mods_root: &Path, savegames_root: &Path) -> Option<String> {
+    for root in [mods_root, savegames_root] {
+        if let Ok(rel) = path.strip_prefix(root) {
+            let mut comps = rel.components();
+            comps.next()?; // install key
+            let rest: PathBuf = comps.collect();
+            // Flat files sit directly under the key - basename is enough.
+            if rest.components().count() <= 1 {
+                return None;
+            }
+            let display = rest.to_string_lossy().replace('\\', "/");
+            return Some(
+                display
+                    .strip_prefix("ReadyOrNot/Binaries/Win64/")
+                    .unwrap_or(&display)
+                    .to_string(),
+            );
+        }
+    }
+    None
+}
+
+/// True when `rel` is a staged path under an install key that targets the
+/// UE4SS runtime folder (`ReadyOrNot/Binaries/Win64/...`), i.e. the manifest
+/// belongs to a UE4SS script mod.
+fn is_ue4ss_staged_path(rel: &Path) -> bool {
+    let mut comps = rel.components();
+    comps.next(); // install key
+    let first = comps.next().map(|c| c.as_os_str());
+    let second = comps.next().map(|c| c.as_os_str());
+    let third = comps.next().map(|c| c.as_os_str());
+    matches!(
+        (first, second, third),
+        (Some(f), Some(s), Some(t))
+        if f.eq_ignore_ascii_case("ReadyOrNot")
+            && s.eq_ignore_ascii_case("Binaries")
+            && t.eq_ignore_ascii_case("Win64")
+    )
+}
+
 #[tauri::command]
 pub async fn get_installed_mod_groups(
     state: State<'_, AppState>,
@@ -2460,6 +2506,8 @@ pub async fn get_installed_mod_groups(
         .collect();
     let mut groups: Vec<InstalledModGroup> = Vec::new();
 
+    let staging_mods_root = staging_root.join("mods");
+    let staging_savegames_root = staging_root.join("savegames");
     for manifest_data in manifests.values() {
         let mut files: Vec<InstalledModFile> = manifest_data
             .installed_files
@@ -2484,32 +2532,46 @@ pub async fn get_installed_mod_groups(
                     exists: path.exists(),
                     archive_name: None,
                     size: installed_file_size(path),
+                    relative_path: staged_relative_path(
+                        path,
+                        &staging_mods_root,
+                        &staging_savegames_root,
+                    ),
                 }
             })
             .collect();
         files.sort_by(|a, b| a.name.cmp(&b.name));
-        let staging_mods_root = staging_root.join("mods");
-        let has_override_files = manifest_data.installed_files.iter().any(|path| {
-            let is_bank = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.eq_ignore_ascii_case("bank"))
-                .unwrap_or(false);
-            if is_bank {
-                return true;
-            }
-            // Override files nest into subdirs: staging/mods/{key}/ReadyOrNot/Content/... (>1)
-            // Pak files sit flat: staging/mods/{key}/file.pak (1 component after key)
-            // Sav files are in staging/savegames/{key}/... and won't match staging_mods_root
-            if let Ok(rel) = path.strip_prefix(&staging_mods_root) {
-                let mut components = rel.components();
-                let _ = components.next(); // skip install key
-                let after_key: PathBuf = components.collect();
-                after_key.components().count() > 1
-            } else {
-                false
-            }
+        // UE4SS script mods install into ReadyOrNot/Binaries/Win64. Those
+        // paths are game-folder files (not `~mods` paks), so keep the UE4SS
+        // badge exclusive: a UE4SS mod must not also show the override badge.
+        let is_ue4ss_mod = manifest_data.installed_files.iter().any(|path| {
+            path.strip_prefix(&staging_mods_root)
+                .ok()
+                .map(is_ue4ss_staged_path)
+                .unwrap_or(false)
         });
+        let has_override_files = !is_ue4ss_mod
+            && manifest_data.installed_files.iter().any(|path| {
+                let is_bank = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.eq_ignore_ascii_case("bank"))
+                    .unwrap_or(false);
+                if is_bank {
+                    return true;
+                }
+                // Override files nest into subdirs: staging/mods/{key}/ReadyOrNot/Content/... (>1)
+                // Pak files sit flat: staging/mods/{key}/file.pak (1 component after key)
+                // Sav files are in staging/savegames/{key}/... and won't match staging_mods_root
+                if let Ok(rel) = path.strip_prefix(&staging_mods_root) {
+                    let mut components = rel.components();
+                    let _ = components.next(); // skip install key
+                    let after_key: PathBuf = components.collect();
+                    after_key.components().count() > 1
+                } else {
+                    false
+                }
+            });
         groups.push(InstalledModGroup {
             name: manifest_data.source_archive.clone(),
             display_name: manifest_data.display_name.clone(),
@@ -2519,6 +2581,7 @@ pub async fn get_installed_mod_groups(
             files,
             addon_files: Vec::new(),
             has_override_files,
+            is_ue4ss_mod,
             installed_version: manifest_data.installed_version.clone(),
             total_size: 0,
         });
@@ -2567,6 +2630,7 @@ pub async fn get_installed_mod_groups(
                             exists: path.exists(),
                             archive_name: None,
                             size: installed_file_size(&path),
+                            relative_path: None,
                         });
                     }
                 }
@@ -2584,9 +2648,11 @@ pub async fn get_installed_mod_groups(
                     exists: path.exists(),
                     archive_name: None,
                     size: installed_file_size(&path),
+                    relative_path: None,
                 }],
                 addon_files: Vec::new(),
                 has_override_files: false,
+                is_ue4ss_mod: false,
                 installed_version: None,
                 total_size: 0,
             });
@@ -2628,6 +2694,12 @@ pub async fn get_installed_mod_groups(
         })
         .collect();
 
+    // The managed UE4SS runtime is a silent dependency, not a user mod: hide
+    // its group from the mod list. It stays in the profile's enabled list (put
+    // there by `ue4ss::ensure_installed`) and sync keeps linking it from the
+    // manifest, so hiding is display-only. Full uninstall still removes it via
+    // `uninstall_mods`, which iterates manifests directly.
+    result.retain(|g| !ue4ss::is_managed_archive(&g.name));
     result.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(result)
 }
@@ -3041,9 +3113,11 @@ pub(crate) async fn install_downloaded_file(
         return Ok(true);
     }
 
-    // If this archive is a UE4SS Lua/Blueprint mod (or bundles UE4SS itself), make sure
-    // the UE4SS runtime is on disk first. `bundles_runtime` guards against recursing when
-    // the archive being installed *is* the UE4SS runtime download.
+    // If this archive is a UE4SS Lua/Blueprint mod, a UE4SS runtime archive, or
+    // a mod that bundles the runtime, make sure the pinned UE4SS runtime is on
+    // disk first. `bundles_runtime` (true only for a plain runtime archive) guards
+    // against recursing: `ensure_installed` calls back into this function to
+    // install the UE4SS archive it downloads.
     // Listing entry names opens and walks the archive - blocking IO, so it
     // goes on the blocking pool like the hash and extraction below.
     let scan_path = path.clone();
@@ -3648,5 +3722,59 @@ mod pure_helper_tests {
         // file_stem operates on the final path component, then reserved chars are replaced.
         assert_eq!(archive_install_key("a/b:c.zip"), "b_c");
         assert_eq!(archive_install_key("no-extension"), "no-extension");
+    }
+
+    #[test]
+    fn staged_relative_path_returns_mod_inner_path() {
+        let mods = Path::new("/staged/mods");
+        let saves = Path::new("/staged/savegames");
+        assert_eq!(
+            staged_relative_path(
+                Path::new(
+                    "/staged/mods/VoiceCommander/ReadyOrNot/Binaries/Win64/Mods/VoiceCommanderMod/Scripts/main.lua"
+                ),
+                mods,
+                saves
+            )
+            .as_deref(),
+            Some("Mods/VoiceCommanderMod/Scripts/main.lua")
+        );
+        // Single file directly under the savegames key - basename is enough.
+        assert_eq!(
+            staged_relative_path(
+                Path::new("/staged/savegames/SomeMod/world.sav"),
+                mods,
+                saves
+            ),
+            None
+        );
+        // Flat pak directly under the key - basename is enough, no relative path.
+        assert_eq!(
+            staged_relative_path(Path::new("/staged/mods/SomeMod/shared.pak"), mods, saves),
+            None
+        );
+        // Outside staging entirely.
+        assert_eq!(
+            staged_relative_path(Path::new("/game/ReadyOrNot/file.pak"), mods, saves),
+            None
+        );
+    }
+
+    #[test]
+    fn ue4ss_staged_path_matches_win64_only() {
+        assert!(is_ue4ss_staged_path(Path::new(
+            "VoiceCommander/ReadyOrNot/Binaries/Win64/Mods/VoiceCommanderMod/Scripts/main.lua"
+        )));
+        assert!(is_ue4ss_staged_path(Path::new(
+            "RoundReport/ReadyOrNot/Binaries/Win64/UE4SS-settings.ini"
+        )));
+        // Plain content overrides and flat paks are not UE4SS mods.
+        assert!(!is_ue4ss_staged_path(Path::new(
+            "SomeMod/ReadyOrNot/Content/Movies/RoNLogo.mp4"
+        )));
+        assert!(!is_ue4ss_staged_path(Path::new("SomeMod/shared.pak")));
+        assert!(!is_ue4ss_staged_path(Path::new(
+            "SomeMod/ReadyOrNot/Binaries"
+        )));
     }
 }
