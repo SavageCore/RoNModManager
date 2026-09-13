@@ -308,6 +308,38 @@ samp {
   border-color: color-mix(in srgb, var(--clr-danger-300) 75%, black);
 }
 
+.btn.primary,
+.btn-primary {
+  background-color: var(--clr-primary-300);
+  color: var(--clr-primary-text);
+  border-color: var(--clr-primary-300);
+  transition: all 120ms ease;
+}
+
+.btn.primary:hover:not(.toggled, .disabled),
+.btn-primary:hover:not(.toggled, .disabled) {
+  background-color: var(--clr-primary-500);
+  border-color: var(--clr-primary-500);
+}
+
+.btn.primary:active:not(.disabled),
+.btn-primary:active:not(.disabled) {
+  background-color: var(--clr-primary-100);
+  border-color: var(--clr-primary-100);
+}
+
+.btn.primary.toggled,
+.btn-primary.toggled {
+  background-color: color-mix(in srgb, var(--clr-primary-300) 50%, white);
+  border-color: color-mix(in srgb, var(--clr-primary-300) 50%, white);
+}
+
+.btn.primary.disabled,
+.btn-primary.disabled {
+  background-color: color-mix(in srgb, var(--clr-primary-300) 75%, black);
+  border-color: color-mix(in srgb, var(--clr-primary-300) 75%, black);
+}
+
 .btn-sm {
   min-height: 2em;
   padding: 0px 0.75em;

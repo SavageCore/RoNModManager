@@ -52,7 +52,7 @@
     <!-- Primary launch target -->
     <button
       type="button"
-      class="inline-flex flex-1 items-center gap-2 px-4 text-sm font-semibold transition-colors hover:bg-[var(--clr-btn-adaptive-hover)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+      class="inline-flex flex-1 items-center gap-2 px-4 text-sm font-semibold transition-[background-color,border-color] duration-150 hover:bg-[var(--clr-btn-adaptive-hover)] active:bg-[var(--clr-btn-adaptive-pressed)] focus-visible:outline-2 focus-visible:outline-[color-mix(in_srgb,var(--clr-primary-300)_30%,transparent)] focus-visible:outline-offset-[-1px] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:active:bg-transparent"
       on:click={() => chooseLaunch(onLaunchModded)}
       {disabled}
       title={launchTitle}
@@ -75,7 +75,7 @@
     <!-- Dropdown caret target -->
     <button
       type="button"
-      class="inline-flex w-8 items-center justify-center transition-colors hover:bg-[var(--clr-btn-adaptive-hover)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+      class="inline-flex w-8 items-center justify-center transition-[background-color,border-color] duration-150 hover:bg-[var(--clr-btn-adaptive-hover)] active:bg-[var(--clr-btn-adaptive-pressed)] focus-visible:outline-2 focus-visible:outline-[color-mix(in_srgb,var(--clr-primary-300)_30%,transparent)] focus-visible:outline-offset-[-1px] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:active:bg-transparent"
       on:click={toggleMenu}
       {disabled}
       title={isGameRunning
