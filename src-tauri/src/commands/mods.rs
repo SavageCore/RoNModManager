@@ -1883,8 +1883,10 @@ pub async fn add_nexus_mod(
             // When launched from the userscript one-press flow, the browser
             // download was already started in-page, so don't open a duplicate
             // tab here - the manual-download wait loop below still scans
-            // ~/Downloads for the file.
-            if skip_open != Some(true) {
+            // ~/Downloads for the file. Also suppress duplicate opens for
+            // subsequent files of the same multipart mod within a throttle
+            // window so a Part 1 + Part 2 pick only opens one `?tab=files` tab.
+            if skip_open != Some(true) && state.should_open_nexus_url(mod_id) {
                 let _ = tauri_plugin_opener::OpenerExt::opener(&app)
                     .open_url(&files_url, None::<String>);
             }

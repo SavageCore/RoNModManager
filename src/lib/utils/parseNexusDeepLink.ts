@@ -7,6 +7,7 @@
  * - `ronmm://install/nexus/1234?fileId=1,2,3`            -> { modId: "1234", fileIds: [1,2,3] }
  * - `ronmm://install/nexus/1234?skipBrowserOpen=1`       -> { modId: "1234", skipBrowserOpen: true }
  * - `ronmm://install/nexus/1234?fileId=5&skipBrowserOpen=true` -> combined
+ * - `ronmm://install/nexus/1234?fileId=1,2&addons=1`     -> { modId: "1234", fileIds: [1,2], linkAsAddons: true }
  *
  * Trailing slashes on the modId segment are tolerated. Unparseable fileId
  * values are silently dropped (an empty fileIds array falls back to the app
@@ -16,6 +17,8 @@ export interface NexusDeepLink {
   modId: string;
   fileIds: number[] | undefined;
   skipBrowserOpen: boolean;
+  /** When true, extra files in a multi-file pick should be linked as add-ons of the first file. */
+  linkAsAddons: boolean;
   url: string;
 }
 
@@ -25,6 +28,7 @@ export function parseNexusDeepLink(url: string): NexusDeepLink | null {
   let rest = url.replace("ronmm://install/nexus/", "");
   let fileIds: number[] | undefined;
   let skipBrowserOpen = false;
+  let linkAsAddons = false;
 
   const qIdx = rest.indexOf("?");
   if (qIdx !== -1) {
@@ -40,6 +44,8 @@ export function parseNexusDeepLink(url: string): NexusDeepLink | null {
         if (parsed.length > 0) fileIds = parsed;
       } else if (k === "skipBrowserOpen" && (v === "1" || v === "true")) {
         skipBrowserOpen = true;
+      } else if (k === "addons" && (v === "1" || v === "true")) {
+        linkAsAddons = true;
       }
     }
   }
@@ -50,6 +56,7 @@ export function parseNexusDeepLink(url: string): NexusDeepLink | null {
     modId,
     fileIds,
     skipBrowserOpen,
+    linkAsAddons,
     url: `https://www.nexusmods.com/readyornot/mods/${modId}`,
   };
 }

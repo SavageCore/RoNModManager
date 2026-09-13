@@ -291,6 +291,7 @@ mod tests {
             config_path: dir.path().join("config.json"),
             nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
             nexus_wait_id: Arc::new(AtomicU64::new(1)),
+            nexus_open_throttle: Arc::new(Mutex::new(HashMap::new())),
             suppress_exit_cleanup: AtomicBool::new(false),
             game_watcher_running: AtomicBool::new(false),
         };

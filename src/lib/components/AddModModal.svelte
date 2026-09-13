@@ -6,6 +6,8 @@
     fetchNexusModInfo,
     getArchivePakFiles,
     getTags,
+    getAddonMap,
+    setAddonMap,
     installLocalMod,
     listNexusFileOptions,
     replaceModArchive,
@@ -20,6 +22,7 @@
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { requestPakSelection } from "$lib/stores/pakSelection";
   import { requestNexusFileSelection } from "$lib/stores/nexusFileSelection";
+  import type { NexusFileSelectionResult } from "$lib/stores/nexusFileSelection";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { open } from "@tauri-apps/plugin-dialog";
   import { createEventDispatcher, onDestroy, onMount } from "svelte";
@@ -36,6 +39,9 @@
     /** When true, the backend will not open a duplicate browser tab for the
      * free (non-premium) download - the userscript already started it. */
     skipBrowserOpen?: boolean;
+    /** When true (and >1 file), extra files become add-ons of the first
+     * instead of separate mods. */
+    linkAsAddons?: boolean;
   }> = [];
 
   $: if (isVisible && autoSubmitEntries.length > 0) {
@@ -62,6 +68,8 @@
     fileIds?: number[];
     /** When true, backend won't open a duplicate browser download tab. */
     skipBrowserOpen?: boolean;
+    /** When true (and >1 file), extra files become add-ons of the first. */
+    linkAsAddons?: boolean;
   }> = [];
 
   $: activeQueueCount = $modAddQueueStore.items.filter(
@@ -153,6 +161,24 @@
     }
   }
 
+  async function linkAddons(
+    parentArchiveName: string,
+    addonArchiveNames: string[],
+  ): Promise<void> {
+    if (addonArchiveNames.length === 0) return;
+    try {
+      const map: Record<string, string[]> = await getAddonMap();
+      const entry = map[parentArchiveName] ?? [];
+      map[parentArchiveName] = [...new Set([...entry, ...addonArchiveNames])];
+      await setAddonMap(map);
+      // The next refresh (triggered by ron:mods-refreshed / ron:tags-changed)
+      // will repopulate installed-mod groups from the updated addon_map and
+      // re-sync symlinks, so no explicit syncModLinks call is needed here.
+    } catch (e) {
+      console.error("Failed to link add-ons:", e);
+    }
+  }
+
   $: {
     if (activeTab !== "link") {
       nexusPreviewName = "";
@@ -221,6 +247,7 @@
       displayName?: string;
       fileIds?: number[];
       skipBrowserOpen?: boolean;
+      linkAsAddons?: boolean;
     }>,
   ) {
     for (const entry of entries) {
@@ -231,6 +258,7 @@
         displayName: entry.displayName,
         fileIds: entry.fileIds,
         skipBrowserOpen: entry.skipBrowserOpen ?? false,
+        linkAsAddons: entry.linkAsAddons,
       });
     }
     closeModal();
@@ -321,8 +349,10 @@
           displayName?: string;
           fileIds?: number[];
           skipBrowserOpen?: boolean;
+          linkAsAddons?: boolean;
         };
         chosenFileIds: number[];
+        linkAsAddons: boolean;
         downloads: Download[];
         failed?: boolean;
       };
@@ -355,6 +385,8 @@
           const plan: Plan = {
             entry,
             chosenFileIds: [],
+            linkAsAddons:
+              !!entry.linkAsAddons && (entry.fileIds?.length ?? 0) > 1,
             downloads: [],
             failed: false,
           };
@@ -389,8 +421,9 @@
                   return listNexusFileOptions(plan.entry.input);
                 });
                 let chosenFileIds: number[] = [];
+                let chosen: NexusFileSelectionResult | null = null;
                 if (fileOptions.length > 1) {
-                  const chosen = await withInteractionLock(async () => {
+                  chosen = await withInteractionLock(async () => {
                     modAddQueueStore.markRunning(
                       plan.entry.queueId,
                       "Select file variant...",
@@ -410,7 +443,9 @@
                     plan.failed = true;
                     continue;
                   }
-                  chosenFileIds = chosen.map((f) => f.fileId);
+                  chosenFileIds = chosen.files.map((f) => f.fileId);
+                  plan.linkAsAddons =
+                    chosen.linkAsAddons && chosenFileIds.length > 1;
                 } else if (fileOptions.length === 1) {
                   chosenFileIds = [fileOptions[0].fileId];
                 }
@@ -444,12 +479,15 @@
           if (isNexusUrl(plan.entry.input)) {
             const fileIds =
               plan.chosenFileIds.length > 0 ? plan.chosenFileIds : [undefined];
-            for (const fileId of fileIds) {
+            // Only the first file of a multipart pick is allowed to open the
+            // browser download tab; the rest reuse the same tab (the backend
+            // also dedups, but this avoids scheduling redundant work).
+            for (const [i, fileId] of fileIds.entries()) {
               const download: Download = {
                 promise: addNexusMod(
                   plan.entry.input,
                   fileId,
-                  plan.entry.skipBrowserOpen,
+                  i === 0 ? plan.entry.skipBrowserOpen : true,
                 ),
               };
               trackSettled(download);
@@ -580,16 +618,38 @@
           }
 
           // Mark this plan done as soon as all its installs finish.
-          void Promise.all(installFutures).then(() => {
+          void Promise.all(installFutures).then(async () => {
             if (plan.failed) return;
             const succeeded = plan.downloads.filter(
               (d) => d.result && !d.failed,
             );
             if (succeeded.length === 0) return;
             const total = plan.downloads.length;
+
+            // If the user opted to link extras as add-ons, register every
+            // successfully-installed archive after the first as an add-on of
+            // the first (primary) archive. The backend's installed-mod-group
+            // query then collapses them into a single parent with addon files.
+            if (
+              plan.linkAsAddons &&
+              succeeded.length > 1 &&
+              isNexusUrl(plan.entry.input)
+            ) {
+              const parent = succeeded[0].result!;
+              const addonArchives = succeeded
+                .slice(1)
+                .map((d) => d.result!.archiveName)
+                .filter(Boolean) as string[];
+              if (addonArchives.length > 0) {
+                await linkAddons(parent.archiveName, addonArchives);
+              }
+            }
+
             const message =
               succeeded.length === total
-                ? `Installed ${total} file${total === 1 ? "" : "s"}`
+                ? plan.linkAsAddons && succeeded.length > 1
+                  ? `Installed ${succeeded.length} files (1 mod + ${succeeded.length - 1} add-on${succeeded.length - 1 > 1 ? "s" : ""})`
+                  : `Installed ${total} file${total === 1 ? "" : "s"}`
                 : `Installed ${succeeded.length} of ${total} files`;
             modAddQueueStore.markDone(plan.entry.queueId, message);
             addModpackPanelStore.notifyModInstalled();

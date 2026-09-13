@@ -309,6 +309,17 @@ describe("buildDeepLink", () => {
     expect(plain).toBe("ronmm://install/nexus/1234?fileId=");
     expect(parseNexusDeepLink(plain)?.modId).toBe("1234");
   });
+
+  it("appends skipBrowserOpen and addons params in order", () => {
+    const link = main.buildDeepLink("5933", [1, 2], true, true);
+    expect(link).toBe(
+      "ronmm://install/nexus/5933?fileId=1,2&skipBrowserOpen=1&addons=1",
+    );
+    const r = parseNexusDeepLink(link);
+    expect(r?.fileIds).toEqual([1, 2]);
+    expect(r?.skipBrowserOpen).toBe(true);
+    expect(r?.linkAsAddons).toBe(true);
+  });
 });
 
 describe("triggerDownload and fireDeepLink", () => {

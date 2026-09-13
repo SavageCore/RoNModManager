@@ -6,7 +6,11 @@ import {
   filterFileOptions,
   type NexusFileVariant,
 } from "./fileScrape";
-import { showFilePickerModal, type FileChoice } from "./pickerModal";
+import {
+  showFilePickerModal,
+  type FileChoice,
+  type FilePickerResult,
+} from "./pickerModal";
 
 setupPremiumMenu();
 
@@ -360,10 +364,12 @@ export function buildDeepLink(
   modId: string,
   fileIds: number[],
   skipBrowserOpen: boolean,
+  linkAsAddons: boolean = false,
 ): string {
   const ids = fileIds.join(",");
   const skip = skipBrowserOpen ? "&skipBrowserOpen=1" : "";
-  return `ronmm://install/nexus/${modId}?fileId=${ids}${skip}`;
+  const addons = linkAsAddons ? "&addons=1" : "";
+  return `ronmm://install/nexus/${modId}?fileId=${ids}${skip}${addons}`;
 }
 
 export function getModName(): string {
@@ -414,13 +420,18 @@ async function handleNexusMod(
 
   // Ask which file(s) to download when there is a genuine choice.
   let choices: FileChoice[];
+  let linkAsAddons = false;
   if (variants.length === 1) {
     choices = [{ fileId: variants[0].fileId, fileName: variants[0].fileName }];
   } else {
     setButtonBusy(btn, "Mod Manager");
-    const picked = await showFilePickerModal(getModName(), variants);
+    const picked: FilePickerResult | null = await showFilePickerModal(
+      getModName(),
+      variants,
+    );
     if (picked === null) return; // Cancelled
-    choices = picked;
+    choices = picked.choices;
+    linkAsAddons = picked.linkAsAddons;
     setButtonBusy(btn, "Working...");
   }
 
@@ -441,13 +452,13 @@ async function handleNexusMod(
   if (!firstUrl) {
     // Could not resolve - send file IDs and let the backend open the files tab.
     setButtonBusy(btn, "Mod Manager");
-    fireDeepLink(buildDeepLink(modId, allFileIds, false));
+    fireDeepLink(buildDeepLink(modId, allFileIds, false, linkAsAddons));
     return;
   }
 
   // Queue the install in the app without opening a tab, then download each
   // chosen file directly in this browser session.
-  fireDeepLink(buildDeepLink(modId, allFileIds, true));
+  fireDeepLink(buildDeepLink(modId, allFileIds, true, linkAsAddons));
 
   setButtonBusy(btn, "Downloading!");
   triggerDownload(firstUrl);

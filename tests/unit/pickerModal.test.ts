@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   showFilePickerModal,
-  type FileChoice,
+  type FilePickerResult,
 } from "../../userscript/src/pickerModal";
 import type { NexusFileVariant } from "../../userscript/src/fileScrape";
 
@@ -34,7 +34,10 @@ function buttons(): HTMLButtonElement[] {
 }
 
 function checkboxes(): HTMLInputElement[] {
-  return Array.from(modal().querySelectorAll('input[type="checkbox"]'));
+  // Only file-selection checkboxes, not the link-as-addons checkbox.
+  return Array.from(modal().querySelectorAll('input[type="checkbox"]')).filter(
+    (cb) => !cb.closest("label")?.textContent?.includes("add-on"),
+  ) as HTMLInputElement[];
 }
 
 function setChecked(cb: HTMLInputElement, checked: boolean) {
@@ -95,10 +98,29 @@ describe("showFilePickerModal", () => {
     ]);
     setChecked(checkboxes()[1], true);
     clickButton("Download");
-    const choices = (await pending) as FileChoice[];
-    expect(choices.map((c) => c.fileId)).toEqual([1, 2]);
-    expect(choices[0]).toEqual({ fileId: 1, fileName: "file_1.zip" });
+    const result = (await pending) as FilePickerResult;
+    expect(result.choices.map((c) => c.fileId)).toEqual([1, 2]);
+    expect(result.choices[0]).toEqual({ fileId: 1, fileName: "file_1.zip" });
+    expect(result.linkAsAddons).toBe(true);
     expect(document.getElementById("ronmm-file-picker-modal")).toBeNull();
+  });
+
+  it("reports linkAsAddons=false when the checkbox is unchecked", async () => {
+    const pending = showFilePickerModal("Cool Mod", [
+      variant(1, "Main"),
+      variant(2, "Extra"),
+    ]);
+    setChecked(checkboxes()[1], true);
+    const addonCb = Array.from(
+      modal().querySelectorAll('input[type="checkbox"]'),
+    ).find((cb) => cb.closest("label")?.textContent?.includes("add-on")) as
+      HTMLInputElement | undefined;
+    expect(addonCb).toBeDefined();
+    setChecked(addonCb!, false);
+    clickButton("Download");
+    const result = (await pending) as FilePickerResult;
+    expect(result.choices.map((c) => c.fileId)).toEqual([1, 2]);
+    expect(result.linkAsAddons).toBe(false);
   });
 
   it("keeps the modal open when nothing is selected", async () => {

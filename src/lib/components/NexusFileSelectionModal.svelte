@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import type { NexusFileOption } from "$lib/api/commands";
+  import type { NexusFileSelectionResult } from "$lib/stores/nexusFileSelection";
   import ModalShell from "./ModalShell.svelte";
 
   export let isVisible = true;
@@ -8,14 +9,18 @@
   export let files: NexusFileOption[] = [];
 
   const dispatch = createEventDispatcher<{
-    select: NexusFileOption[];
+    select: NexusFileSelectionResult;
     cancel: void;
   }>();
 
   let selected: NexusFileOption[] = files[0] ? [files[0]] : [];
+  let linkAsAddons = true;
 
   function handleDownload() {
-    dispatch("select", selected);
+    dispatch("select", {
+      files: selected,
+      linkAsAddons: linkAsAddons && selected.length > 1,
+    });
   }
 
   function handleCancel() {
@@ -91,6 +96,22 @@
       </label>
     {/each}
   </div>
+
+  {#if selected.length > 1}
+    <label class="flex items-center gap-2 text-sm mt-2 cursor-pointer">
+      <input
+        type="checkbox"
+        class="flex-shrink-0"
+        checked={linkAsAddons}
+        on:change={(e) =>
+          (linkAsAddons = (e.currentTarget as HTMLInputElement).checked)}
+      />
+      <span style="color: var(--clr-text-secondary);">
+        Install extra files as add-ons of the first file (instead of separate
+        mods)
+      </span>
+    </label>
+  {/if}
 
   <div class="flex gap-2">
     <button on:click={handleCancel} class="flex-1 btn">Cancel</button>

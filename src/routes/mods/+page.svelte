@@ -298,6 +298,8 @@
     fileIds?: number[];
     /** When true, backend won't open a duplicate browser download tab. */
     skipBrowserOpen?: boolean;
+    /** When true (and >1 file), extras become add-ons of the first file. */
+    linkAsAddons?: boolean;
   }> = [];
   let prevDoneCounter = $addModpackPanelStore.doneCounter;
   $: if ($addModpackPanelStore.doneCounter !== prevDoneCounter) {
@@ -1488,6 +1490,7 @@
             replacing: null,
             fileIds: entry.fileIds,
             skipBrowserOpen: entry.skipBrowserOpen ?? false,
+            linkAsAddons: entry.linkAsAddons,
           },
         ];
         showAddModModal = true;

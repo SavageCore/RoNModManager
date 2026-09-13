@@ -7,6 +7,16 @@ export interface FileChoice {
 }
 
 /**
+ * Result of the file picker. `linkAsAddons` is only meaningful when more than
+ * one file is chosen: every file after the first should be installed as an
+ * add-on of the first rather than as a separate top-level mod.
+ */
+export interface FilePickerResult {
+  choices: FileChoice[];
+  linkAsAddons: boolean;
+}
+
+/**
  * Show a modal letting the user pick which file variant(s) to download from a
  * Nexus mod that has multiple files.
  *
@@ -18,7 +28,7 @@ export interface FileChoice {
 export function showFilePickerModal(
   modName: string,
   files: NexusFileVariant[],
-): Promise<FileChoice[] | null> {
+): Promise<FilePickerResult | null> {
   return new Promise((resolve) => {
     // Clean up any previous modal instance.
     const existing = document.getElementById("ronmm-file-picker-modal");
@@ -130,6 +140,8 @@ export function showFilePickerModal(
     // case is a single confirm click.
     if (files.length > 0) selected.add(files[0].fileId);
 
+    let linkAsAddons = true;
+
     for (const f of files) {
       const label = document.createElement("label");
       label.style.cssText = `
@@ -202,6 +214,28 @@ export function showFilePickerModal(
       body.appendChild(label);
     }
 
+    // Link-as-addons checkbox (visible when extra files are selected)
+    const addonLabel = document.createElement("label");
+    addonLabel.style.cssText = `
+       display: flex;
+       align-items: center;
+       gap: 8px;
+       margin-top: 8px;
+       color: #888;
+       font-size: 13px;
+       cursor: pointer;
+     `;
+    addonLabel.textContent = "Install extra files as add-ons of the first file";
+    const addonCb = document.createElement("input");
+    addonCb.type = "checkbox";
+    addonCb.style.flexShrink = "0";
+    addonCb.checked = true;
+    addonCb.onchange = () => {
+      linkAsAddons = addonCb.checked;
+    };
+    addonLabel.insertBefore(addonCb, addonLabel.firstChild);
+    body.appendChild(addonLabel);
+
     dialog.appendChild(body);
 
     // Footer
@@ -254,7 +288,7 @@ export function showFilePickerModal(
         return;
       }
       cleanup();
-      resolve(choices);
+      resolve({ choices, linkAsAddons: linkAsAddons && choices.length > 1 });
     };
 
     footer.appendChild(cancelBtn);

@@ -477,8 +477,21 @@
       void refreshShellConfigState();
     };
 
+    let lastDeepLinkAt = new Map<string, number>();
     const handleDeepLinkUrls = (urls: string[]) => {
+      const now = Date.now();
       for (const url of urls) {
+        if (
+          url.startsWith("ronmm://install/nexus/") ||
+          url.startsWith("ronmm://install/modio/")
+        ) {
+          // The userscript fires each deep link twice (hidden iframe + anchor
+          // click) within ~50ms. Throttle identical URLs so the app never
+          // processes the same install twice.
+          const prev = lastDeepLinkAt.get(url);
+          if (prev !== undefined && now - prev < 1000) continue;
+          lastDeepLinkAt.set(url, now);
+        }
         if (url.startsWith("ronmm://install/nexus/")) {
           const parsed = parseNexusDeepLink(url);
           if (parsed) {
@@ -486,6 +499,7 @@
               url: parsed.url,
               fileIds: parsed.fileIds,
               skipBrowserOpen: parsed.skipBrowserOpen,
+              linkAsAddons: parsed.linkAsAddons,
             });
             void goto("/mods");
           }

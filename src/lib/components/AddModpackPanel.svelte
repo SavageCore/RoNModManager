@@ -286,7 +286,7 @@
                       await pushLog(`Skipped: ${modFile} (cancelled)`);
                       return null as unknown as number[];
                     }
-                    return chosen.map((f) => f.fileId);
+                    return chosen.files.map((f) => f.fileId);
                   }
                   if (fileOptions.length === 1) return [fileOptions[0].fileId];
                   return [];

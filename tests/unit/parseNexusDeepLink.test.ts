@@ -8,6 +8,7 @@ describe("parseNexusDeepLink", () => {
       modId: "1234",
       fileIds: undefined,
       skipBrowserOpen: false,
+      linkAsAddons: false,
       url: "https://www.nexusmods.com/readyornot/mods/1234",
     });
   });
@@ -36,6 +37,20 @@ describe("parseNexusDeepLink", () => {
     );
     expect(r?.fileIds).toEqual([5]);
     expect(r?.skipBrowserOpen).toBe(true);
+    expect(r?.linkAsAddons).toBe(false);
+  });
+
+  it("parses addons=1", () => {
+    const r = parseNexusDeepLink(
+      "ronmm://install/nexus/1234?fileId=1,2&addons=1",
+    );
+    expect(r?.fileIds).toEqual([1, 2]);
+    expect(r?.linkAsAddons).toBe(true);
+  });
+
+  it("parses addons=true", () => {
+    const r = parseNexusDeepLink("ronmm://install/nexus/1234?addons=true");
+    expect(r?.linkAsAddons).toBe(true);
   });
 
   it("tolerates trailing slash on modId", () => {

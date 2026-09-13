@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
+use std::time::Instant;
 
 use reqwest::Client;
 
@@ -46,6 +47,10 @@ pub struct AppState {
     /// Map value is the cancel signal: false = waiting, true = cancelled.
     pub nexus_cancel: Arc<Mutex<HashMap<u64, bool>>>,
     pub nexus_wait_id: Arc<AtomicU64>,
+    /// Timestamps of the last `open_url` for a Nexus mod's `?tab=files` page,
+    /// used to suppress duplicate browser-tab opens when several files of the
+    /// same mod are installed at once (e.g. a Part 1 + Part 2 multipart mod).
+    pub nexus_open_throttle: Arc<Mutex<HashMap<u64, Instant>>>,
     /// When true, the next app exit skips stock cleanup. Set during the
     /// launch-close path so the Steam-URI launch is not raced by an immediate
     /// unlink of the mods it is about to load.
@@ -103,6 +108,7 @@ impl AppState {
             config_path,
             nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
             nexus_wait_id: Arc::new(AtomicU64::new(1)),
+            nexus_open_throttle: Arc::new(Mutex::new(HashMap::new())),
             suppress_exit_cleanup: AtomicBool::new(false),
             game_watcher_running: AtomicBool::new(false),
         })
@@ -144,6 +150,24 @@ impl AppState {
         }
     }
 
+    /// Should we open a browser tab for the given Nexus mod id? Returns true
+    /// once per mod within a short throttle window so that multipart installs
+    /// (one `add_nexus_mod` call per file) do not spawn N identical `?tab=files`
+    /// tabs. Callers pass the resolved `mod_id`.
+    pub fn should_open_nexus_url(&self, mod_id: u64) -> bool {
+        const THROTTLE: std::time::Duration = std::time::Duration::from_secs(15);
+        let now = std::time::Instant::now();
+        if let Ok(mut map) = self.nexus_open_throttle.lock() {
+            match map.get(&mod_id) {
+                Some(last) if now.duration_since(*last) < THROTTLE => return false,
+                _ => {
+                    map.insert(mod_id, now);
+                }
+            }
+        }
+        true
+    }
+
     pub fn update_config<F>(&self, update_fn: F) -> Result<AppConfig>
     where
         F: FnOnce(&mut AppConfig),
@@ -182,6 +206,7 @@ impl Default for AppState {
                     config_path,
                     nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
                     nexus_wait_id: Arc::new(AtomicU64::new(1)),
+                    nexus_open_throttle: Arc::new(Mutex::new(HashMap::new())),
                     suppress_exit_cleanup: AtomicBool::new(false),
                     game_watcher_running: AtomicBool::new(false),
                 }
@@ -267,6 +292,7 @@ mod tests {
             config_path,
             nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
             nexus_wait_id: Arc::new(AtomicU64::new(1)),
+            nexus_open_throttle: Arc::new(Mutex::new(HashMap::new())),
             suppress_exit_cleanup: AtomicBool::new(false),
             game_watcher_running: AtomicBool::new(false),
         };
@@ -337,5 +363,15 @@ mod tests {
     fn nexus_wait_ids_are_unique() {
         let (_dir, state) = test_state();
         assert_ne!(state.register_nexus_wait(), state.register_nexus_wait());
+    }
+
+    #[test]
+    fn nexus_open_throttle_dedups_within_window() {
+        let (_dir, state) = test_state();
+        assert!(state.should_open_nexus_url(5933));
+        // Within the throttle window: suppressed.
+        assert!(!state.should_open_nexus_url(5933));
+        // A different mod id is independent.
+        assert!(state.should_open_nexus_url(5934));
     }
 }
