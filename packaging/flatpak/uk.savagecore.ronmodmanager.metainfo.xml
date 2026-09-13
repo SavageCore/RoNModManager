@@ -19,6 +19,108 @@
   <releases>
 
 
+    <release version="0.0.14" date="2026-09-13">
+      <description>
+        <ul>
+          <li>Bump userscript version</li>
+          <li>Bump actions/cache in the actions-dependencies group</li>
+          <li>Stop hard-coding userscript version</li>
+          <li>Broaden unit coverage and gate it in CI</li>
+          <li>UE4SS bundled-runtime support with silent dependency and auto launch option</li>
+        </ul>
+      </description>
+    </release>
+
+    <release version="0.0.13" date="2026-09-11">
+      <description>
+        <ul>
+          <li>Harden release Flatpak build and backfill v0.0.12</li>
+          <li>Show enabled mod count next to Toggle all</li>
+          <li>Show installed file sizes in mod list and detail view</li>
+          <li>One-press Nexus downloads from userscript with file picker</li>
+          <li>Show mod names instead of URLs in import log</li>
+          <li>Extract launch split button into themed component</li>
+          <li>Userscript version too high</li>
+        </ul>
+      </description>
+    </release>
+
+    <release version="0.0.12" date="2026-09-10">
+      <description>
+        <ul>
+          <li>Add screenshots gallery READMEs</li>
+          <li>Keep failed downloads failed and extend Nexus free-download waits</li>
+          <li>Replace mod across all profiles to avoid disabled duplicate after update</li>
+          <li>Add Engine.ini optimization presets with GPU auto-detect</li>
+          <li>Make settings libadwaita-like with grouped boxed lists</li>
+          <li>Color settings status green/red</li>
+          <li>Link AlexRenderX to Nexus mod page</li>
+          <li>Restore missing SyncAuthModal and ExportModpackModal</li>
+          <li>Add Test/Save to SSH auth modal, no auto-sync on save</li>
+          <li>Reopen existing folder when browsing keyfile</li>
+          <li>Make Game Path a folder chooser</li>
+          <li>Make dropdowns more obviously dropdowns with chevron</li>
+          <li>Browse keyfile reopens existing location and defaults to ~/.ssh</li>
+          <li>Show Game Path on second line, stylise Ready or Not</li>
+          <li>Add bottom spacing to settings page</li>
+          <li>Add scroll-to-top FAB to settings</li>
+          <li>Tighten Remote Sync header spacing to match Export Modpack</li>
+          <li>Put last checked on new muted line and fix spacing</li>
+          <li>Space before dot and show update with icon</li>
+          <li>Detect applied Engine.ini profile by comparing file content</li>
+          <li>Rename and duplicate profile handling</li>
+          <li>Remove all em-dashes from UI and documentation per typography standard</li>
+          <li>Show per-mod metadata refresh skip/fail details</li>
+          <li>Add Adwaita Sans and Mono fonts</li>
+          <li>Report hidden mods separately during metadata refresh</li>
+          <li>Save details via shared download helper with toast feedback</li>
+          <li>Share modal chrome via ModalShell and button components</li>
+          <li>Show close button on broken mod modal</li>
+          <li>Show close button on edit collection modal</li>
+          <li>Add missing mod.io API key modal and shell-based credential dialogs</li>
+          <li>Distinguish mod.io OAuth token from API key in settings</li>
+          <li>Use consistent Update/Set labels on credential buttons</li>
+          <li>Unify credential modal copy and button labels</li>
+          <li>Point mod.io token setup at Personal Access Tokens</li>
+          <li>Trim personal access token instructions to creation steps</li>
+          <li>Match mod.io modal phrasing to Nexus modal</li>
+          <li>Drop redundant disambiguation from API key hint</li>
+          <li>Prefill saved token in personal access token modal</li>
+          <li>Mention token regenerate button in access token hint</li>
+          <li>Describe regenerate button as refresh icon</li>
+          <li>Split regenerate hint into its own paragraph</li>
+          <li>Extend setup wizard with game path and modpack URL</li>
+          <li>Unify modal styling with ModalShell and add auth setup wizard</li>
+          <li>Add wizard screenshot support with proper empty mods list and theme handling</li>
+          <li>Show empty mods list in wizard screenshot</li>
+          <li>Make NexusMods API key required in both wizards</li>
+          <li>Show empty mods list in wizard screenshots</li>
+          <li>Resolve prettier lint failure and harden pre-commit hooks</li>
+          <li>Bump the cargo-dependencies group</li>
+          <li>Update russh check_server_key signature for 0.63</li>
+          <li>Speed up local builds</li>
+          <li>Speed up build pipeline</li>
+          <li>Bump the npm-dependencies group across 1 directory with 11 updates</li>
+          <li>Pin typescript to ~6.0.3 to resolve peer conflict with @sveltejs/kit</li>
+          <li>Merge duplicate push trigger in flatpak.yml</li>
+          <li>Generate cargo vendor config for flatpak builds</li>
+          <li>Uninstall existing flatpak before reinstalling</li>
+          <li>Manual-download waiting foundation (minimize, queued log, close-while-waiting)</li>
+          <li>Auto-tag installed mods with Nexus category on add</li>
+          <li>Concurrent manual-download queue with "Add more"</li>
+          <li>Serialize mod installs, add shared log level, fix progress display</li>
+          <li>Import log collapse on completion, remove redundant verbose detail</li>
+          <li>Restore missing world-gen warning for Nexus Maps mods</li>
+          <li>Cold-start ronmm:// deep links and register scheme in packaged desktop files</li>
+          <li>Share sandbox detection between updater and backend</li>
+          <li>Skip register_all in Flatpak sandbox where xdg helpers are missing</li>
+          <li>Opt-in link-on-launch mode with stock-at-rest game folder</li>
+          <li>Restore stock folder when game exits, fix flatpak process visibility</li>
+          <li>Include addon archives in every mod-link sync</li>
+          <li>Restore stock folder on cancelled game launch</li>
+        </ul>
+      </description>
+    </release>
 
     <release version="0.0.11" date="2026-08-22">
       <description>

@@ -12,7 +12,7 @@ export RUSTC_WRAPPER := ccache
         lint format check lint-frontend lint-backend fmt-backend clippy lint-all \
         test-frontend test-backend test \
         screenshots screenshots-build \
-        vendor flatpak-deps update-appstream flatpak-build flatpak-build-clean flatpak-build-fast flatpak-bundle flatpak-install flatpak-run flatpak \
+        vendor flatpak-deps update-appstream flatpak-build flatpak-build-clean flatpak-build-fast flatpak-bundle flatpak-install flatpak-install-remote flatpak-run flatpak \
         clean watch
 
 help: ## Show available targets
@@ -143,7 +143,8 @@ flatpak-bundle: ## Export a .flatpak bundle from the local repo
 		--gpg-keys=$(FLATPAK_GPG_PUB) \
 		flatpak-repo ronmodmanager.flatpak $(FLATPAK_ID) master
 
-flatpak-install: ## Install the locally built Flatpak via a local OSTree remote
+flatpak-install: ## Install the locally built Flatpak via a local OSTree remote (pins Origin to ronmodmanager-local, opts out of auto-updates)
+	@echo "WARNING: this pins Origin to '$(FLATPAK_LOCAL_REMOTE)' - 'flatpak update' will no longer track the official remote. Run 'make flatpak-install-remote' to switch back."
 	flatpak remote-add --user --if-not-exists --no-gpg-verify \
 		$(FLATPAK_LOCAL_REMOTE) "file://$(CURDIR)/flatpak-repo"
 	flatpak remote-modify --user --no-gpg-verify \
@@ -151,6 +152,13 @@ flatpak-install: ## Install the locally built Flatpak via a local OSTree remote
 		$(FLATPAK_LOCAL_REMOTE)
 	-flatpak uninstall --user -y $(FLATPAK_ID)
 	flatpak install --user -y $(FLATPAK_LOCAL_REMOTE) $(FLATPAK_ID)
+
+flatpak-install-remote: ## Switch back to the official GitHub Pages remote (restores 'flatpak update')
+	-flatpak uninstall --user -y $(FLATPAK_ID)
+	flatpak remote-add --user --if-not-exists \
+		--gpg-import=$(FLATPAK_GPG_PUB) \
+		ronmodmanager https://savagecore.github.io/RoNModManager/
+	flatpak install --user -y ronmodmanager $(FLATPAK_ID)
 
 flatpak-run: ## Run the installed Flatpak
 	flatpak run $(FLATPAK_ID)

@@ -49,6 +49,15 @@ Alternatively, download `ronmodmanager.flatpak` from the [latest release](https:
 flatpak install --user --bundle ronmodmanager.flatpak
 ```
 
+> **Note for contributors:** running `make flatpak` installs from a local `ronmodmanager-local` remote, which pins `Origin` to your build tree and opts you out of automatic updates (`flatpak update` will report nothing to do). Check with `flatpak info uk.savagecore.ronmodmanager | grep Origin`. To switch back to release updates:
+>
+> ```bash
+> make flatpak-install-remote
+> # or manually:
+> # flatpak uninstall --user -y uk.savagecore.ronmodmanager
+> # flatpak install --user -y ronmodmanager uk.savagecore.ronmodmanager
+> ```
+
 #### Flatpak permissions
 
 The Flatpak build needs permission to talk to `org.freedesktop.Flatpak` (for spawning host commands). The link-on-launch mode uses this to detect when the game exits so mods can be unlinked and the game folder returned to stock. New installs get this permission automatically.

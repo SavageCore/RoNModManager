@@ -219,6 +219,9 @@ jobs:
             --gpg-sign=$FLATPAK_GPG_KEY \
             --gpg-keys=packaging/flatpak/ronmodmanager-flatpak.gpg \
             flatpak-repo ronmodmanager.flatpak uk.savagecore.ronmodmanager master
+          # Generate summary + appstream refs so clients see updates in
+          # GNOME Software / `flatpak update` without "No such ref 'appstream2'" errors.
+          flatpak build-update-repo --generate-static-deltas --gpg-sign=$FLATPAK_GPG_KEY flatpak-repo
           cp packaging/flatpak/ronmodmanager-flatpak.gpg flatpak-repo/
           touch flatpak-repo/.nojekyll
       - name: Upload Flatpak bundle to GitHub Release
