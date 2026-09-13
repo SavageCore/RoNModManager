@@ -1,12 +1,18 @@
 import { writable } from "svelte/store";
 
-export type ToastType = "success" | "error" | "info";
+export type ToastType = "success" | "error" | "info" | "warning";
+
+export interface ToastAction {
+  label: string;
+  handler: () => void | Promise<void>;
+}
 
 export interface Toast {
   id: string;
   message: string;
   type: ToastType;
   duration: number; // milliseconds, max 30000 (30 seconds)
+  action?: ToastAction;
 }
 
 interface ToastStore {
@@ -23,13 +29,29 @@ function createToastStore() {
     add: (
       message: string,
       type: ToastType = "info",
-      duration: number = 3000,
+      duration?: number,
+      action?: ToastAction,
     ) => {
+      const defaults: Record<ToastType, number> = {
+        success: 4000,
+        info: 4000,
+        warning: 8000,
+        error: 8000,
+      };
       const id = Math.random().toString(36).substring(2, 11);
-      const clampedDuration = Math.min(duration, MAX_DURATION);
+      const clampedDuration = Math.min(
+        duration ?? defaults[type],
+        MAX_DURATION,
+      );
 
       update((state) => {
-        state.toasts.push({ id, message, type, duration: clampedDuration });
+        state.toasts.push({
+          id,
+          message,
+          type,
+          duration: clampedDuration,
+          action,
+        });
         return state;
       });
 
@@ -45,14 +67,21 @@ function createToastStore() {
 
       return id;
     },
-    success: (message: string, duration?: number) => {
-      return toastStore.add(message, "success", duration);
+    success: (message: string, duration?: number, action?: ToastAction) => {
+      return toastStore.add(message, "success", duration, action);
     },
-    error: (message: string, duration?: number) => {
+    error: (message: string, duration?: number, action?: ToastAction) => {
+      return toastStore.add(message, "error", duration, action);
+    },
+    info: (message: string, duration?: number, action?: ToastAction) => {
+      return toastStore.add(message, "info", duration, action);
+    },
+    warning: (message: string, duration?: number, action?: ToastAction) => {
+      return toastStore.add(message, "warning", duration, action);
+    },
+    fromError: (err: unknown, duration?: number) => {
+      const message = err instanceof Error ? err.message : String(err);
       return toastStore.add(message, "error", duration);
-    },
-    info: (message: string, duration?: number) => {
-      return toastStore.add(message, "info", duration);
     },
     remove: (id: string) => {
       update((state) => {

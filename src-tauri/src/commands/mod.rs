@@ -5,6 +5,7 @@ pub mod fetch;
 pub mod fetch_archive;
 pub mod fs;
 pub mod game;
+pub mod launch;
 pub mod modpack;
 pub mod mods;
 pub mod profiles;

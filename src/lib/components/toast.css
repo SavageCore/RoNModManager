@@ -51,6 +51,31 @@
   color: #2196f3;
 }
 
+.toast.warning {
+  border-color: #ff9800;
+  background: color-mix(in srgb, #ff9800 8%, var(--clr-surface, #fff));
+}
+
+.toast.warning .toast-icon {
+  color: #ff9800;
+}
+
+.toast-action {
+  flex-shrink: 0;
+  background: var(--clr-primary, #1976d2);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toast-action:hover {
+  filter: brightness(1.1);
+}
+
 .toast-icon {
   flex-shrink: 0;
   display: flex;

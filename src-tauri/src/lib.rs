@@ -7,7 +7,7 @@ pub mod services;
 pub mod state;
 
 use crate::commands::{
-    auth, collections, config, game, modpack, mods, profiles, sharing, sync, tags,
+    auth, collections, config, game, launch, modpack, mods, profiles, sharing, sync, tags,
     ue4ss as ue4ss_commands, updater, window,
 };
 use crate::services::game_watch;
@@ -100,21 +100,23 @@ pub fn run() {
             }
         }
 
-        #[cfg(not(debug_assertions))]
         {
-            let urls: Vec<String> = std::env::args()
-                .skip(1)
-                .filter(|a| a.starts_with("ronmm://"))
-                .collect();
+            let argv: Vec<String> = std::env::args().skip(1).collect();
+            let urls: Vec<String> = argv.iter().filter(|a| a.starts_with("ronmm://")).cloned().collect();
             if !urls.is_empty() {
                 log::info!("Startup deep-link URLs: {:?}", urls);
             }
+            let launch_req = crate::services::launch_args::parse_args(&argv);
+            if launch_req.launch {
+                log::info!("Headless launch requested: {:?}", launch_req);
+            }
             app.manage(window::StartupUrls(std::sync::Mutex::new(Some(urls))));
-        }
-
-        #[cfg(debug_assertions)]
-        {
-            app.manage(window::StartupUrls(std::sync::Mutex::new(None)));
+            app.manage(launch::LaunchArgs(std::sync::Mutex::new(launch_req.clone())));
+            if launch_req.hide && launch_req.launch {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.hide();
+                }
+            }
         }
 
         use tauri::menu::{Menu, MenuItem};
@@ -155,7 +157,10 @@ pub fn run() {
     #[cfg(not(debug_assertions))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(
         |app: &tauri::AppHandle, argv: Vec<String>, _cwd: String| {
-            if let Some(w) = app.get_webview_window("main") {
+            let req = crate::services::launch_args::parse_args(&argv);
+            if req.launch {
+                let _ = app.emit("ronmm://headless-launch", serde_json::to_value(&req).unwrap_or_default());
+            } else if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
                 let _ = w.set_focus();
             }
@@ -196,6 +201,15 @@ pub fn run() {
             game::launch_vanilla_game,
             game::is_game_running,
             game::suppress_exit_cleanup,
+            launch::get_launch_request,
+            launch::headless_launch,
+            launch::create_profile_shortcut,
+            launch::remove_profile_shortcut,
+            launch::add_profile_to_steam,
+            launch::remove_profile_from_steam,
+            launch::profile_shortcut_status,
+            launch::steam_running,
+            launch::quit_steam,
             game::ue4ss_launch_option_status,
             game::set_ue4ss_launch_option,
             ue4ss_commands::get_ue4ss_settings,

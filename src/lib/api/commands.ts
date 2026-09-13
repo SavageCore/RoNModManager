@@ -412,3 +412,38 @@ export const setAddonMap = (map: Record<string, string[]>) =>
 
 export const applyModpackProfileMetadata = (modpack: any) =>
   invoke<void>("apply_modpack_profile_metadata", { modpack });
+
+export interface LaunchRequest {
+  profile?: string | null;
+  launch: boolean;
+  vanilla: boolean;
+  hide: boolean;
+}
+export interface ShortcutStatus {
+  desktopPath?: string | null;
+  inSteam: boolean;
+  desktopContent?: string | null;
+}
+export const getLaunchRequest = () =>
+  invoke<LaunchRequest>("get_launch_request");
+export const headlessLaunch = (profile?: string | null, vanilla?: boolean) =>
+  invoke<string>("headless_launch", {
+    profile: profile ?? null,
+    vanilla: vanilla ?? false,
+  });
+export const createProfileShortcut = (
+  profile: string,
+  vanilla = false,
+  desktopCopy = false,
+) =>
+  invoke<string>("create_profile_shortcut", { profile, vanilla, desktopCopy });
+export const removeProfileShortcut = (profile: string) =>
+  invoke<boolean>("remove_profile_shortcut", { profile });
+export const addProfileToSteam = (profile: string, vanilla = false) =>
+  invoke<string[]>("add_profile_to_steam", { profile, vanilla });
+export const removeProfileFromSteam = (profile: string) =>
+  invoke<string[]>("remove_profile_from_steam", { profile });
+export const profileShortcutStatus = (profile: string) =>
+  invoke<ShortcutStatus>("profile_shortcut_status", { profile });
+export const isSteamRunning = () => invoke<boolean>("steam_running");
+export const quitSteam = () => invoke<string>("quit_steam");

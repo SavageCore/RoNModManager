@@ -78,7 +78,11 @@ pub async fn save_profile(
 
 #[tauri::command]
 pub async fn delete_profile(name: String) -> Result<()> {
-    services::profiles::delete_profile(&name)
+    services::profiles::delete_profile(&name)?;
+    // Best-effort: drop stale one-click shortcuts for the deleted profile.
+    let _ = services::desktop_shortcut::remove_desktop_shortcut(&name);
+    let _ = services::steam_shortcuts::remove_from_steam(&name);
+    Ok(())
 }
 
 #[tauri::command]
@@ -114,6 +118,19 @@ pub async fn rename_profile(
     services::profiles::save_profile(&profile)?;
     // Delete the old profile file
     services::profiles::delete_profile(&old_name)?;
+    // Best-effort: move one-click shortcuts to the new name.
+    {
+        let had_desktop = services::desktop_shortcut::shortcut_status(&old_name).0.is_some();
+        let had_steam = services::steam_shortcuts::steam_status(&old_name).unwrap_or(false);
+        let _ = services::desktop_shortcut::remove_desktop_shortcut(&old_name);
+        let _ = services::steam_shortcuts::remove_from_steam(&old_name);
+        if had_desktop {
+            let _ = services::desktop_shortcut::create_desktop_shortcut(&new_name, false, false);
+        }
+        if had_steam {
+            let _ = services::steam_shortcuts::add_to_steam(&new_name, false);
+        }
+    }
     // If the renamed profile was the active one, update the active profile in config
     let config = state.get_config()?;
     if config.active_profile.as_deref() == Some(old_name.as_str()) {

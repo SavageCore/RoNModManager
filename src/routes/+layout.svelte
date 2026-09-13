@@ -8,7 +8,9 @@
     detectGamePath,
     fetchModpackJson,
     getConfig,
+    getLaunchRequest,
     getStartupUrls,
+    headlessLaunch,
     ensureGameStock,
     isGameRunning as checkGameRunning,
     launchGameWithGroups,
@@ -518,6 +520,26 @@
         } else if (url.startsWith("ronmm://modpack/")) {
           const urlStr = url.replace("ronmm://modpack/", "");
           addModpackPanelStore.open("add", { url: urlStr });
+        } else if (url.startsWith("ronmm://launch")) {
+          const q = url.split("?")[1] ?? "";
+          const params = new URLSearchParams(q);
+          const profile = params.get("profile");
+          const vanilla =
+            params.get("vanilla") === "1" || params.get("vanilla") === "true";
+          void (async () => {
+            try {
+              await suppressExitCleanup();
+              await headlessLaunch(profile, vanilla);
+              toastStore.success(`Launching${profile ? ` "${profile}"` : ""}…`);
+              try {
+                await getCurrentWindow().hide();
+              } catch {
+                // ignore
+              }
+            } catch (e) {
+              toastStore.error(e instanceof Error ? e.message : String(e));
+            }
+          })();
         }
       }
     };
@@ -542,6 +564,51 @@
       const unique = [...new Set(startupUrls)];
       if (unique.length > 0) {
         handleDeepLinkUrls(unique);
+      }
+      // Headless CLI launch: --profile Foo --launch [--hide]
+      try {
+        const req = await getLaunchRequest();
+        if (req.launch) {
+          await suppressExitCleanup();
+          await headlessLaunch(req.profile ?? null, req.vanilla);
+          toastStore.success(
+            `Launching${req.profile ? ` "${req.profile}"` : ""}…`,
+          );
+          if (req.hide) {
+            try {
+              await getCurrentWindow().hide();
+            } catch {
+              // ignore
+            }
+          }
+        }
+      } catch {
+        // not a headless launch - normal startup
+      }
+      try {
+        await listen("ronmm://headless-launch", async (event: any) => {
+          const req = event.payload as {
+            profile?: string | null;
+            vanilla?: boolean;
+            hide?: boolean;
+          };
+          try {
+            await suppressExitCleanup();
+            await headlessLaunch(req.profile ?? null, req.vanilla ?? false);
+            toastStore.success("Launching…");
+            if (req.hide !== false) {
+              try {
+                await getCurrentWindow().hide();
+              } catch {
+                // ignore
+              }
+            }
+          } catch (e) {
+            toastStore.error(e instanceof Error ? e.message : String(e));
+          }
+        });
+      } catch {
+        // single-instance plugin unavailable - ignore
       }
     })();
 

@@ -1,6 +1,12 @@
 <script lang="ts">
   import { toastStore, type Toast } from "$lib/stores/toast";
-  import { AlertCircle, CheckCircle, Info, X } from "lucide-svelte";
+  import {
+    AlertCircle,
+    AlertTriangle,
+    CheckCircle,
+    Info,
+    X,
+  } from "lucide-svelte";
 
   let toasts: Toast[] = [];
 
@@ -14,6 +20,8 @@
         return CheckCircle;
       case "error":
         return AlertCircle;
+      case "warning":
+        return AlertTriangle;
       case "info":
       default:
         return Info;
@@ -32,6 +40,7 @@
       class:success={toast.type === "success"}
       class:error={toast.type === "error"}
       class:info={toast.type === "info"}
+      class:warning={toast.type === "warning"}
     >
       <div class="toast-icon">
         <svelte:component this={getIcon(toast.type)} size={20} />
@@ -39,6 +48,20 @@
       <div class="toast-message">
         {@html toast.message}
       </div>
+      {#if toast.action}
+        <button
+          class="toast-action"
+          on:click={() => {
+            try {
+              void toast.action?.handler();
+            } finally {
+              removeToast(toast.id);
+            }
+          }}
+        >
+          {toast.action.label}
+        </button>
+      {/if}
       <button
         class="toast-close"
         on:click={() => removeToast(toast.id)}

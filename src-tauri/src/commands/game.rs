@@ -119,6 +119,10 @@ fn override_paths(
     Some((game_target, backup))
 }
 
+pub fn launch_game_internal_pub(game_path: &Path, intro_skip_enabled: bool) -> Result<(), String> {
+    launch_game_internal(game_path, intro_skip_enabled)
+}
+
 fn launch_game_internal(game_path: &Path, intro_skip_enabled: bool) -> Result<(), String> {
     // Re-apply intro skip if enabled in config, in case a game update restored the files
     if intro_skip_enabled {

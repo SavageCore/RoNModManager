@@ -1,7 +1,9 @@
 pub mod addon_map;
 pub mod config_tweaks;
+pub mod desktop_shortcut;
 pub mod downloader;
 pub mod flatpak;
+pub mod launch_args;
 pub mod game_watch;
 pub mod hasher;
 pub mod installer;
@@ -12,4 +14,5 @@ pub mod nexus_api;
 pub mod profiles;
 pub mod steam;
 pub mod steam_launch;
+pub mod steam_shortcuts;
 pub mod ue4ss;

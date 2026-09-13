@@ -408,41 +408,6 @@ samp {
   box-shadow: none;
 }
 
-/* Toast notification styling */
-.message-box {
-  position: fixed;
-  bottom: 1rem;
-  right: 1rem;
-  max-width: 400px;
-  border-radius: 8px;
-  padding: 0.875rem 1.25rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
-  animation: slideInRight 0.3s ease-out;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-@keyframes slideInRight {
-  from {
-    transform: translateX(400px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-.message-box.error {
-  background: var(--clr-danger-300);
-  color: var(--clr-danger-text);
-}
-
-.message-box.success {
-  background: var(--clr-success-300);
-  color: var(--clr-success-text);
-}
-
 /* Gale-style switch for mod rows */
 .gale-switch {
   position: relative;
