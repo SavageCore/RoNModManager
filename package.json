@@ -23,7 +23,7 @@
     "test:unit:watch": "vitest",
     "test:unit:coverage": "vitest run --coverage",
     "tauri": "tauri",
-    "prepare": "husky",
+    "prepare": "lefthook install",
     "release": "dotenvx run -- npm run tauri build",
     "version": "node scripts/sync-version.js"
   },
@@ -51,9 +51,8 @@
     "@testing-library/svelte": "^5.4.2",
     "@types/semver": "^7.8.0",
     "@vitest/coverage-v8": "^5.0.0",
-    "husky": "^9.1.7",
     "jsdom": "^30.0.1",
-    "lint-staged": "^17.5.1",
+    "lefthook": "^2.1.14",
     "prettier": "^3.9.6",
     "prettier-plugin-svelte": "^4.1.1",
     "svelte": "^5.57.0",
@@ -62,14 +61,6 @@
     "typescript": "~6.0.3",
     "vite": "^8.3.0",
     "vitest": "^5.0.0"
-  },
-  "lint-staged": {
-    "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts,svelte}": [
-      "prettier --write"
-    ],
-    "*.{css,json,md,yml,yaml}": [
-      "prettier --write"
-    ]
   },
   "packageManager": "npm@11.14.1",
   "engines": {

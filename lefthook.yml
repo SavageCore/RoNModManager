@@ -1,0 +1,36 @@
+# Git hooks managed by lefthook. Install with `lefthook install`
+# (runs automatically via `npm install`).
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: prettier
+      run: npx prettier --write {staged_files}
+      glob:
+        - "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts,svelte}"
+        - "*.{css,json,md,yml,yaml}"
+      stage_fixed: true
+
+    - name: cargo fmt
+      run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      glob:
+        - "src-tauri/**"
+
+    - name: cargo clippy (lib + bins)
+      run: cargo clippy --manifest-path src-tauri/Cargo.toml --lib --bins -- -D warnings
+      glob:
+        - "src-tauri/**"
+
+pre-push:
+  jobs:
+    - name: cargo clippy (all targets)
+      run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+
+    - name: cargo test
+      run: cargo test --manifest-path src-tauri/Cargo.toml
+
+    - name: svelte-check
+      run: npm run check
+
+    - name: unit tests with coverage
+      run: npm run test:unit:coverage
