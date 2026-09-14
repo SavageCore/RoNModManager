@@ -268,7 +268,7 @@ describe("metadataRefreshDetailsStore", () => {
 });
 
 describe("manualDownloadStore", () => {
-  it("dedupes by fileName or modUrl", () => {
+  it("dedupes by fileName only, keeping sibling files", () => {
     manualDownloadStore.clear();
     manualDownloadStore.add({
       prettyName: "A",
@@ -282,21 +282,22 @@ describe("manualDownloadStore", () => {
       modUrl: "https://m/2",
       waitId: 2,
     });
+    // Shares A2's modUrl but is a different file: kept as its own row so the
+    // user can see every pending download.
     manualDownloadStore.add({
       prettyName: "B",
       fileName: "b.zip",
       modUrl: "https://m/2",
       waitId: 3,
     });
-    // B shares A2's modUrl, so it replaces A2 instead of appending.
     const pending = get(manualDownloadStore).pendingFiles;
-    expect(pending).toHaveLength(1);
-    expect(pending[0].prettyName).toBe("B");
+    expect(pending).toHaveLength(2);
+    // Repeat add of the same file refreshes the existing row, not a new one.
     manualDownloadStore.add({
-      prettyName: "C",
-      fileName: "c.zip",
-      modUrl: "https://m/3",
-      waitId: 4,
+      prettyName: "B2",
+      fileName: "b.zip",
+      modUrl: "https://m/2",
+      waitId: 3,
     });
     expect(get(manualDownloadStore).pendingFiles).toHaveLength(2);
     expect(get(manualDownloadStore).dismissed).toBe(false);

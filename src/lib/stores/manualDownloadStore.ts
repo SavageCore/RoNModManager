@@ -24,8 +24,11 @@ function createManualDownloadStore() {
     subscribe,
     add: (file: ManualDownloadFile) =>
       update((s) => {
+        // Dedupe by file name only. Sibling files from one mod share a
+        // modUrl, and keying on it would collapse them into a single row so
+        // the user never sees the rest.
         const existing = s.pendingFiles.find(
-          (d) => d.fileName === file.fileName || d.modUrl === file.modUrl,
+          (d) => d.fileName === file.fileName,
         );
         if (existing) {
           return {
