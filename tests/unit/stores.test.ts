@@ -501,7 +501,7 @@ describe("modUpdatesStore", () => {
           updateAvailable: true,
         },
       }),
-    ).toBe("1 mod update available — see Mods page");
+    ).toBe("1 mod update available - see Mods page");
     expect(
       describeModUpdatesStatus({
         "a.zip": {
@@ -519,7 +519,7 @@ describe("modUpdatesStore", () => {
           updateAvailable: true,
         },
       }),
-    ).toBe("2 mod updates available — see Mods page");
+    ).toBe("2 mod updates available - see Mods page");
   });
 
   it("persists the updates map for the next launch", () => {

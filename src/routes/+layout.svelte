@@ -826,18 +826,13 @@
     })();
 
     void (async () => {
-      // Background mod-update check: fire-and-forget, never blocks startup.
-      // Skip noise / doomed checks: screenshot fixtures, first-run wizard
-      // (no keys yet), no API credentials, or a fresh check already done.
       try {
         const [isScreenshot, isWizard] = await Promise.all([
           screenshotModePromise.catch(() => false),
           wizardScreenshotModePromise.catch(() => false),
         ]);
         if (isScreenshot || isWizard) return;
-      } catch {
-        // ignore; fall through to the config-based guards
-      }
+      } catch {}
       try {
         const config = await getConfig();
         if (!config.setup_wizard_complete && !config.game_path) return;
@@ -847,15 +842,13 @@
           Boolean(config.nexus_api_key?.trim());
         if (!hasAnyKey) return;
       } catch {
-        return; // config unreadable: backend check would fail too
+        return;
       }
       const shared = get(modUpdatesStore);
       if (
         shared.lastCheckedAt &&
         Date.now() - shared.lastCheckedAt < MOD_UPDATES_AUTO_CHECK_INTERVAL_MS
       ) {
-        // Fresh result already cached: surface it briefly instead of leaving
-        // the footer on Idle.
         const cached = describeModUpdatesStatus(shared.updates);
         if (cached) operationStatusStore.setTemporaryMessage(cached, 4000);
         return;
@@ -868,8 +861,6 @@
           Object.fromEntries(available.map((u) => [u.archiveName, u])),
         );
         window.dispatchEvent(new CustomEvent("ron:mod-updates-checked"));
-        // A real operation (install/download) may have started mid-check and
-        // already claimed the footer — don't overwrite it with our result.
         const statusNow = get(operationStatusStore);
         const claimedByOperation =
           statusNow.visible &&

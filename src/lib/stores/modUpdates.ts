@@ -30,9 +30,7 @@ function readCachedUpdates(): Record<string, ModUpdateInfo> {
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed as Record<string, ModUpdateInfo>;
     }
-  } catch {
-    // Corrupt cache: treat as empty; next check repopulates.
-  }
+  } catch {}
   return {};
 }
 
@@ -40,9 +38,7 @@ function persistUpdates(updates: Record<string, ModUpdateInfo>): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(UPDATES_KEY, JSON.stringify(updates));
-  } catch {
-    // Storage full or unavailable: throttle timestamp still persists.
-  }
+  } catch {}
 }
 
 function clearCachedUpdates(): void {
@@ -56,9 +52,7 @@ export interface ModUpdatesState {
 }
 
 /**
- * One-line footer text for the cached result, shown when a launch skips the
- * check because a fresh result already exists. Null when there is no cached
- * check at all (leave the footer alone).
+ * Footer text for the cached result. Null when nothing cached yet.
  */
 export function describeModUpdatesStatus(
   updates: Record<string, ModUpdateInfo> | null,
@@ -66,7 +60,7 @@ export function describeModUpdatesStatus(
   if (!updates) return null;
   const count = Object.keys(updates).length;
   if (count === 0) return "Mods up to date";
-  return `${count} mod update${count === 1 ? "" : "s"} available — see Mods page`;
+  return `${count} mod update${count === 1 ? "" : "s"} available - see Mods page`;
 }
 
 function createModUpdatesStore() {
