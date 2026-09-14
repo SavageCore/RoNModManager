@@ -5,6 +5,7 @@
     applyProfile,
     cancelNexusDownload,
     checkForUpdate,
+    checkModUpdates,
     detectGamePath,
     fetchModpackJson,
     getConfig,
@@ -38,6 +39,10 @@
   import { toastStore } from "$lib/stores/toast";
   import { tokenStore } from "$lib/stores/token";
   import { updateCheckStore } from "$lib/stores/updateCheck";
+  import {
+    MOD_UPDATES_AUTO_CHECK_INTERVAL_MS,
+    modUpdatesStore,
+  } from "$lib/stores/modUpdates";
   import { initTheme } from "$lib/theme";
   import { parseNexusDeepLink } from "$lib/utils/parseNexusDeepLink";
   import type {
@@ -62,6 +67,7 @@
   import { Layers, Package, RefreshCw, Settings, User } from "lucide-svelte";
   import semver from "semver";
   import { onMount } from "svelte";
+  import { get } from "svelte/store";
   // Self-hosted Adwaita fonts (OFL-1.1, via Fontsource) - must load before app.css.
   // Sans covers body + semibold headings; Mono covers log/code views.
   import "@fontsource/adwaita-sans/400.css";
@@ -815,6 +821,61 @@
         }
       } catch {
         // Non-fatal: silently skip if update check fails on startup
+      }
+    })();
+
+    void (async () => {
+      // Background mod-update check: fire-and-forget, never blocks startup.
+      // Skip noise / doomed checks: screenshot fixtures, first-run wizard
+      // (no keys yet), no API credentials, or a fresh check already done.
+      try {
+        const [isScreenshot, isWizard] = await Promise.all([
+          screenshotModePromise.catch(() => false),
+          wizardScreenshotModePromise.catch(() => false),
+        ]);
+        if (isScreenshot || isWizard) return;
+      } catch {
+        // ignore; fall through to the config-based guards
+      }
+      try {
+        const config = await getConfig();
+        if (!config.setup_wizard_complete && !config.game_path) return;
+        const hasAnyKey =
+          Boolean(config.modio_api_key?.trim()) ||
+          Boolean(config.oauth_token?.trim()) ||
+          Boolean(config.nexus_api_key?.trim());
+        if (!hasAnyKey) return;
+      } catch {
+        return; // config unreadable: backend check would fail too
+      }
+      const shared = get(modUpdatesStore);
+      if (
+        shared.lastCheckedAt &&
+        Date.now() - shared.lastCheckedAt < MOD_UPDATES_AUTO_CHECK_INTERVAL_MS
+      )
+        return;
+      operationStatusStore.setTemporaryMessage(
+        "Checking for mod updates...",
+        8000,
+      );
+      try {
+        const updates = await checkModUpdates();
+        const available = updates.filter((u) => u.updateAvailable);
+        modUpdatesStore.setUpdates(
+          Object.fromEntries(available.map((u) => [u.archiveName, u])),
+        );
+        window.dispatchEvent(new CustomEvent("ron:mod-updates-checked"));
+        if (available.length > 0) {
+          operationStatusStore.setTemporaryMessage(
+            `${available.length} mod update${available.length === 1 ? "" : "s"} available — see Mods page`,
+            8000,
+          );
+        } else {
+          operationStatusStore.setTemporaryMessage("Mods up to date", 4000);
+        }
+      } catch {
+        // Non-fatal: clear so the "Checking..." text never sticks.
+        operationStatusStore.clear();
       }
     })();
 
