@@ -36,6 +36,7 @@ import {
 import { phaseLabel } from "../../src/lib/stores/importLogStore";
 import {
   MOD_UPDATES_AUTO_CHECK_INTERVAL_MS,
+  describeModUpdatesStatus,
   modUpdatesStore,
 } from "../../src/lib/stores/modUpdates";
 
@@ -485,6 +486,59 @@ describe("modUpdatesStore", () => {
     modUpdatesStore.setLastCheckedAt(Date.now() - 2 * 60 * 60 * 1000);
     expect(modUpdatesStore.isStale()).toBe(true);
     modUpdatesStore.clear();
+  });
+
+  it("describes the cached status for throttle-skipped launches", () => {
+    expect(describeModUpdatesStatus(null)).toBeNull();
+    expect(describeModUpdatesStatus({})).toBe("Mods up to date");
+    expect(
+      describeModUpdatesStatus({
+        "a.zip": {
+          archiveName: "a.zip",
+          source: "nexus",
+          currentVersion: "1.0",
+          latestVersion: "1.1",
+          updateAvailable: true,
+        },
+      }),
+    ).toBe("1 mod update available — see Mods page");
+    expect(
+      describeModUpdatesStatus({
+        "a.zip": {
+          archiveName: "a.zip",
+          source: "nexus",
+          currentVersion: "1.0",
+          latestVersion: "1.1",
+          updateAvailable: true,
+        },
+        "b.zip": {
+          archiveName: "b.zip",
+          source: "modio",
+          currentVersion: "2.0",
+          latestVersion: "2.1",
+          updateAvailable: true,
+        },
+      }),
+    ).toBe("2 mod updates available — see Mods page");
+  });
+
+  it("persists the updates map for the next launch", () => {
+    modUpdatesStore.clear();
+    expect(window.localStorage.getItem("ronmodmanager.modUpdates")).toBeNull();
+    modUpdatesStore.setUpdates({
+      "a.zip": {
+        archiveName: "a.zip",
+        source: "nexus",
+        currentVersion: "1.0",
+        latestVersion: "1.1",
+        updateAvailable: true,
+      },
+    });
+    const raw = window.localStorage.getItem("ronmodmanager.modUpdates");
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw ?? "{}")).toHaveProperty("a.zip");
+    modUpdatesStore.clear();
+    expect(window.localStorage.getItem("ronmodmanager.modUpdates")).toBeNull();
   });
 });
 

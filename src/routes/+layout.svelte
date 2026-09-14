@@ -41,6 +41,7 @@
   import { updateCheckStore } from "$lib/stores/updateCheck";
   import {
     MOD_UPDATES_AUTO_CHECK_INTERVAL_MS,
+    describeModUpdatesStatus,
     modUpdatesStore,
   } from "$lib/stores/modUpdates";
   import { initTheme } from "$lib/theme";
@@ -852,8 +853,13 @@
       if (
         shared.lastCheckedAt &&
         Date.now() - shared.lastCheckedAt < MOD_UPDATES_AUTO_CHECK_INTERVAL_MS
-      )
+      ) {
+        // Fresh result already cached: surface it briefly instead of leaving
+        // the footer on Idle.
+        const cached = describeModUpdatesStatus(shared.updates);
+        if (cached) operationStatusStore.setTemporaryMessage(cached, 4000);
         return;
+      }
       operationStatusStore.setStickyMessage("Checking for mod updates...");
       try {
         const updates = await checkModUpdates();
@@ -871,14 +877,10 @@
           !statusNow.sticky &&
           statusNow.operation !== "";
         if (!claimedByOperation) {
-          if (available.length > 0) {
-            operationStatusStore.setTemporaryMessage(
-              `${available.length} mod update${available.length === 1 ? "" : "s"} available — see Mods page`,
-              8000,
-            );
-          } else {
-            operationStatusStore.setTemporaryMessage("Mods up to date", 4000);
-          }
+          const result = describeModUpdatesStatus(
+            Object.fromEntries(available.map((u) => [u.archiveName, u])),
+          );
+          if (result) operationStatusStore.setTemporaryMessage(result, 8000);
         } else {
           operationStatusStore.clear();
         }
