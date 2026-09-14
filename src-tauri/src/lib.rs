@@ -159,7 +159,10 @@ pub fn run() {
         |app: &tauri::AppHandle, argv: Vec<String>, _cwd: String| {
             let req = crate::services::launch_args::parse_args(&argv);
             if req.launch {
-                let _ = app.emit("ronmm://headless-launch", serde_json::to_value(&req).unwrap_or_default());
+                let _ = app.emit(
+                    "ronmm://headless-launch",
+                    serde_json::to_value(&req).unwrap_or_default(),
+                );
             } else if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
                 let _ = w.set_focus();

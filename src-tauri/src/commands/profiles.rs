@@ -120,7 +120,9 @@ pub async fn rename_profile(
     services::profiles::delete_profile(&old_name)?;
     // Best-effort: move one-click shortcuts to the new name.
     {
-        let had_desktop = services::desktop_shortcut::shortcut_status(&old_name).0.is_some();
+        let had_desktop = services::desktop_shortcut::shortcut_status(&old_name)
+            .0
+            .is_some();
         let had_steam = services::steam_shortcuts::steam_status(&old_name).unwrap_or(false);
         let _ = services::desktop_shortcut::remove_desktop_shortcut(&old_name);
         let _ = services::steam_shortcuts::remove_from_steam(&old_name);
