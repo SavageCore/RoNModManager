@@ -2207,6 +2207,11 @@ pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String)
             cleanup_empty_install_dirs(file_path, &staging_root, &mods_path);
         }
     }
+    // Uninstall removes live files directly (not via sync in all paths):
+    // sweep untracked residue and collapse empty ue4ss/ parents now.
+    if !ue4ss::is_installed(&game_path) {
+        ue4ss::sweep_live_residue(&game_path);
+    }
     cleanup_mod_staging_directories(&archive_name, &staging_root);
     manager.delete_manifest(&archive_name)?;
 

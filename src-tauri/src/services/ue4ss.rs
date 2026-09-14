@@ -731,6 +731,111 @@ pub fn remove_stale_shims(game_path: &Path) -> usize {
     removed
 }
 
+/// Stock helper mod names shipped in the official release zip. Shared with
+/// `remove_stable_leftovers` and the live residue sweep below.
+const STOCK_MODS: &[&str] = &[
+    "ActorDumperMod",
+    "BPML_GenericFunctions",
+    "BPModLoaderMod",
+    "CheatManagerEnablerMod",
+    "ConsoleCommandsMod",
+    "ConsoleEnablerMod",
+    "Keybinds",
+    "LineTraceMod",
+    "SplitScreenMod",
+    "jsbLuaProfilerMod",
+];
+
+/// UE4SS runtime byproducts that are safe to delete from the live game
+/// folder on stock cleanup. `UE4SS.log` is deliberately absent - it is the
+/// script-debugging trail and must be kept. `dwmapi.dll` and any still-linked
+/// tracked file are never touched.
+const LIVE_RESIDUE_FILES: &[&str] = &[
+    "ReadyOrNot/Binaries/Win64/imgui.ini",
+    "ReadyOrNot/Binaries/Win64/ue4ss/imgui.ini",
+    "ReadyOrNot/Binaries/Win64/ue4ss/LICENSE",
+    "ReadyOrNot/Binaries/Win64/ue4ss/Mods/mods.txt",
+    "ReadyOrNot/Binaries/Win64/ue4ss/Mods/mods.json",
+];
+
+/// Sweep live `Win64/ue4ss/` residue after stock restore. Deletes allowlisted
+/// runtime byproducts (imgui.ini, SDK backends dir, stock helpers), prunes
+/// empty parent dirs up to the game root, and removes `ue4ss/` itself when
+/// nothing worth keeping (i.e. no `UE4SS.log`) remains. Best-effort: never
+/// fails the caller. Returns the number of entries removed.
+pub fn sweep_live_residue(game_path: &Path) -> usize {
+    let mut removed = 0;
+    let win64 = game_path.join("ReadyOrNot/Binaries/Win64");
+    let ue4ss_dir = win64.join("ue4ss");
+    for rel in LIVE_RESIDUE_FILES {
+        let candidate = game_path.join(rel);
+        if (candidate.is_symlink() || candidate.exists())
+            && std::fs::remove_file(&candidate).is_ok()
+        {
+            log::warn!("ue4ss: removed live residue {}", candidate.display());
+            removed += 1;
+        }
+    }
+    for name in STOCK_MODS {
+        let dir = ue4ss_dir.join("Mods").join(name);
+        if dir.is_dir() && !dir.is_symlink() && std::fs::remove_dir_all(&dir).is_ok() {
+            log::warn!("ue4ss: removed live stock helper {}", dir.display());
+            removed += 1;
+        }
+    }
+    let sdk = ue4ss_dir.join("UE4SS_SDK_Backends");
+    if sdk.is_dir() && !sdk.is_symlink() && std::fs::remove_dir_all(&sdk).is_ok() {
+        log::warn!("ue4ss: removed live SDK backends {}", sdk.display());
+        removed += 1;
+    }
+    // Prune empty parents up to (not including) the Win64 root.
+    let mut pruned = prune_empty_up(ue4ss_dir.join("Mods"), &win64);
+    pruned += prune_empty_up(ue4ss_dir.clone(), &win64);
+    removed += pruned;
+    // Drop ue4ss/ itself when nothing worth keeping remains. UE4SS.log
+    // keeps the folder alive for script debugging.
+    if !ue4ss_dir.join("UE4SS.log").exists()
+        && ue4ss_dir.is_dir()
+        && std::fs::remove_dir(&ue4ss_dir).is_ok()
+    {
+        log::warn!(
+            "ue4ss: removed empty live ue4ss dir {}",
+            ue4ss_dir.display()
+        );
+        removed += 1;
+    }
+    removed
+}
+
+/// Remove `start` and its empty parents up to (not including) `stop`.
+/// `remove_dir` only succeeds when empty, so populated dirs stop the walk.
+fn prune_empty_up(mut current: std::path::PathBuf, stop: &Path) -> usize {
+    let mut removed = 0;
+    // Also walk the subtree below start first: empty leaf dirs (e.g.
+    // Mods/<mod>/Scripts) must go before their parents read as empty.
+    if let Ok(entries) = std::fs::read_dir(&current) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() && !path.is_symlink() {
+                removed += prune_empty_up(path, stop);
+            }
+        }
+    }
+    while current.starts_with(stop) && current != *stop {
+        match std::fs::remove_dir(&current) {
+            Ok(()) => {
+                removed += 1;
+                match current.parent() {
+                    Some(p) => current = p.to_path_buf(),
+                    None => break,
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    removed
+}
+
 /// Resolve the current experimental runtime asset via the GitHub releases
 /// API. Returns `(archive_name, download_url)`; the name embeds the upstream
 /// commit hash and is kept verbatim so the staged copy identifies its build.
@@ -1043,5 +1148,37 @@ mod tests {
         assert_eq!(remove_stale_shims(dir.path()), 1);
         assert!(!live.exists());
         assert_eq!(remove_stale_shims(dir.path()), 0);
+    }
+
+    #[test]
+    fn sweep_live_residue_keeps_log_clears_rest() {
+        let dir = TempDir::new().unwrap();
+        let win64 = dir.path().join("ReadyOrNot/Binaries/Win64");
+        let ue4ss = win64.join("ue4ss");
+        fs::create_dir_all(ue4ss.join("Mods/SomeMod/Scripts")).unwrap();
+        fs::create_dir_all(ue4ss.join("Mods/BPModLoaderMod/Scripts")).unwrap();
+        fs::create_dir_all(ue4ss.join("UE4SS_SDK_Backends")).unwrap();
+        fs::write(ue4ss.join("UE4SS.log"), b"log").unwrap();
+        fs::write(ue4ss.join("imgui.ini"), b"x").unwrap();
+        fs::write(win64.join("imgui.ini"), b"x").unwrap();
+        fs::write(ue4ss.join("Mods/mods.txt"), b"x").unwrap();
+        assert!(sweep_live_residue(dir.path()) > 0);
+        assert!(ue4ss.join("UE4SS.log").exists());
+        assert!(!ue4ss.join("imgui.ini").exists());
+        assert!(!win64.join("imgui.ini").exists());
+        assert!(!ue4ss.join("UE4SS_SDK_Backends").exists());
+        assert!(!ue4ss.join("Mods/BPModLoaderMod").exists());
+        assert!(!ue4ss.join("Mods/SomeMod").exists());
+        assert!(ue4ss.is_dir());
+    }
+
+    #[test]
+    fn sweep_live_residue_removes_empty_ue4ss_dir_without_log() {
+        let dir = TempDir::new().unwrap();
+        let ue4ss = dir.path().join("ReadyOrNot/Binaries/Win64/ue4ss");
+        fs::create_dir_all(ue4ss.join("Mods/SomeMod/Scripts")).unwrap();
+        fs::write(ue4ss.join("imgui.ini"), b"x").unwrap();
+        sweep_live_residue(dir.path());
+        assert!(!ue4ss.exists());
     }
 }

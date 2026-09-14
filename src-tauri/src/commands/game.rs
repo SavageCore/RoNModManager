@@ -427,6 +427,14 @@ pub(crate) fn sync_mod_links_for_game_path(
     // Clean up any orphaned symlinks (pointing to non-existent files)
     remove_orphan_symlinks(&live_mods_path, &live_savegames_path)?;
 
+    // When the runtime is not live after this sync (stock restore, vanilla
+    // launch, exit cleanup), sweep untracked UE4SS byproducts from
+    // Win64/ue4ss/ (imgui.ini, SDK backends, stock helpers, empty mod
+    // chains). UE4SS.log is kept for script debugging.
+    if !crate::services::ue4ss::is_installed(game_path) {
+        crate::services::ue4ss::sweep_live_residue(game_path);
+    }
+
     Ok(())
 }
 
