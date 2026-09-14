@@ -77,8 +77,8 @@
     openMenu = null;
   }
 
-  onMount(async () => {
-    await loadProfiles();
+  onMount(() => {
+    void loadProfiles();
     const dismiss = (event: Event) => {
       if (!openMenu) return;
       const t = event.target as HTMLElement;
