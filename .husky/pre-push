@@ -18,7 +18,9 @@ npm run check || {
 }
 
 echo "🧪 Running unit tests..."
-npm run test:unit || {
-  echo "❌ unit tests failed. Fix failing tests above."
+
+# Coverage must pass before push: CI enforces the same thresholds.
+npm run test:unit:coverage || {
+  echo "❌ unit tests or coverage failed. Fix failing tests above."
   exit 1
 }

@@ -540,6 +540,31 @@ describe("modUpdatesStore", () => {
     modUpdatesStore.clear();
     expect(window.localStorage.getItem("ronmodmanager.modUpdates")).toBeNull();
   });
+
+  it("tolerates corrupt or invalid cache entries", async () => {
+    vi.resetModules();
+    window.localStorage.setItem("ronmodmanager.modUpdates", "{not json");
+    window.localStorage.setItem(
+      "ronmodmanager.modUpdatesLastCheckedAt",
+      "garbage",
+    );
+    const corrupt = await import("../../src/lib/stores/modUpdates");
+    expect(get(corrupt.modUpdatesStore)).toEqual({
+      updates: {},
+      lastCheckedAt: null,
+    });
+    vi.resetModules();
+    window.localStorage.setItem("ronmodmanager.modUpdates", "[1,2]");
+    window.localStorage.setItem("ronmodmanager.modUpdatesLastCheckedAt", "-5");
+    const invalid = await import("../../src/lib/stores/modUpdates");
+    expect(get(invalid.modUpdatesStore)).toEqual({
+      updates: {},
+      lastCheckedAt: null,
+    });
+    window.localStorage.removeItem("ronmodmanager.modUpdates");
+    window.localStorage.removeItem("ronmodmanager.modUpdatesLastCheckedAt");
+    modUpdatesStore.clear();
+  });
 });
 
 describe("incognito dummy fixtures", () => {
