@@ -30,6 +30,12 @@ describe("updateCheckStore persistence", () => {
       "invalid",
     );
     expect(get(invalid.updateCheckStore as never)).toBeNull();
+
+    localStorage.setItem("ronmodmanager.updateLastCheckedAt", "0");
+    const nonPositive = await fresh<{
+      updateCheckStore: { subscribe: unknown };
+    }>("../../src/lib/stores/updateCheck", "non-positive");
+    expect(get(nonPositive.updateCheckStore as never)).toBeNull();
   });
 
   it("marks, sets and clears the timestamp", async () => {

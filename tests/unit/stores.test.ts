@@ -76,20 +76,36 @@ describe("toastStore", () => {
     const a = toastStore.success("ok");
     const b = toastStore.error("bad");
     const c = toastStore.info("note");
+    const d = toastStore.warning("careful");
     const state = get(toastStore);
     expect(state.toasts.find((t) => t.id === a)?.type).toBe("success");
     expect(state.toasts.find((t) => t.id === b)?.type).toBe("error");
     expect(state.toasts.find((t) => t.id === c)?.type).toBe("info");
+    expect(state.toasts.find((t) => t.id === d)?.type).toBe("warning");
+    expect(state.toasts.find((t) => t.id === d)?.duration).toBe(8000);
     toastStore.remove(a);
     toastStore.remove(b);
     toastStore.remove(c);
+    toastStore.remove(d);
     expect(get(toastStore).toasts.some((t) => t.id === a)).toBe(false);
+  });
+
+  it("converts errors and plain values via fromError", () => {
+    const a = toastStore.fromError(new Error("boom"), 0);
+    const b = toastStore.fromError("plain failure", 0);
+    const state = get(toastStore);
+    expect(state.toasts.find((t) => t.id === a)?.message).toBe("boom");
+    expect(state.toasts.find((t) => t.id === b)?.message).toBe("plain failure");
+    toastStore.remove(a);
+    toastStore.remove(b);
   });
 });
 
 describe("modAddQueueStore", () => {
   it("enqueues, names, runs and completes items", () => {
     const id = modAddQueueStore.enqueue("https://example.com/mod.zip");
+    modAddQueueStore.setName(id, "Example");
+    // Setting the same name again leaves the item untouched.
     modAddQueueStore.setName(id, "Example");
     modAddQueueStore.markRunning(id, "Downloading");
     let item = get(modAddQueueStore).items.find((i) => i.id === id);
@@ -317,6 +333,9 @@ describe("infoLogStore and syncLogStore", () => {
     expect(get(syncLogStore).isOpen).toBe(false);
     syncLogStore.clear();
     expect(get(syncLogStore).log).toEqual([]);
+    syncLogStore.start();
+    syncLogStore.close();
+    expect(get(syncLogStore).isOpen).toBe(false);
   });
 });
 

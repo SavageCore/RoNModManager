@@ -42,4 +42,26 @@ describe("Toast", () => {
     );
     expect(screen.queryByText("Dismiss me")).toBeNull();
   });
+
+  it("renders warning toasts with the warning style", () => {
+    toastStore.warning("Careful", 0);
+    render(Toast);
+
+    expect(toastClass("Careful")?.contains("warning")).toBe(true);
+  });
+
+  it("runs the action handler and dismisses on action click", async () => {
+    let handled = 0;
+    toastStore.add("With action", "warning", 0, {
+      label: "Retry",
+      handler: () => {
+        handled += 1;
+      },
+    });
+    render(Toast);
+
+    await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(handled).toBe(1);
+    expect(screen.queryByText("With action")).toBeNull();
+  });
 });
