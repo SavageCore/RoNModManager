@@ -8,6 +8,13 @@ updates:
       npm-dependencies:
         patterns:
           - "*"
+        exclude-patterns:
+          - "typescript"
+    ignore:
+      - dependency-name: "typescript"
+        # svelte-check 4.x peers require typescript ^5 || ^6; TS 7 has no
+        # stable programmatic API for svelte-check yet.
+        versions: [">= 7"]
   - package-ecosystem: "cargo"
     directory: "/src-tauri"
     schedule:
