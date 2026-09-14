@@ -244,7 +244,8 @@
   // During the download-to-processing handoff, clear the determinate fill and
   // show only an indeterminate animation. When real progress resumes, the
   // monotonic batch state restores the bar position.
-  $: showIndeterminateBar = isDownloadComplete;
+  $: showIndeterminateBar =
+    isDownloadComplete || ($operationStatusStore.sticky ?? false);
 
   // Auto-reset batch counter when all items complete
   let resetTimeout: ReturnType<typeof setTimeout>;
@@ -342,6 +343,13 @@
 
   {#if showOperationStatus}
     <div class="flex-1 flex items-center gap-3 min-w-0">
+      {#if $operationStatusStore.sticky}
+        <span
+          class="shrink-0 spinner"
+          style="color: var(--clr-primary-300);"
+          aria-hidden="true"
+        ></span>
+      {/if}
       <span
         style={$operationStatusStore.isError
           ? "color: var(--clr-danger-300);"
@@ -350,7 +358,19 @@
       >
         {displayMessage}
       </span>
-      {#if !$operationStatusStore.temporary}
+      {#if $operationStatusStore.sticky}
+        <div
+          class="progress-track ml-auto h-1.5 w-28 rounded-full overflow-hidden"
+          style="background: var(--clr-surface-variant);"
+        >
+          <div class="progress-overlay">
+            <div
+              class="h-full indeterminate-bar"
+              style="background: var(--clr-primary-300);"
+            ></div>
+          </div>
+        </div>
+      {:else if !$operationStatusStore.temporary}
         {#if !isDownloadComplete && !suppressComplete}
           <span style="color: var(--clr-text-secondary);" class="shrink-0">
             {taskPercent.toFixed(0)}%
@@ -411,6 +431,22 @@
       transform: translateX(250%);
       width: 50%;
     }
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .spinner {
+    width: 12px;
+    height: 12px;
+    border-radius: 9999px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    opacity: 0.8;
+    animation: spin 0.9s linear infinite;
   }
 
   .indeterminate-bar {

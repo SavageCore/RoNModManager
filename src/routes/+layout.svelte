@@ -854,10 +854,7 @@
         Date.now() - shared.lastCheckedAt < MOD_UPDATES_AUTO_CHECK_INTERVAL_MS
       )
         return;
-      operationStatusStore.setTemporaryMessage(
-        "Checking for mod updates...",
-        8000,
-      );
+      operationStatusStore.setStickyMessage("Checking for mod updates...");
       try {
         const updates = await checkModUpdates();
         const available = updates.filter((u) => u.updateAvailable);
@@ -865,16 +862,28 @@
           Object.fromEntries(available.map((u) => [u.archiveName, u])),
         );
         window.dispatchEvent(new CustomEvent("ron:mod-updates-checked"));
-        if (available.length > 0) {
-          operationStatusStore.setTemporaryMessage(
-            `${available.length} mod update${available.length === 1 ? "" : "s"} available — see Mods page`,
-            8000,
-          );
+        // A real operation (install/download) may have started mid-check and
+        // already claimed the footer — don't overwrite it with our result.
+        const statusNow = get(operationStatusStore);
+        const claimedByOperation =
+          statusNow.visible &&
+          !statusNow.temporary &&
+          !statusNow.sticky &&
+          statusNow.operation !== "";
+        if (!claimedByOperation) {
+          if (available.length > 0) {
+            operationStatusStore.setTemporaryMessage(
+              `${available.length} mod update${available.length === 1 ? "" : "s"} available — see Mods page`,
+              8000,
+            );
+          } else {
+            operationStatusStore.setTemporaryMessage("Mods up to date", 4000);
+          }
         } else {
-          operationStatusStore.setTemporaryMessage("Mods up to date", 4000);
+          operationStatusStore.clear();
         }
       } catch {
-        // Non-fatal: clear so the "Checking..." text never sticks.
+        // Non-fatal: clear so the "Checking..." state never sticks.
         operationStatusStore.clear();
       }
     })();

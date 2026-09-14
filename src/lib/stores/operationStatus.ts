@@ -15,6 +15,8 @@ export interface OperationStatusState {
 export interface OperationStatusStateWithTemp extends OperationStatusState {
   /** True if this is a temporary message (e.g. update cooldown), not a real operation. */
   temporary?: boolean;
+  /** True if the message stays visible until replaced or cleared (no auto-hide timer). */
+  sticky?: boolean;
 }
 
 const INITIAL_STATE: OperationStatusStateWithTemp = {
@@ -27,6 +29,7 @@ const INITIAL_STATE: OperationStatusStateWithTemp = {
   processedBytes: null,
   isError: false,
   temporary: false,
+  sticky: false,
 };
 
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -60,6 +63,7 @@ function createOperationStatusStore() {
         processedBytes: progress.processed_bytes,
         isError,
         temporary: false,
+        sticky: false,
       });
 
       if (isComplete || isError) {
@@ -83,6 +87,21 @@ function createOperationStatusStore() {
         set(INITIAL_STATE);
         hideTimer = null;
       }, duration);
+    },
+    /**
+     * Show a status message that stays until replaced or cleared (no timer).
+     * Real progress via updateFromProgress always wins over it.
+     */
+    setStickyMessage: (message: string) => {
+      clearHideTimer();
+      set({
+        ...INITIAL_STATE,
+        visible: true,
+        message,
+        isError: false,
+        temporary: true,
+        sticky: true,
+      });
     },
     clear: () => {
       clearHideTimer();

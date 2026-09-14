@@ -52,6 +52,7 @@
   import { nexusFileSelectionStore } from "$lib/stores/nexusFileSelection";
   import NexusFreeDownloadModal from "$lib/components/NexusFreeDownloadModal.svelte";
   import { listen } from "@tauri-apps/api/event";
+  import { modUpdatesStore } from "$lib/stores/modUpdates";
   import ManageAddOnsModal from "$lib/components/ManageAddOnsModal.svelte";
   let showAddOnsModal = false;
   let selectedModName = "";
@@ -273,12 +274,21 @@
     return version.replace(/^v/i, "");
   }
 
-  async function loadModUpdates() {
+  async function loadModUpdates(force = false) {
+    if (!force) {
+      const shared = get(modUpdatesStore);
+      if (shared.lastCheckedAt) {
+        // Startup (or a recent pass) already checked: reuse it.
+        modUpdates = { ...shared.updates };
+        return;
+      }
+    }
     try {
       const updates = await checkModUpdates();
       modUpdates = Object.fromEntries(
         updates.filter((u) => u.updateAvailable).map((u) => [u.archiveName, u]),
       );
+      modUpdatesStore.setUpdates(modUpdates);
     } catch {
       // non-fatal - badges just won't show this pass
     }
@@ -1507,7 +1517,7 @@
     };
     const handleMetadataRefreshed = () => {
       void refresh();
-      void loadModUpdates();
+      void loadModUpdates(true);
     };
     const handleTagsChanged = async () => {
       if (!activeProfileName) return;
@@ -1519,11 +1529,17 @@
         // non-fatal
       }
     };
+    // Startup background check may land after this page mounted: pick up
+    // the shared result so badges appear without a second backend call.
+    const handleModUpdatesChecked = () => {
+      modUpdates = { ...get(modUpdatesStore).updates };
+    };
 
     window.addEventListener("focus", handleAppFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("ron:metadata-refreshed", handleMetadataRefreshed);
     window.addEventListener("ron:tags-changed", handleTagsChanged);
+    window.addEventListener("ron:mod-updates-checked", handleModUpdatesChecked);
 
     let unlistenFreeDownload: (() => void) | null = null;
     void listen<{
@@ -1590,6 +1606,10 @@
         handleMetadataRefreshed,
       );
       window.removeEventListener("ron:tags-changed", handleTagsChanged);
+      window.removeEventListener(
+        "ron:mod-updates-checked",
+        handleModUpdatesChecked,
+      );
       if (unlistenDragDrop) {
         unlistenDragDrop();
       }

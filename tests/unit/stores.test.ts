@@ -204,6 +204,35 @@ describe("operationStatusStore", () => {
     expect(get(operationStatusStore).visible).toBe(false);
     operationStatusStore.clear();
   });
+
+  it("keeps sticky messages visible until replaced or cleared", () => {
+    vi.useFakeTimers();
+    operationStatusStore.setStickyMessage("checking...");
+    const state = get(operationStatusStore);
+    expect(state.visible).toBe(true);
+    expect(state.sticky).toBe(true);
+    vi.advanceTimersByTime(30_000);
+    expect(get(operationStatusStore).visible).toBe(true);
+    expect(get(operationStatusStore).message).toBe("checking...");
+    operationStatusStore.clear();
+    expect(get(operationStatusStore).visible).toBe(false);
+  });
+
+  it("clears sticky state when real progress arrives", () => {
+    operationStatusStore.setStickyMessage("checking...");
+    operationStatusStore.updateFromProgress({
+      operation: "extract",
+      file: "a.pak",
+      percent: 10,
+      message: "Extracting...",
+      total_bytes: null,
+      processed_bytes: null,
+    });
+    const state = get(operationStatusStore);
+    expect(state.sticky).toBe(false);
+    expect(state.temporary).toBe(false);
+    operationStatusStore.clear();
+  });
 });
 
 describe("metadataRefreshDetailsStore", () => {
