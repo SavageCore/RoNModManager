@@ -34,6 +34,10 @@ import {
   DUMMY_TAGS,
 } from "../../src/lib/stores/incognitoMode";
 import { phaseLabel } from "../../src/lib/stores/importLogStore";
+import {
+  MOD_UPDATES_AUTO_CHECK_INTERVAL_MS,
+  modUpdatesStore,
+} from "../../src/lib/stores/modUpdates";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -421,6 +425,37 @@ describe("phaseLabel", () => {
     expect(phaseLabel("dedupe", "")).toBe("Checking for duplicates...");
     expect(phaseLabel("extract", "")).toBe("Extracting files...");
     expect(phaseLabel("weird-op", "")).toBe("weird-op");
+  });
+});
+
+describe("modUpdatesStore", () => {
+  it("stores updates and last-checked timestamp", () => {
+    modUpdatesStore.clear();
+    expect(MOD_UPDATES_AUTO_CHECK_INTERVAL_MS).toBe(60 * 60 * 1000);
+    modUpdatesStore.setUpdates({
+      "some-mod.zip": {
+        archiveName: "some-mod.zip",
+        source: "nexus",
+        currentVersion: "1.0",
+        latestVersion: "1.1",
+        updateAvailable: true,
+      },
+    });
+    const state = get(modUpdatesStore);
+    expect(state.updates["some-mod.zip"]?.updateAvailable).toBe(true);
+    expect(state.lastCheckedAt).toBeGreaterThan(0);
+    modUpdatesStore.clear();
+    expect(get(modUpdatesStore).lastCheckedAt).toBeNull();
+  });
+
+  it("reports staleness against the throttle interval", () => {
+    modUpdatesStore.clear();
+    expect(modUpdatesStore.isStale()).toBe(true);
+    modUpdatesStore.setUpdates({});
+    expect(modUpdatesStore.isStale()).toBe(false);
+    modUpdatesStore.setLastCheckedAt(Date.now() - 2 * 60 * 60 * 1000);
+    expect(modUpdatesStore.isStale()).toBe(true);
+    modUpdatesStore.clear();
   });
 });
 
