@@ -2,13 +2,14 @@
   "name": "ron-mod-manager-userscript",
   "private": true,
   "version": "0.3.0",
+  "description": "Companion userscript for Ready or Not Mod Manager (Nexus Mods and mod.io integration)",
   "type": "module",
   "scripts": {
-    "watch": "nodemon",
-    "dev": "vite",
     "build": "tsc && vite build",
     "build-dev": "tsc && vite build --mode development",
-    "preview": "vite preview"
+    "dev": "vite",
+    "preview": "vite preview",
+    "watch": "nodemon"
   },
   "devDependencies": {
     "@types/greasemonkey": "^4.0.7",

@@ -11,6 +11,12 @@ pre-commit:
         - "*.{css,json,md,yml,yaml}"
       stage_fixed: true
 
+    - name: eslint package.json
+      run: npx eslint {staged_files}
+      glob:
+        - "**/package.json"
+      stage_fixed: true
+
     - name: cargo fmt
       run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       glob:
