@@ -1,0 +1,25 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["every weekend"],
+  "packageRules": [
+    {
+      "matchManagers": ["npm"],
+      "groupName": "npm-dependencies"
+    },
+    {
+      "matchManagers": ["cargo"],
+      "groupName": "cargo-dependencies"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "actions-dependencies"
+    },
+    {
+      "description": "svelte-check 4.x peers require typescript ^5 || ^6; TS 7 has no stable programmatic API for svelte-check yet",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7",
+      "groupName": "typescript"
+    }
+  ]
+}
