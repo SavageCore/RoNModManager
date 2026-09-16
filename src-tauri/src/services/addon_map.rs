@@ -56,6 +56,8 @@ mod tests {
 
     #[test]
     fn write_then_read_round_trips_and_reports_malformed_json() {
+        // The addon map file is shared with the command-level tests.
+        let _tree = crate::test_support::shared_tree_guard();
         isolated_root();
         let path = get_addon_map_path().unwrap();
         // write_addon_map does not create the staging root; callers stage first.

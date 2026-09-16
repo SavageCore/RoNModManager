@@ -556,6 +556,9 @@ mod tests {
 
         /// Writes a manifest for a staged archive, as the installer would.
         fn save_manifest(manifest: InstallManifest) {
+            // Redirect before any path resolution, or this writes to the real
+            // user data dir.
+            isolated_root();
             ManifestManager::new(&staging_root())
                 .save_manifest(&manifest)
                 .unwrap();
@@ -575,6 +578,9 @@ mod tests {
         }
 
         fn app_with_profile(profile: Profile) -> TestApp {
+            // Redirect before any path resolution, or the profile lands in the
+            // real user data dir.
+            isolated_root();
             profiles::save_profile(&profile).unwrap();
             mock_app_with(AppConfig {
                 active_profile: Some(profile.name.clone()),
@@ -651,7 +657,10 @@ mod tests {
         }
 
         #[tokio::test]
+        #[allow(clippy::await_holding_lock)]
         async fn building_a_modpack_uses_the_installed_manifests() {
+            // Reads the shared addon map while the other addon-map tests write it.
+            let _tree = crate::test_support::shared_tree_guard();
             let mut profile = Profile::new(
                 "modpack-build".to_string(),
                 vec!["a.zip".to_string(), "b.zip".to_string()],
@@ -755,6 +764,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[allow(clippy::await_holding_lock)]
         async fn applying_modpack_metadata_merges_into_the_active_profile() {
             let mut profile = Profile::new(
                 "modpack-apply".to_string(),
@@ -772,7 +782,9 @@ mod tests {
             let app = app_with_profile(profile);
             let state = app.state::<AppState>();
             // The app creates the staging tree on first install; the addon map
-            // write below needs it to exist.
+            // write below needs it to exist, and the file is shared with the
+            // other addon-map tests.
+            let _tree = crate::test_support::shared_tree_guard();
             fs::create_dir_all(staging_root()).unwrap();
 
             let pack: ModPack = serde_json::from_str(

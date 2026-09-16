@@ -3889,6 +3889,9 @@ mod command_tests {
 
     /// Staged tree root, created the way `get_staging_root` would.
     fn save_manifest(manifest_data: manifest::InstallManifest) {
+        // Redirect before any path resolution, or this writes to the real user
+        // data dir.
+        isolated_root();
         fs::create_dir_all(staging_root()).unwrap();
         manifest::ManifestManager::new(&staging_root())
             .save_manifest(&manifest_data)
@@ -3933,9 +3936,12 @@ mod command_tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn the_addon_map_round_trips_through_the_staging_tree() {
         let app = app_with_config(AppConfig::default());
         let state = app.state::<AppState>();
+        // The addon map file is shared with the other addon-map tests.
+        let _tree = crate::test_support::shared_tree_guard();
         fs::create_dir_all(staging_root()).unwrap();
         let map = HashMap::from([(
             "parent.zip".to_string(),

@@ -7,7 +7,13 @@
 /// (set by Flatpak when available). Cross-platform: always false on
 /// non-sandboxed hosts, including Windows.
 pub fn is_flatpak_sandbox() -> bool {
-    std::path::Path::new("/.flatpak-info").exists() || std::env::var("FLATPAK_ID").is_ok()
+    sandbox_from(std::env::var("FLATPAK_ID").ok().as_deref())
+}
+
+/// The detection rule itself, split out so it can be tested without mutating
+/// the process-wide `FLATPAK_ID`, which other concurrently running tests read.
+fn sandbox_from(flatpak_id: Option<&str>) -> bool {
+    std::path::Path::new("/.flatpak-info").exists() || flatpak_id.is_some()
 }
 
 #[cfg(test)]
@@ -16,18 +22,15 @@ mod tests {
 
     #[test]
     fn detects_flatpak_id_env() {
-        let key = "FLATPAK_ID";
-        let prior = std::env::var(key).ok();
-        unsafe {
-            std::env::set_var(key, "uk.savagecore.ronmodmanager");
-        }
-        assert!(is_flatpak_sandbox());
-        unsafe {
-            if let Some(v) = prior {
-                std::env::set_var(key, v);
-            } else {
-                std::env::remove_var(key);
-            }
-        }
+        assert!(sandbox_from(Some("uk.savagecore.ronmodmanager")));
+    }
+
+    #[test]
+    fn no_flatpak_id_is_not_a_sandbox() {
+        // Without the marker file this is false; a real sandbox always has it.
+        assert_eq!(
+            sandbox_from(None),
+            std::path::Path::new("/.flatpak-info").exists()
+        );
     }
 }

@@ -750,7 +750,11 @@ mod tests {
         }
 
         #[tokio::test]
+        #[allow(clippy::await_holding_lock)]
         async fn detecting_the_game_path_reports_none_until_one_is_registered() {
+            // The fake Steam tree is shared, so this serialises against the
+            // tests that add an install to it.
+            let _steam = crate::test_support::shared_tree_guard();
             let app = mock_app_with(AppConfig::default());
             let state = app.state::<AppState>();
             unregister_fake_library();

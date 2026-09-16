@@ -334,6 +334,9 @@ mod tests {
 
     #[test]
     fn detect_game_path_requires_both_manifest_and_install() {
+        // Writes into the shared fake Steam tree; other tests assert on what is
+        // (not) installed there.
+        let _steam = crate::test_support::shared_tree_guard();
         let root = crate::test_support::isolated_root();
         let steamapps = root.join(".steam/steam/steamapps");
         let manifest = steamapps.join("appmanifest_1144200.acf");

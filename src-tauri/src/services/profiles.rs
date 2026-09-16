@@ -37,8 +37,14 @@ pub fn list_profiles() -> Result<Vec<Profile>> {
         let path = entry.path();
 
         if path.extension().and_then(|e| e.to_str()) == Some("json") {
-            let content = fs::read_to_string(&path)
-                .map_err(|e| AppError::Validation(format!("failed to read profile: {e}")))?;
+            // A profile can be deleted between the directory scan and the read
+            // (the app deletes from the UI thread), so a vanished file is
+            // skipped rather than failing the whole listing.
+            let content = match fs::read_to_string(&path) {
+                Ok(content) => content,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(AppError::Validation(format!("failed to read profile: {e}"))),
+            };
             match serde_json::from_str::<Profile>(&content) {
                 Ok(profile) => profiles.push(profile),
                 Err(_) => {

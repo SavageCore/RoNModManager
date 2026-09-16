@@ -117,3 +117,22 @@ pub fn mock_app_with_state(state: AppState) -> TestApp {
 
 /// Shorthand for the app type the mock builders hand back.
 pub type TestApp = App<MockRuntime>;
+
+/// Serialises tests that read or write the process-wide isolated tree.
+///
+/// `isolated_root` pins `$HOME`/`$XDG_*` for the whole process, so the app data
+/// dir, the staged tree, `addon_map.json` and the fake Steam tree are shared by
+/// every test in the binary. Tests that mutate them take this guard, and so do
+/// the tests that assert a given file or install is absent, so the two groups
+/// never overlap. Nothing guarded here does network I/O, so serialising costs
+/// little.
+///
+/// Async tests hold the guard across awaits on purpose (that is the point:
+/// the whole test body is the critical section), which trips
+/// `clippy::await_holding_lock`. Each `#[tokio::test]` gets its own
+/// current-thread runtime and no guarded test waits on another, so there is
+/// nothing to deadlock against - those tests carry a local allow.
+pub fn shared_tree_guard() -> std::sync::MutexGuard<'static, ()> {
+    static SHARED_TREE_LOCK: Mutex<()> = Mutex::new(());
+    SHARED_TREE_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}

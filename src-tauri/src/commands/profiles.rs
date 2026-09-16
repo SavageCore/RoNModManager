@@ -358,9 +358,16 @@ mod tests {
         use crate::test_support::{isolated_root, mock_app_with, TestApp};
         use tauri::Manager;
 
+        /// Saves a profile, making sure the path redirect is in place first.
+        fn store(profile: &Profile) {
+            isolated_root();
+            profile_service::save_profile(profile).unwrap();
+        }
+
         /// A profile stored in the isolated app-data dir, plus an app whose
         /// active profile points at it.
         fn app_with_profile(name: &str) -> TestApp {
+            isolated_root();
             profile_service::save_profile(&Profile::new(name.to_string(), Vec::new())).unwrap();
             mock_app_with(AppConfig {
                 active_profile: Some(name.to_string()),
@@ -448,7 +455,7 @@ mod tests {
             existing.no_world_gen = vec!["map.zip".to_string()];
             existing.sync_remote_host = Some("deploy@example.com".to_string());
             let created_at = existing.created_at.clone();
-            profile_service::save_profile(&existing).unwrap();
+            store(&existing);
 
             let saved = save_profile("prof-keep".to_string(), None, vec!["c.zip".to_string()])
                 .await
@@ -502,11 +509,7 @@ mod tests {
         async fn renaming_rejects_bad_input() {
             let app = app_with_profile("prof-rename-guard");
             let state = app.state::<AppState>();
-            profile_service::save_profile(&Profile::new(
-                "prof-rename-taken".to_string(),
-                Vec::new(),
-            ))
-            .unwrap();
+            store(&Profile::new("prof-rename-taken".to_string(), Vec::new()));
 
             let same = rename_profile(
                 "prof-rename-guard".to_string(),
@@ -555,7 +558,7 @@ mod tests {
             source
                 .collections
                 .insert("Favourites".to_string(), vec!["a.zip".to_string()]);
-            profile_service::save_profile(&source).unwrap();
+            store(&source);
 
             let copy = duplicate_profile("prof-dup-src".to_string(), "prof-dup-copy".to_string())
                 .await
@@ -571,10 +574,8 @@ mod tests {
 
         #[tokio::test]
         async fn duplicating_rejects_bad_input() {
-            profile_service::save_profile(&Profile::new("prof-dup-guard".to_string(), Vec::new()))
-                .unwrap();
-            profile_service::save_profile(&Profile::new("prof-dup-taken".to_string(), Vec::new()))
-                .unwrap();
+            store(&Profile::new("prof-dup-guard".to_string(), Vec::new()));
+            store(&Profile::new("prof-dup-taken".to_string(), Vec::new()));
 
             let same = duplicate_profile("a".to_string(), "a".to_string()).await;
             assert!(same.unwrap_err().to_string().contains("must be different"));
@@ -680,11 +681,10 @@ mod tests {
 
         #[tokio::test]
         async fn applying_a_profile_activates_it() {
-            profile_service::save_profile(&Profile::new(
+            store(&Profile::new(
                 "prof-apply".to_string(),
                 vec!["a.zip".to_string()],
-            ))
-            .unwrap();
+            ));
             let app = mock_app_with(AppConfig::default());
             let state = app.state::<AppState>();
 

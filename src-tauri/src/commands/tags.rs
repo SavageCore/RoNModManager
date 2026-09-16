@@ -174,12 +174,15 @@ mod tests {
     use super::*;
     use crate::models::{AppConfig, Profile};
     use crate::services::profiles as profile_service;
-    use crate::test_support::{mock_app_with, TestApp};
+    use crate::test_support::{isolated_root, mock_app_with, TestApp};
     use tauri::Manager;
 
     /// Stores the profile in the isolated app-data dir and returns an app whose
     /// active profile points at it.
     fn app_with_profile(profile: Profile) -> TestApp {
+        // The redirect has to be in place before anything resolves a path, or
+        // the profile lands in the real user data dir.
+        isolated_root();
         profile_service::save_profile(&profile).unwrap();
         mock_app_with(AppConfig {
             active_profile: Some(profile.name.clone()),

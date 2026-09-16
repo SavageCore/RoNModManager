@@ -203,8 +203,11 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn adding_to_steam_fails_without_a_steam_install() {
         isolated_root();
+        // Other tests create a shortcut file in the same fake tree.
+        let _steam = crate::test_support::shared_tree_guard();
 
         // Either Steam is running (rejected up front) or there is no userdata
         // to write to; both are errors as far as the caller is concerned.

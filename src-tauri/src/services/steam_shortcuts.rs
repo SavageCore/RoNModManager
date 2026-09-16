@@ -736,20 +736,20 @@ mod tests {
 
     mod filesystem {
         use super::*;
-        use crate::test_support::isolated_root;
+        use crate::test_support::{isolated_root, shared_tree_guard};
         use std::fs;
-        use std::sync::{Mutex, MutexGuard};
-
-        /// The Steam userdata tree is shared process state, so the file-touching
-        /// tests below serialise on this and start from a clean file.
-        static SHORTCUTS_LOCK: Mutex<()> = Mutex::new(());
+        use std::sync::MutexGuard;
 
         fn shortcuts_path() -> PathBuf {
             isolated_root().join(".steam/steam/userdata/1/config/shortcuts.vdf")
         }
 
+        /// The userdata tree is shared process state, so the file-touching
+        /// tests below serialise on the Steam-tree guard (which the tests that
+        /// assert no Steam install exists also take) and start from a clean
+        /// file.
         fn reset_userdata() -> (MutexGuard<'static, ()>, PathBuf) {
-            let guard = SHORTCUTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let guard = shared_tree_guard();
             let path = shortcuts_path();
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(&path, b"").unwrap();
