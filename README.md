@@ -157,6 +157,8 @@ make screenshots
 
 The script starts the Vite dev server, launches the debug binary (which connects to it), and runs twice - once for light mode and once for dark - saving to `docs/screenshots/light/` and `docs/screenshots/dark/`. The app launches with `SCREENSHOT_MODE=1` (incognito auto-activated, no setup wizard, no geometry restore) and each sidebar page is navigated and captured via xdotool + ImageMagick. A separate `WIZARD_PASS=1` pass forces the setup wizard on (with an empty mods list, not the incognito dummy data) so the welcome screen can be captured.
 
+Before launching anything, `scripts/screenshot-plan.mjs` maps uncommitted source changes to the pages they can affect - page sources, shared chrome, and `DUMMY_*` dummy-data exports with field-level precision (e.g. an `installedAt`-only change retakes mods but skips collections and profiles, since those never render it). Screenshots with no affecting changes are skipped entirely and never taken. `make screenshots-force` retakes everything.
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action                                                                    |

@@ -12,38 +12,41 @@
  *   node scripts/take-screenshots.mjs            # all pages, light + dark
  *   WIZARD_PASS=1 node scripts/take-screenshots.mjs  # just the wizard welcome page
  *
- * Only screenshots whose pixels actually changed are kept: each capture is
- * written to a staging dir and promoted over the previous file only when an
- * ImageMagick RMSE comparison (with a small fuzz for antialiasing noise)
- * reports a difference. Unchanged files are left untouched so `git status`
- * stays clean. Set SCREENSHOT_FORCE=1 to overwrite everything.
+ * Code-based planning only - there is deliberately NO pixel/RMSE image
+ * comparison anywhere. Before anything launches, screenshot-plan.mjs maps
+ * uncommitted source changes to the pages they can affect (page sources,
+ * shared chrome, and DUMMY_* export consumers with field-level precision
+ * for DUMMY_MOD_GROUPS). Skipped screenshots are never taken at all: no
+ * app launch, no window capture. Set SCREENSHOT_FORCE=1 (or run
+ * `make screenshots-force`) to take everything.
  */
 import { spawn, execSync } from "child_process";
 import { fileURLToPath } from "url";
 import path from "path";
 import fs from "fs";
+import {
+  INCOGNITO_DUMMY_FILE,
+  MAIN_PAGES,
+  getChangedFiles,
+  getFileDiff,
+  planScreenshots,
+} from "./screenshot-plan.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
 const OUT = path.join(ROOT, "docs", "screenshots");
 const STAGING = path.join(OUT, ".tmp");
-// Normalized RMSE below this counts as "unchanged". Observed run-to-run
-// noise for identical pages sits around 0.008-0.011, so the default keeps
-// clear of that. Override with SCREENSHOT_FUZZ=0.005 etc. to tune sensitivity.
-const FUZZ_THRESHOLD = parseFloat(process.env.SCREENSHOT_FUZZ ?? "0.02");
 const forceOverwrite = process.env.SCREENSHOT_FORCE === "1";
-if (forceOverwrite) console.log("Force mode: all screenshots will be kept.");
+if (forceOverwrite) console.log("Force mode: all screenshots will be taken.");
 
 // Prefer `magick` subcommands on ImageMagick v7 (the legacy `convert` /
-// `import` / `compare` shims print a deprecation warning on every call).
+// `import` shims print a deprecation warning on every call).
 let importCmd = "import";
 let convertCmd = "convert";
-let compareCmd = "compare";
 try {
   execSync("which magick", { stdio: "ignore" });
   importCmd = "magick import";
   convertCmd = "magick";
-  compareCmd = "magick compare";
 } catch {}
 
 const appBinary = path.join(
@@ -66,7 +69,6 @@ for (const tool of [
   "xdotool",
   useMagick ? "magick" : "convert",
   useMagick ? "magick" : "import",
-  useMagick ? "magick" : "compare",
 ]) {
   try {
     execSync(`which ${tool}`, { stdio: "ignore" });
@@ -100,6 +102,59 @@ const themes = process.env.SCREENSHOT_THEME
   ? [process.env.SCREENSHOT_THEME]
   : ["light", "dark"];
 const wizardOnly = process.env.WIZARD_PASS === "1";
+
+// --- Plan first: decide everything from source changes, before launching ---
+const changedFiles = getChangedFiles(ROOT);
+let dummyContent = "";
+let dummyIsNew = false;
+try {
+  dummyContent = fs.readFileSync(path.join(ROOT, INCOGNITO_DUMMY_FILE), "utf8");
+} catch {}
+try {
+  const st = execSync(`git status --porcelain -- "${INCOGNITO_DUMMY_FILE}"`, {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  dummyIsNew = /^[?A]/.test(st.trim());
+} catch {}
+const plan = planScreenshots({
+  changedFiles,
+  dummy: {
+    diffText:
+      changedFiles?.includes(INCOGNITO_DUMMY_FILE) && !dummyIsNew
+        ? getFileDiff(ROOT, INCOGNITO_DUMMY_FILE)
+        : "",
+    content: dummyContent,
+    isNew: dummyIsNew,
+  },
+  themes,
+  force: forceOverwrite,
+  wizardOnly,
+  exists: (rel) => fs.existsSync(path.join(OUT, rel)),
+});
+
+console.log("\nPlan:");
+let planTotal = 0;
+for (const theme of themes) {
+  const w = plan.wizard[theme];
+  console.log(
+    `  ${theme} wizard: ${w.capture ? "take" : "skip"} (${w.reasons.join("; ")})`,
+  );
+  if (w.capture) planTotal++;
+  if (wizardOnly) continue;
+  for (const page of MAIN_PAGES) {
+    const p = plan.pages[theme]?.[page];
+    if (!p) continue;
+    console.log(
+      `  ${theme} ${page}: ${p.capture ? "take" : "skip"} (${p.reasons.join("; ")})`,
+    );
+    if (p.capture) planTotal++;
+  }
+}
+if (planTotal === 0) {
+  console.log("\nNothing to do - no source changes affect any screenshot.");
+  process.exit(0);
+}
 
 // Config file path
 const configDir = process.env.HOME + "/.config/ronmodmanager-dev";
@@ -271,118 +326,57 @@ async function launchApp(theme, wizardPass) {
   return { app, wid };
 }
 
-let changedCount = 0;
-let totalCount = 0;
+let takenCount = 0;
 
-function imageDiff(oldFile, newFile) {
-  try {
-    // `compare` exits 0 when identical, 1 when different; metric goes to stderr.
-    const out = execSync(
-      `${compareCmd} -metric RMSE -fuzz 1% "${oldFile}" "${newFile}" null: 2>&1`,
-      { encoding: "utf8" },
-    );
-    return { metric: parseMetric(out), raw: out.trim() };
-  } catch (err) {
-    const out = (err.stdout ?? "").toString() + (err.stderr ?? "").toString();
-    if (!out.trim())
-      return { metric: err.status === 0 ? 0 : Number.NaN, raw: "" };
-    return { metric: parseMetric(out), raw: out.trim() };
-  }
-}
-
-function parseMetric(out) {
-  const m = out.match(/\(([0-9.]+)\)/);
-  return m ? parseFloat(m[1]) : Number.NaN;
-}
-
-// One-line human reason when no RMSE metric could be parsed (e.g. the
-// images have different dimensions, so compare errors out).
-function diffDetail(raw) {
-  const first = (raw.split("\n").pop() ?? "").trim();
-  if (/widths? or heights? differ/i.test(first)) return "size differs";
-  if (!first) return "compare failed";
-  return first.length > 120 ? first.slice(0, 117) + "..." : first;
-}
-
-async function capture(wid, name, theme) {
-  totalCount++;
+// Capture direct to the final file - the plan already decided this shot is
+// needed, so there is no staging, no compare, no discard.
+function capture(wid, name, theme) {
   const dir = path.join(OUT, theme);
   fs.mkdirSync(dir, { recursive: true });
-  const stagingDir = path.join(STAGING, theme);
-  fs.mkdirSync(stagingDir, { recursive: true });
   const file = path.join(dir, `${name}.png`);
-  const staged = path.join(stagingDir, `${name}.png`);
-  execSync(`DISPLAY=${display} ${importCmd} -window ${wid} "${staged}"`);
+  execSync(`DISPLAY=${display} ${importCmd} -window ${wid} "${file}"`);
   const borderColor = theme === "dark" ? "#ffffff" : "#333333";
   execSync(
-    `${convertCmd} "${staged}" -bordercolor "${borderColor}" -border 40 "${staged}"`,
+    `${convertCmd} "${file}" -bordercolor "${borderColor}" -border 40 "${file}"`,
   );
-  if (!fs.existsSync(file)) {
-    fs.renameSync(staged, file);
-    changedCount++;
-    console.log(`  ✓  ${name} (new)`);
-    return true;
-  }
-  if (forceOverwrite) {
-    fs.renameSync(staged, file);
-    changedCount++;
-    console.log(`  ✓  ${name} (forced)`);
-    return true;
-  }
-  const { metric, raw } = imageDiff(file, staged);
-  const label = Number.isNaN(metric)
-    ? diffDetail(raw)
-    : `RMSE ${metric.toFixed(4)}`;
-  if (metric < FUZZ_THRESHOLD) {
-    fs.rmSync(staged);
-    console.log(`  =  ${name} (unchanged, ${label})`);
-    return false;
-  } else {
-    fs.renameSync(staged, file);
-    changedCount++;
-    console.log(`  ✓  ${name} (updated, ${label})`);
-    return true;
-  }
+  takenCount++;
+  console.log(`  ✓  ${name}`);
 }
 
-// Capture the wizard page for each theme. When the first theme comes back
-// unchanged, the remaining themes are skipped - theme pairs only ever differ
-// when the first one changed. Force mode still captures everything.
-let wizardChanged = forceOverwrite;
+const PAGE_KEYS = { mods: "1", collections: "2", profiles: "3", settings: "4" };
+
+// Wizard passes: only themes the plan selected are launched at all.
 for (const theme of themes) {
-  if (!wizardChanged && !forceOverwrite && theme !== themes[0]) {
+  const w = plan.wizard[theme];
+  if (!w.capture) {
     console.log(
-      `\n── ${theme.toUpperCase()} WIZARD ──\n  - skipped (${themes[0]} unchanged)`,
+      `\n── ${theme.toUpperCase()} WIZARD ──\n  - skipped (${w.reasons.join("; ")})`,
     );
     continue;
   }
   console.log(`\n── ${theme.toUpperCase()} WIZARD ──`);
   const { app, wid } = await launchApp(theme, true);
-  const changed = await capture(wid, "wizard", theme);
-  wizardChanged = wizardChanged || changed;
+  await capture(wid, "wizard", theme);
   await killApp(app);
 }
 
 if (!wizardOnly) {
-  // Same group-skip for the main pages: if the first theme had zero changes,
-  // the second theme launch is skipped entirely.
-  let groupChanged = forceOverwrite;
+  // One launch per theme, then jump straight to each planned page.
+  // Unplanned pages are never visited - no sequential walk-through.
   for (const theme of themes) {
-    if (!groupChanged && !forceOverwrite && theme !== themes[0]) {
-      console.log(
-        `\n── ${theme.toUpperCase()} ──\n  - skipped (${themes[0]} unchanged)`,
-      );
+    const entries = MAIN_PAGES.filter((p) => plan.pages[theme]?.[p]?.capture);
+    if (entries.length === 0) {
+      const why =
+        plan.pages[theme]?.mods?.reasons.join("; ") ?? "no source changes";
+      console.log(`\n── ${theme.toUpperCase()} ──\n  - skipped (${why})`);
       continue;
     }
     console.log(`\n── ${theme.toUpperCase()} ──`);
     const { app, wid } = await launchApp(theme, false);
-    const pages = ["mods", "collections", "profiles", "settings"];
-    for (let i = 0; i < pages.length; i++) {
-      const name = pages[i];
-      x(`xdotool key --window ${wid} --clearmodifiers ${i + 1}`);
+    for (const name of entries) {
+      x(`xdotool key --window ${wid} --clearmodifiers ${PAGE_KEYS[name]}`);
       await new Promise((r) => setTimeout(r, 1200));
-      const changed = await capture(wid, name, theme);
-      if (theme === themes[0]) groupChanged = groupChanged || changed;
+      await capture(wid, name, theme);
     }
     await killApp(app);
   }
@@ -396,6 +390,4 @@ if (originalConfig) {
   console.log("Restored original config");
 }
 
-console.log(
-  `\nSaved to ${path.relative(ROOT, OUT)}/ (${changedCount}/${totalCount} changed)`,
-);
+console.log(`\nSaved to ${path.relative(ROOT, OUT)}/ (${takenCount} taken)`);
