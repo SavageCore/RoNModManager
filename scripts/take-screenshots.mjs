@@ -226,15 +226,14 @@ function waitForWindowToDisappear(timeoutMs = 15000) {
   return new Promise((resolve) => {
     const start = Date.now();
     const interval = setInterval(() => {
+      let gone = false;
       try {
-        const ids = x(`xdotool search --name "RoN Mod Manager"`).trim();
-        if (!ids) {
-          clearInterval(interval);
-          resolve();
-          return;
-        }
-      } catch {}
-      if (Date.now() - start > timeoutMs) {
+        gone = !x(`xdotool search --name "RoN Mod Manager"`).trim();
+      } catch (err) {
+        // xdotool exits 1 when no windows match - that means gone.
+        gone = err?.status === 1;
+      }
+      if (gone || Date.now() - start > timeoutMs) {
         clearInterval(interval);
         resolve();
       }
