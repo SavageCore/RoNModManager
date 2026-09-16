@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
-  import Minus from "lucide-svelte/icons/minus";
+  import { Minus } from "@lucide/svelte";
   import { toastStore } from "$lib/stores/toast";
   import {
     downloadTextFile,

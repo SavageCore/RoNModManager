@@ -62,7 +62,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { downloadDir } from "@tauri-apps/api/path";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { ArrowUp, ArrowUpCircle } from "lucide-svelte";
+  import { ArrowUp, ArrowUpCircle } from "@lucide/svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { onDestroy, onMount } from "svelte";
   // Persist modpack export metadata per-profile (backend), not localStorage

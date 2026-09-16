@@ -20,7 +20,7 @@
     Play,
     Power,
     Trash2,
-  } from "lucide-svelte";
+  } from "@lucide/svelte";
 
   $: effectiveProfiles =
     $incognitoMode && !$wizardScreenshotMode ? DUMMY_PROFILES : profiles;

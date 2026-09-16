@@ -1,11 +1,13 @@
 <script lang="ts">
   import { importLogStore } from "$lib/stores/importLogStore";
-  import CheckCircle from "lucide-svelte/icons/check-circle";
-  import ChevronRight from "lucide-svelte/icons/chevron-right";
-  import Clock from "lucide-svelte/icons/clock";
-  import HelpCircle from "lucide-svelte/icons/help-circle";
-  import LoaderCircle from "lucide-svelte/icons/loader-circle";
-  import XCircle from "lucide-svelte/icons/x-circle";
+  import {
+    CheckCircle,
+    ChevronRight,
+    Clock,
+    HelpCircle,
+    LoaderCircle,
+    XCircle,
+  } from "@lucide/svelte";
   import LogPanel from "./LogPanel.svelte";
 
   $: flatLog = $importLogStore.mods.flatMap((m, i) => [

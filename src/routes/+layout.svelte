@@ -65,7 +65,7 @@
     getCurrentWindow,
     primaryMonitor,
   } from "@tauri-apps/api/window";
-  import { Layers, Package, RefreshCw, Settings, User } from "lucide-svelte";
+  import { Layers, Package, RefreshCw, Settings, User } from "@lucide/svelte";
   import semver from "semver";
   import { onMount } from "svelte";
   import { get } from "svelte/store";

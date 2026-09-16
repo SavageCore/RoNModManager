@@ -239,7 +239,7 @@
     Terminal,
     Trash2,
     X,
-  } from "lucide-svelte";
+  } from "@lucide/svelte";
   import { onMount } from "svelte";
 
   let modGroups: (InstalledModGroup & { addonFiles?: InstalledModFile[] })[] =

@@ -6,7 +6,7 @@
     CheckCircle,
     Info,
     X,
-  } from "lucide-svelte";
+  } from "@lucide/svelte";
 
   let toasts: Toast[] = [];
 

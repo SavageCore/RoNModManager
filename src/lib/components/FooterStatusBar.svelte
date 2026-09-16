@@ -7,8 +7,7 @@
   import { operationStatusStore } from "$lib/stores/operationStatus";
   import { infoLogStore } from "$lib/stores/infoLogStore";
   import { syncLogStore } from "$lib/stores/syncLogStore";
-  import ChevronDown from "lucide-svelte/icons/chevron-down";
-  import ChevronUp from "lucide-svelte/icons/chevron-up";
+  import { ChevronDown, ChevronUp } from "@lucide/svelte";
   import { formatBytes } from "$lib/utils/format";
 
   // Track the file currently owning the byte counters. When the backend

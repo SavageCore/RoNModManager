@@ -23,7 +23,7 @@
     DUMMY_MOD_GROUPS,
   } from "$lib/stores/incognitoMode";
   import { toastStore } from "$lib/stores/toast";
-  import { X } from "lucide-svelte";
+  import { X } from "@lucide/svelte";
   import { onMount } from "svelte";
 
   let rawCollectionMods: Record<string, string[]> = {};

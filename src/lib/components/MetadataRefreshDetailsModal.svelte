@@ -7,7 +7,7 @@
     Copy,
     Save,
     Check,
-  } from "lucide-svelte";
+  } from "@lucide/svelte";
   import { toastStore } from "$lib/stores/toast";
   import {
     downloadTextFile,
