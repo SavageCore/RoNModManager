@@ -98,12 +98,12 @@ jobs:
       # Ratchet gate on total line coverage (measured ~28% in Sep 2026; the
       # Tauri command glue pulls the average down). Bump when coverage grows.
       - name: Generate backend lcov
-        run: cargo llvm-cov --manifest-path src-tauri/Cargo.toml --lib --lcov --output-path coverage/lcov-backend.info --fail-under-lines 25 --remap-path-prefix
+        run: cargo llvm-cov --manifest-path src-tauri/Cargo.toml --lib --lcov --output-path lcov-backend.info --fail-under-lines 25 --remap-path-prefix
       - name: Upload backend coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./lcov-backend.info
+          files: lcov-backend.info
           flags: backend
           fail_ci_if_error: false
           verbose: true
