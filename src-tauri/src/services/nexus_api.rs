@@ -1,4 +1,5 @@
 use std::cmp::Reverse;
+use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Client;
@@ -14,6 +15,11 @@ const MAX_ATTEMPTS: usize = 3;
 #[derive(Debug, Clone)]
 pub struct NexusApiService {
     client: Client,
+    base_url: String,
+    /// Category id-to-name map for the game, fetched at most once per service
+    /// instance: a bulk metadata refresh then costs one extra request instead
+    /// of one per mod.
+    categories: Arc<tokio::sync::OnceCell<Vec<NexusGameCategory>>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -131,7 +137,32 @@ pub struct NexusDownloadLink {
 
 impl NexusApiService {
     pub fn new(client: Client) -> Self {
-        Self { client }
+        Self::with_base_url(client, NEXUS_API_BASE.to_string())
+    }
+
+    /// Overrides the API endpoint so tests can point at a local mock server.
+    /// Not `#[cfg(test)]` like `ModioApiService::with_base_url`: `AppState::nexus`
+    /// needs it on the production path.
+    pub fn with_base_url(client: Client, base_url: String) -> Self {
+        Self {
+            client,
+            base_url,
+            categories: Arc::new(tokio::sync::OnceCell::new()),
+        }
+    }
+
+    /// Nexus category id-to-name map, fetched at most once per instance.
+    /// Empty when the lookup fails - callers treat a missing category as
+    /// "no tag" rather than failing the resolution.
+    pub async fn categories(&self, api_key: &str) -> &[NexusGameCategory] {
+        self.categories
+            .get_or_init(|| async {
+                self.get_game_info(api_key)
+                    .await
+                    .map(|info| info.categories)
+                    .unwrap_or_default()
+            })
+            .await
     }
 
     /// Sends a request, retrying on HTTP 429 (honouring `Retry-After`, falling back to
@@ -191,7 +222,7 @@ impl NexusApiService {
     pub async fn get_mod_info(&self, api_key: &str, mod_id: u64) -> Result<NexusModInfo> {
         let url = format!(
             "{}/games/{}/mods/{}.json",
-            NEXUS_API_BASE, GAME_DOMAIN, mod_id
+            self.base_url, GAME_DOMAIN, mod_id
         );
 
         let response = self
@@ -220,7 +251,7 @@ impl NexusApiService {
     pub async fn list_mod_files(&self, api_key: &str, mod_id: u64) -> Result<Vec<NexusModFile>> {
         let url = format!(
             "{}/games/{}/mods/{}/files.json",
-            NEXUS_API_BASE, GAME_DOMAIN, mod_id
+            self.base_url, GAME_DOMAIN, mod_id
         );
 
         let response = self
@@ -247,7 +278,7 @@ impl NexusApiService {
 
     /// Validate an API key and return user info (including premium status)
     pub async fn get_user_info(&self, api_key: &str) -> Result<NexusUserInfo> {
-        let url = format!("{}/users/validate.json", NEXUS_API_BASE);
+        let url = format!("{}/users/validate.json", self.base_url);
 
         let response = self
             .execute_with_retry(|| {
@@ -282,7 +313,7 @@ impl NexusApiService {
     ) -> Result<Vec<NexusDownloadLink>> {
         let url = format!(
             "{}/games/{}/mods/{}/files/{}/download_link.json",
-            NEXUS_API_BASE, GAME_DOMAIN, mod_id, file_id
+            self.base_url, GAME_DOMAIN, mod_id, file_id
         );
 
         let response = self
@@ -318,7 +349,7 @@ impl NexusApiService {
 
     /// Fetch game metadata including the category id-to-name map.
     pub async fn get_game_info(&self, api_key: &str) -> Result<NexusGameInfo> {
-        let url = format!("{}/games/{}", NEXUS_API_BASE, GAME_DOMAIN);
+        let url = format!("{}/games/{}", self.base_url, GAME_DOMAIN);
 
         let response = self
             .execute_with_retry(|| {

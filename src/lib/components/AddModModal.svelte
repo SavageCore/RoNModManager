@@ -7,13 +7,11 @@
     getArchivePakFiles,
     getArchiveUe4ssMods,
     checkArchiveBlocked,
-    getTags,
     getAddonMap,
     setAddonMap,
     installLocalMod,
     listNexusFileOptions,
     replaceModArchive,
-    setModTags,
     updateModDisplayName,
     updateModSourceUrl,
     updateNexusFileId,
@@ -623,12 +621,14 @@
                       "Installing...",
                     );
                     try {
-                      const installResult = await installLocalMod(
+                      await installLocalMod(
                         resolved.archivePath,
                         download.selectedPaks,
                         resolved.contentHash,
                         download.selectedUe4ssMods,
                       );
+                      // The Nexus category tag is applied by the backend, which
+                      // resolves it in updateModSourceUrl below.
                       await updateModDisplayName(
                         resolved.archiveName,
                         resolved.name,
@@ -653,11 +653,6 @@
                           resolved.archiveName,
                         ).catch(() => {});
                       }
-                      await applyNexusCategoryTag(
-                        resolved.archiveName,
-                        resolved.category,
-                        installResult.wasDuplicate,
-                      );
                     } catch (error) {
                       const msg = String(error);
                       const blocked = parseBlockedDllError(msg);
@@ -845,23 +840,6 @@
     }
   }
 
-  async function applyNexusCategoryTag(
-    archiveName: string,
-    category: string | null | undefined,
-    wasDuplicate: boolean,
-  ): Promise<void> {
-    if (!category || wasDuplicate) return;
-    try {
-      const tags = await getTags();
-      const currentTags = Object.entries(tags)
-        .filter(([, mods]) => mods.includes(archiveName))
-        .map(([tag]) => tag);
-      if (currentTags.includes(category)) return;
-      await setModTags(archiveName, [...new Set([...currentTags, category])]);
-    } catch {
-      // Tagging is best-effort; never fail the install because of it.
-    }
-  }
   async function choosePaks(
     filePath: string,
     archiveName: string,

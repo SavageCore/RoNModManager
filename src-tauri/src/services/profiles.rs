@@ -85,6 +85,55 @@ pub fn save_profile(profile: &Profile) -> Result<()> {
     Ok(())
 }
 
+/// Replaces the tags a mod carries: drops it from every tag it currently has,
+/// prunes tags left empty, then adds it to each of `tags`, creating missing
+/// ones.
+pub fn set_mod_tags(profile: &mut Profile, mod_name: &str, tags: &[String]) {
+    for members in profile.tags.values_mut() {
+        members.retain(|m| m != mod_name);
+    }
+    profile.tags.retain(|_, members| !members.is_empty());
+    for tag in tags {
+        profile
+            .tags
+            .entry(tag.clone())
+            .or_default()
+            .push(mod_name.to_string());
+    }
+}
+
+/// Adds one tag to a mod in the active profile, keeping its other tags.
+/// Returns true when the profile changed and was saved. A missing or absent
+/// active profile is a no-op, not an error: auto-tagging is best-effort.
+pub fn add_tag_to_active_profile(
+    active_profile: Option<&str>,
+    mod_name: &str,
+    tag: &str,
+) -> Result<bool> {
+    let Some(name) = active_profile else {
+        return Ok(false);
+    };
+    let Some(mut profile) = get_profile(name)? else {
+        return Ok(false);
+    };
+
+    if profile
+        .tags
+        .get(tag)
+        .is_some_and(|members| members.iter().any(|m| m == mod_name))
+    {
+        return Ok(false);
+    }
+
+    profile
+        .tags
+        .entry(tag.to_string())
+        .or_default()
+        .push(mod_name.to_string());
+    save_profile(&profile)?;
+    Ok(true)
+}
+
 /// Delete a profile
 pub fn delete_profile(name: &str) -> Result<()> {
     let path = get_profile_path(name)?;
@@ -108,6 +157,60 @@ mod tests {
     fn unique_name(tag: &str) -> String {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         format!("cov-{tag}-{}", NEXT.fetch_add(1, Ordering::Relaxed))
+    }
+
+    #[test]
+    fn set_mod_tags_moves_a_mod_and_prunes_emptied_tags() {
+        isolated_root();
+        let mut profile = Profile::new(unique_name("tag-move"), Vec::new());
+        profile
+            .tags
+            .insert("Old".to_string(), vec!["a.zip".to_string()]);
+        profile.tags.insert(
+            "Shared".to_string(),
+            vec!["a.zip".to_string(), "b.zip".to_string()],
+        );
+
+        set_mod_tags(
+            &mut profile,
+            "a.zip",
+            &["Shared".to_string(), "New".to_string()],
+        );
+
+        assert!(!profile.tags.contains_key("Old"));
+        assert_eq!(profile.tags.get("New"), Some(&vec!["a.zip".to_string()]));
+        let shared = profile.tags.get("Shared").unwrap();
+        assert!(shared.contains(&"a.zip".to_string()));
+        assert!(shared.contains(&"b.zip".to_string()));
+    }
+
+    #[test]
+    fn add_tag_to_active_profile_adds_once_and_keeps_other_tags() {
+        isolated_root();
+        let name = unique_name("tag-add");
+        let mut profile = Profile::new(name.clone(), vec!["a.zip".to_string()]);
+        profile
+            .tags
+            .insert("Manual".to_string(), vec!["a.zip".to_string()]);
+        save_profile(&profile).unwrap();
+
+        assert!(add_tag_to_active_profile(Some(&name), "a.zip", "Maps").unwrap());
+        // The second call is a no-op, so callers can tell the profile is settled.
+        assert!(!add_tag_to_active_profile(Some(&name), "a.zip", "Maps").unwrap());
+
+        let tags = get_profile(&name).unwrap().unwrap().tags;
+        assert_eq!(tags.get("Maps"), Some(&vec!["a.zip".to_string()]));
+        assert_eq!(tags.get("Manual"), Some(&vec!["a.zip".to_string()]));
+    }
+
+    #[test]
+    fn add_tag_to_active_profile_is_a_no_op_without_a_profile() {
+        isolated_root();
+
+        assert!(!add_tag_to_active_profile(None, "a.zip", "Maps").unwrap());
+        assert!(
+            !add_tag_to_active_profile(Some(&unique_name("tag-absent")), "a.zip", "Maps").unwrap()
+        );
     }
 
     #[test]

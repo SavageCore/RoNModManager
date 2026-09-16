@@ -176,7 +176,6 @@ export interface ModAddResult {
   filePrettyName?: string | null;
   contentHash?: string | null;
   version?: string | null;
-  category?: string | null;
 }
 
 export interface NexusFileOption {

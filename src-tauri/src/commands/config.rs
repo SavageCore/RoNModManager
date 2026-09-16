@@ -5,7 +5,6 @@ use crate::models::config::{
     AppConfig, CloseAction, LogLevel, MinimizeTarget, OnGameLaunchAction, ThemeMode,
 };
 use crate::models::Result;
-use crate::services::nexus_api;
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -128,7 +127,7 @@ pub async fn verify_nexus_api_key(
     state: State<'_, AppState>,
     #[allow(non_snake_case)] apiKey: String,
 ) -> Result<bool> {
-    let service = nexus_api::NexusApiService::new(state.client.clone());
+    let service = state.nexus();
     match service.get_mod_info(&apiKey, 981).await {
         // Use a known mod ID to verify
         Ok(_) => Ok(true),

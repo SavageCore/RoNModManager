@@ -36,22 +36,7 @@ pub async fn set_mod_tags(
         crate::models::AppError::Validation(format!("Profile '{}' not found", active_profile_name))
     })?;
 
-    // Remove this mod from all existing tags
-    for mods in profile.tags.values_mut() {
-        mods.retain(|m| m != &modName);
-    }
-    // Prune tags with no remaining mods
-    profile.tags.retain(|_, mods| !mods.is_empty());
-
-    // Add the mod to each desired tag, creating missing tags
-    for tag_name in newTags {
-        profile
-            .tags
-            .entry(tag_name)
-            .or_default()
-            .push(modName.clone());
-    }
-
+    profiles::set_mod_tags(&mut profile, &modName, &newTags);
     profiles::save_profile(&profile)?;
     Ok(())
 }

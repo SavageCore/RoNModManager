@@ -91,6 +91,7 @@ pub fn test_state(config: AppConfig) -> AppState {
     AppState {
         config: RwLock::new(config),
         client: reqwest::Client::new(),
+        nexus_base_url: None,
         config_path,
         nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
         nexus_wait_id: Arc::new(std::sync::atomic::AtomicU64::new(1)),

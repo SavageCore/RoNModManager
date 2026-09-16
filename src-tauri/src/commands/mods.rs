@@ -594,7 +594,7 @@ pub async fn install_mods(
     let nexus_premium_ctx: Option<(nexus_api::NexusApiService, String)> =
         if !nexus_source_map.is_empty() {
             if let Some(api_key) = config.nexus_api_key.clone() {
-                let svc = nexus_api::NexusApiService::new(state.client.clone());
+                let svc = state.nexus();
                 match svc.get_user_info(&api_key).await {
                     Ok(user) if user.is_premium => Some((svc, api_key)),
                     _ => None,
@@ -1120,12 +1120,16 @@ struct ResolvedModMetadata {
     /// Only set when a Nexus file could be matched and the manifest didn't
     /// already record one - lets callers backfill it.
     nexus_file_id: Option<u64>,
+    /// Nexus category name ("Maps", "Weapons", ...), applied as a tag by the
+    /// shared applier. None for mod.io and for unknown categories.
+    category: Option<String>,
 }
 
 const NO_RESOLVED_METADATA: ResolvedModMetadata = ResolvedModMetadata {
     display_name: None,
     version: None,
     nexus_file_id: None,
+    category: None,
 };
 
 /// True when a metadata resolution error means the upstream mod is hidden,
@@ -1182,6 +1186,14 @@ async fn resolve_mod_metadata_from_source_url(
             .await
             .unwrap_or_default();
 
+        // Same category name the install-by-link path resolves, from a lookup
+        // memoised per service instance.
+        let category = nexus_api::resolve_nexus_category_name(
+            nexus_service.categories(key).await,
+            mod_info.category_id,
+            mod_info.category_name.as_deref(),
+        );
+
         let matched_file = match existing_nexus_file_id {
             Some(fid) => files.iter().find(|f| f.file_id == fid),
             None => files
@@ -1196,6 +1208,7 @@ async fn resolve_mod_metadata_from_source_url(
                 .is_none()
                 .then(|| matched_file.map(|f| f.file_id))
                 .flatten(),
+            category,
         });
     }
 
@@ -1220,10 +1233,49 @@ async fn resolve_mod_metadata_from_source_url(
             display_name: Some(mod_details.name),
             version: mod_details.version,
             nexus_file_id: None,
+            category: None,
         });
     }
 
     Ok(NO_RESOLVED_METADATA)
+}
+
+/// Merges resolved upstream metadata into a manifest. Returns true when the
+/// manifest changed and therefore needs saving.
+fn merge_resolved_metadata(
+    manifest_data: &mut manifest::InstallManifest,
+    resolved: &ResolvedModMetadata,
+) -> bool {
+    let mut changed = false;
+    if let Some(name) = resolved.display_name.as_ref() {
+        manifest_data.display_name = Some(name.clone());
+        changed = true;
+    }
+    if manifest_data.installed_version.is_none() {
+        if let Some(version) = resolved.version.as_ref() {
+            manifest_data.installed_version = Some(version.clone());
+            changed = true;
+        }
+    }
+    if let Some(file_id) = resolved.nexus_file_id {
+        manifest_data.nexus_file_id = Some(file_id);
+        changed = true;
+    }
+    changed
+}
+
+/// Applies a resolved category as a tag on the archive in the active profile.
+/// Best-effort: tagging never fails the metadata caller. Returns true when a
+/// tag was written.
+fn apply_category_tag(
+    active_profile: Option<&str>,
+    archive_name: &str,
+    category: Option<&str>,
+) -> bool {
+    let Some(category) = category else {
+        return false;
+    };
+    profiles::add_tag_to_active_profile(active_profile, archive_name, category).unwrap_or(false)
 }
 
 #[tauri::command]
@@ -1251,7 +1303,7 @@ pub async fn refresh_mod_metadata(
         .filter(|names| !names.is_empty())
         .map(|names| names.into_iter().collect::<HashSet<_>>());
 
-    let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
+    let nexus_service = state.nexus();
     let modio_service = ModioApiService::new(state.client.clone(), config.modio_game_id);
 
     let mut result = RefreshModMetadataResult {
@@ -1340,29 +1392,22 @@ pub async fn refresh_mod_metadata(
         .await
         {
             Ok(resolved) => {
-                let mut changed = false;
-                if let Some(name) = resolved.display_name {
-                    manifest_data.display_name = Some(name);
-                    changed = true;
-                }
-                if manifest_data.installed_version.is_none() {
-                    if let Some(version) = resolved.version {
-                        manifest_data.installed_version = Some(version);
-                        changed = true;
-                    }
-                }
-                if let Some(fid) = resolved.nexus_file_id {
-                    manifest_data.nexus_file_id = Some(fid);
-                    changed = true;
-                }
+                let changed = merge_resolved_metadata(&mut manifest_data, &resolved);
+                // Tagging writes to the profile, not the manifest, so it must
+                // not be reported as "Metadata unchanged".
+                let tagged = apply_category_tag(
+                    config.active_profile.as_deref(),
+                    &manifest_data.source_archive,
+                    resolved.category.as_deref(),
+                );
 
-                if !changed {
+                if !changed && !tagged {
                     result.skipped += 1;
                     result.skipped_mods.push(ModSkippedDetail {
                         name: display_name,
                         reason: "Metadata unchanged".to_string(),
                     });
-                } else if manager.save_manifest(&manifest_data).is_err() {
+                } else if changed && manager.save_manifest(&manifest_data).is_err() {
                     result.failed += 1;
                     result.failed_mods.push(ModFailedDetail {
                         name: display_name,
@@ -1507,7 +1552,7 @@ pub async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<ModUpda
     let manager = manifest::ManifestManager::new(&staging_root);
     let manifests = manager.list_all_manifests()?;
 
-    let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
+    let nexus_service = state.nexus();
     let modio_service = ModioApiService::new(state.client.clone(), config.modio_game_id);
 
     // Addon archives inherit their parent's release - never report standalone
@@ -1609,7 +1654,7 @@ pub async fn fetch_nexus_mod_info(
         .nexus_api_key
         .ok_or_else(|| AppError::Validation("Nexus Mods API key is not configured.".to_string()))?;
     let mod_id = nexus_api::parse_nexus_url_to_mod_id(&input)?;
-    let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
+    let nexus_service = state.nexus();
     let mod_info = nexus_service.get_mod_info(&api_key, mod_id).await?;
     Ok(NexusModInfoResult {
         mod_id: mod_info.mod_id,
@@ -1642,7 +1687,7 @@ pub async fn list_nexus_file_options(
     })?;
 
     let mod_id = nexus_api::parse_nexus_url_to_mod_id(&input)?;
-    let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
+    let nexus_service = state.nexus();
     let files = nexus_service.list_mod_files(&api_key, mod_id).await?;
 
     let options = nexus_api::get_file_options(&files)
@@ -1671,7 +1716,6 @@ pub struct AddNexusResult {
     pub file_pretty_name: Option<String>,
     pub content_hash: Option<String>,
     pub version: Option<String>,
-    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1705,7 +1749,7 @@ pub async fn add_nexus_mod(
     })?;
 
     let mod_id = nexus_api::parse_nexus_url_to_mod_id(&input)?;
-    let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
+    let nexus_service = state.nexus();
 
     let user_info = nexus_service.get_user_info(&api_key).await?;
     let is_premium = user_info.is_premium;
@@ -1731,15 +1775,6 @@ pub async fn add_nexus_mod(
 
     let source_url = format!("https://www.nexusmods.com/readyornot/mods/{}", mod_id);
     let archive_name = sanitize_filename_for_download(&expected_filename);
-    let game_info = nexus_service.get_game_info(&api_key).await.ok();
-    let category = nexus_api::resolve_nexus_category_name(
-        game_info
-            .as_ref()
-            .map(|g| g.categories.as_slice())
-            .unwrap_or_default(),
-        mod_info.category_id,
-        mod_info.category_name.as_deref(),
-    );
 
     let (install_path, content_hash) = if is_premium {
         // Premium: download directly via API without opening a browser
@@ -2055,7 +2090,6 @@ pub async fn add_nexus_mod(
         file_pretty_name,
         content_hash,
         version,
-        category,
     })
 }
 
@@ -2254,7 +2288,7 @@ pub async fn update_mod_source_url(
     let config = state.get_config()?;
     let staging_root = get_staging_root()?;
     let manager = manifest::ManifestManager::new(&staging_root);
-    let nexus_service = nexus_api::NexusApiService::new(state.client.clone());
+    let nexus_service = state.nexus();
     let modio_service = ModioApiService::new(state.client.clone(), config.modio_game_id);
 
     let mut manifest_data = match manager.load_manifest(&archive_name)? {
@@ -2311,17 +2345,12 @@ pub async fn update_mod_source_url(
         )
         .await
         {
-            if let Some(name) = resolved.display_name {
-                manifest_data.display_name = Some(name);
-            }
-            if manifest_data.installed_version.is_none() {
-                if let Some(v) = resolved.version {
-                    manifest_data.installed_version = Some(v);
-                }
-            }
-            if let Some(fid) = resolved.nexus_file_id {
-                manifest_data.nexus_file_id = Some(fid);
-            }
+            merge_resolved_metadata(&mut manifest_data, &resolved);
+            apply_category_tag(
+                config.active_profile.as_deref(),
+                &manifest_data.source_archive,
+                resolved.category.as_deref(),
+            );
         }
     }
 
@@ -3577,7 +3606,7 @@ pub async fn check_nexus_premium(state: State<'_, AppState>) -> Result<bool> {
     let Some(api_key) = config.nexus_api_key else {
         return Ok(false);
     };
-    let svc = nexus_api::NexusApiService::new(state.client.clone());
+    let svc = state.nexus();
     match svc.get_user_info(&api_key).await {
         Ok(user) => Ok(user.is_premium),
         Err(_) => Ok(false),
@@ -3866,8 +3895,11 @@ mod pure_helper_tests {
 mod command_tests {
     use super::*;
     use crate::models::AppConfig;
+    use crate::models::Profile;
     use crate::state::app_data_root;
-    use crate::test_support::{isolated_root, mock_app_with, scratch_dir, TestApp};
+    use crate::test_support::{
+        isolated_root, mock_app_with, mock_app_with_state, scratch_dir, test_state, TestApp,
+    };
     use tauri::Manager;
 
     fn staging_root() -> PathBuf {
@@ -4129,6 +4161,191 @@ mod command_tests {
             .unwrap()
             .unwrap();
         assert!(reloaded.source_url.is_none());
+    }
+
+    /// Regression: a mod installed by hand (drag and drop) then linked to its
+    /// Nexus page used to resolve only name/version/file id, so it never got
+    /// the category tag that an install-by-link gets.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn linking_a_nexus_url_applies_the_category_tag() {
+        let _tree = crate::test_support::shared_tree_guard();
+        let mut server = mockito::Server::new_async().await;
+        let game_info = server
+            .mock("GET", "/games/readyornot")
+            .with_body(r#"{"categories":[{"category_id":7,"name":"Maps"}]}"#)
+            .create_async()
+            .await;
+        let mod_info = server
+            .mock("GET", "/games/readyornot/mods/123.json")
+            .with_body(
+                r#"{"mod_id":123,"name":"Big Map","domain_name":"readyornot","category_id":7}"#,
+            )
+            .create_async()
+            .await;
+        let files = server
+            .mock("GET", "/games/readyornot/mods/123/files.json")
+            .with_body(r#"{"files":[]}"#)
+            .create_async()
+            .await;
+
+        let profile_name = "linked-tag";
+        let mut state = test_state(AppConfig {
+            nexus_api_key: Some("test-key".to_string()),
+            active_profile: Some(profile_name.to_string()),
+            ..AppConfig::default()
+        });
+        state.nexus_base_url = Some(server.url());
+        let app = mock_app_with_state(state);
+        let state = app.state::<AppState>();
+
+        profiles::save_profile(&Profile::new(
+            profile_name.to_string(),
+            vec!["mod.zip".to_string()],
+        ))
+        .unwrap();
+        save_manifest(manifest("mod.zip", Vec::new()));
+
+        update_mod_source_url(
+            state,
+            "mod.zip".to_string(),
+            "https://www.nexusmods.com/readyornot/mods/123".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        game_info.assert_async().await;
+        mod_info.assert_async().await;
+        files.assert_async().await;
+
+        let stored = manifest::ManifestManager::new(&staging_root())
+            .load_manifest("mod.zip")
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.display_name, Some("Big Map".to_string()));
+
+        let tags = profiles::get_profile(profile_name).unwrap().unwrap().tags;
+        assert_eq!(tags.get("Maps"), Some(&vec!["mod.zip".to_string()]));
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_non_nexus_source_url_adds_no_tag() {
+        let _tree = crate::test_support::shared_tree_guard();
+        let profile_name = "url-no-tag";
+        let app = mock_app_with(AppConfig {
+            active_profile: Some(profile_name.to_string()),
+            ..AppConfig::default()
+        });
+        let state = app.state::<AppState>();
+
+        profiles::save_profile(&Profile::new(
+            profile_name.to_string(),
+            vec!["plain.zip".to_string()],
+        ))
+        .unwrap();
+        save_manifest(manifest("plain.zip", Vec::new()));
+
+        update_mod_source_url(
+            state,
+            "plain.zip".to_string(),
+            "https://example.com/plain.zip".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let tags = profiles::get_profile(profile_name).unwrap().unwrap().tags;
+        assert!(tags.is_empty(), "unexpected tags: {tags:?}");
+    }
+
+    /// The category id-to-name map is memoised per refresh run: two Nexus mods
+    /// must cost one game-info request, not one each.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn metadata_refresh_tags_every_nexus_mod_from_one_category_lookup() {
+        let _tree = crate::test_support::shared_tree_guard();
+        let mut server = mockito::Server::new_async().await;
+        let game_info = server
+            .mock("GET", "/games/readyornot")
+            .with_body(r#"{"categories":[{"category_id":7,"name":"Maps"}]}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let mut info_mocks = Vec::new();
+        let mut file_mocks = Vec::new();
+        for (mod_id, name) in [(123_u64, "First"), (456_u64, "Second")] {
+            info_mocks.push(
+                server
+                    .mock("GET", format!("/games/readyornot/mods/{mod_id}.json").as_str())
+                    .with_body(format!(
+                        r#"{{"mod_id":{mod_id},"name":"{name}","domain_name":"readyornot","category_id":7}}"#
+                    ))
+                    .create_async()
+                    .await,
+            );
+            file_mocks.push(
+                server
+                    .mock(
+                        "GET",
+                        format!("/games/readyornot/mods/{mod_id}/files.json").as_str(),
+                    )
+                    .with_body(r#"{"files":[]}"#)
+                    .create_async()
+                    .await,
+            );
+        }
+
+        let profile_name = "refresh-tag";
+        let mut state = test_state(AppConfig {
+            nexus_api_key: Some("test-key".to_string()),
+            active_profile: Some(profile_name.to_string()),
+            ..AppConfig::default()
+        });
+        state.nexus_base_url = Some(server.url());
+        let app = mock_app_with_state(state);
+        let state = app.state::<AppState>();
+
+        profiles::save_profile(&Profile::new(
+            profile_name.to_string(),
+            vec!["first.zip".to_string(), "second.zip".to_string()],
+        ))
+        .unwrap();
+        for (archive, url) in [
+            ("first.zip", "https://www.nexusmods.com/readyornot/mods/123"),
+            (
+                "second.zip",
+                "https://www.nexusmods.com/readyornot/mods/456",
+            ),
+        ] {
+            let mut stored = manifest(archive, Vec::new());
+            stored.source_url = Some(url.to_string());
+            save_manifest(stored);
+        }
+
+        // Filtered to these two archives: the staging tree is shared with the
+        // other command tests.
+        let result = refresh_mod_metadata(
+            state,
+            Some(vec!["first.zip".to_string(), "second.zip".to_string()]),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.failed, 0, "failed mods: {:?}", result.failed_mods);
+        game_info.assert_async().await;
+        for mock in info_mocks.iter().chain(file_mocks.iter()) {
+            mock.assert_async().await;
+        }
+
+        let tags = profiles::get_profile(profile_name).unwrap().unwrap().tags;
+        let mut maps = tags.get("Maps").cloned().unwrap_or_default();
+        maps.sort();
+        assert_eq!(
+            maps,
+            vec!["first.zip".to_string(), "second.zip".to_string()]
+        );
     }
 
     #[tokio::test]
