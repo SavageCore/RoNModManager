@@ -286,4 +286,28 @@ mod tests {
         assert_eq!(interpret_pgrep_result(Some(2), true), None);
         assert_eq!(interpret_pgrep_result(None, true), None);
     }
+
+    #[test]
+    fn scanning_the_process_table_reports_a_stable_result() {
+        // Ready or Not is not running in the test environment, and the scan is
+        // a pure read of /proc, so two calls must agree.
+        let running = is_game_running();
+        assert_eq!(is_game_running(), running);
+    }
+
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    fn host_process_scan_needs_no_flatpak_spawn_outside_a_sandbox() {
+        // The test process is not inside a Flatpak sandbox, so host processes
+        // are visible through our own process table.
+        assert!(host_process_scan_available());
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn sandboxed_host_probe_agrees_with_the_local_process_scan() {
+        // Outside a sandbox the flatpak-spawn probe fails and the grep fallback
+        // reports "not running", which must match what the /proc scan sees.
+        assert_eq!(is_game_running_host(), is_game_running());
+    }
 }

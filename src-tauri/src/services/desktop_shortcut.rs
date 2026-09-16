@@ -321,6 +321,44 @@ pub fn remove_desktop_shortcut(profile: &str) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::isolated_root;
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Profile names are unique per test on purpose: `isolated_root` redirects
+    /// HOME for the whole process, so two tests sharing a name would fight over
+    /// the same `.desktop` files.
+    fn unique_profile(tag: &str) -> String {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        format!("Cov {tag} {}", NEXT.fetch_add(1, Ordering::Relaxed))
+    }
+
+    #[cfg(target_os = "linux")]
+    fn home() -> PathBuf {
+        dirs::home_dir().expect("isolated_root sets HOME")
+    }
+
+    #[cfg(target_os = "linux")]
+    fn apps_path(profile: &str) -> PathBuf {
+        home()
+            .join(".local/share/applications")
+            .join(format!("{}.desktop", shortcut_slug(profile)))
+    }
+
+    #[cfg(target_os = "linux")]
+    fn desktop_path(profile: &str) -> PathBuf {
+        dirs::desktop_dir()
+            .expect("user-dirs.dirs seeds a desktop directory")
+            .join(format!("RoN - {}.desktop", profile.replace('/', "-")))
+    }
+
+    fn current_exe_string() -> String {
+        std::env::current_exe()
+            .unwrap()
+            .to_string_lossy()
+            .to_string()
+    }
+
     #[test]
     fn renders_desktop_entry() {
         let c = desktop_file_content("My Prof", "/usr/bin/ronmodmanager", false);
@@ -329,5 +367,191 @@ mod tests {
         assert!(c.contains("ronmm-my-prof"));
         // Sandbox prefix never leaks /app/bin into host .desktop files.
         assert!(desktop_exec_prefix().is_none() || !c.contains("/app/bin"));
+    }
+
+    #[test]
+    fn shortcut_slug_lowercases_and_dashes_the_profile() {
+        assert_eq!(shortcut_slug("My Prof"), "ronmm-my-prof");
+        assert_eq!(
+            shortcut_slug("  Upper_Case Name  "),
+            "ronmm-upper-case-name"
+        );
+        assert_eq!(shortcut_slug("!!!"), "ronmm-profile");
+    }
+
+    #[test]
+    fn desktop_entry_carries_profile_metadata_and_strips_quotes() {
+        let c = desktop_file_content("Cov \"Quoted\" Prof", "/usr/bin/ronmm", false);
+        assert!(c.starts_with("[Desktop Entry]\nType=Application\n"));
+        assert!(c.contains("Name=RoN - Cov Quoted Prof\n"));
+        assert!(
+            c.contains("Exec=\"/usr/bin/ronmm\" --profile \"Cov Quoted Prof\" --launch --hide %U")
+        );
+        assert!(c.contains(&format!("Icon={APP_ID}")));
+        assert!(c.contains("X-RoNMM-Profile=Cov Quoted Prof"));
+        assert!(c.contains("X-RoNMM-Slug=ronmm-cov-quoted-prof"));
+        assert!(c.contains("MimeType=x-scheme-handler/ronmm;"));
+        assert!(!c.contains("--vanilla"));
+    }
+
+    #[test]
+    fn desktop_entry_marks_vanilla_launch() {
+        let c = desktop_file_content("Vanilla Prof", "/usr/bin/ronmm", true);
+        assert!(c.contains("--profile \"Vanilla Prof\" --launch --vanilla --hide %U"));
+        assert!(
+            c.contains("Comment=Launch Ready or Not with profile Vanilla Prof via RoN Mod Manager")
+        );
+    }
+
+    #[test]
+    fn current_exe_and_args_builds_hidden_launch_arguments() {
+        assert_eq!(
+            current_exe_and_args("Cov \"Q\" Prof", false).unwrap(),
+            (
+                std::env::current_exe().unwrap(),
+                "--profile \"Cov Q Prof\" --launch --hide".to_string()
+            )
+        );
+        assert_eq!(
+            current_exe_and_args("Cov Q Prof", true).unwrap().1,
+            "--profile \"Cov Q Prof\" --launch --vanilla --hide"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn run_host_propagates_exit_status_and_missing_program() {
+        let out = run_host("sh", &["-c", "exit 7"]).unwrap();
+        assert_eq!(out.status.code(), Some(7));
+        assert!(run_host("ronmm-no-such-program-xyz", &[]).is_err());
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn create_writes_launcher_into_home_applications_dir() {
+        isolated_root();
+        let profile = unique_profile("Create");
+        let path = create_desktop_shortcut(&profile, false, false).unwrap();
+
+        assert_eq!(path, apps_path(&profile));
+        let expected = desktop_file_content(&profile, &current_exe_string(), false);
+        assert_eq!(fs::read_to_string(&path).unwrap(), expected);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o755, "launchers must be executable");
+        }
+
+        // Re-creating an existing shortcut is idempotent.
+        assert_eq!(
+            create_desktop_shortcut(&profile, false, false).unwrap(),
+            path
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), expected);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn create_records_vanilla_launch_in_the_installed_entry() {
+        isolated_root();
+        let profile = unique_profile("Vanilla");
+        let path = create_desktop_shortcut(&profile, true, false).unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+
+        assert!(content.contains("--launch --vanilla --hide"));
+        assert_eq!(
+            content,
+            desktop_file_content(&profile, &current_exe_string(), true)
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn create_with_desktop_copy_places_a_copy_on_the_desktop() {
+        isolated_root();
+        let profile = unique_profile("Copy");
+        let path = create_desktop_shortcut(&profile, false, true).unwrap();
+
+        let copy = desktop_path(&profile);
+        assert!(copy.exists());
+        assert_eq!(
+            fs::read_to_string(&copy).unwrap(),
+            fs::read_to_string(&path).unwrap()
+        );
+        // The applications entry is still the one status reports.
+        assert_eq!(shortcut_status(&profile), (Some(path), false));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn create_falls_back_to_app_config_dir_when_the_home_write_fails() {
+        isolated_root();
+        let profile = unique_profile("Blocked");
+        let blocked = apps_path(&profile);
+        // A directory where the .desktop file belongs makes the host write fail.
+        fs::create_dir_all(&blocked).unwrap();
+
+        let err = create_desktop_shortcut(&profile, false, false).unwrap_err();
+        assert!(
+            matches!(err, AppError::Io(_)),
+            "expected I/O error, got {err:?}"
+        );
+
+        let fallback = crate::state::app_config_root()
+            .unwrap()
+            .join("shortcuts")
+            .join(format!("{}.desktop", shortcut_slug(&profile)));
+        assert_eq!(
+            fs::read_to_string(&fallback).unwrap(),
+            desktop_file_content(&profile, &current_exe_string(), false)
+        );
+
+        fs::remove_dir_all(&blocked).unwrap();
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn shortcut_status_reports_absent_and_installed_launchers() {
+        isolated_root();
+        assert_eq!(shortcut_status(&unique_profile("Absent")), (None, false));
+
+        let profile = unique_profile("Installed");
+        let path = create_desktop_shortcut(&profile, false, false).unwrap();
+        assert_eq!(shortcut_status(&profile), (Some(path), false));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn shortcut_status_falls_back_to_the_desktop_copy() {
+        isolated_root();
+        let profile = unique_profile("DesktopOnly");
+        let apps = create_desktop_shortcut(&profile, false, true).unwrap();
+
+        fs::remove_file(&apps).unwrap();
+        assert_eq!(
+            shortcut_status(&profile),
+            (Some(desktop_path(&profile)), false)
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn remove_deletes_home_and_desktop_launchers() {
+        isolated_root();
+        // Nothing installed: a no-op, not an error.
+        assert!(!remove_desktop_shortcut(&unique_profile("RemoveAbsent")).unwrap());
+
+        let profile = unique_profile("RemoveBoth");
+        let apps = create_desktop_shortcut(&profile, false, true).unwrap();
+        let copy = desktop_path(&profile);
+        assert!(apps.exists() && copy.exists());
+
+        assert!(remove_desktop_shortcut(&profile).unwrap());
+        assert!(!apps.exists());
+        assert!(!copy.exists());
+        // Second removal reports nothing left to delete.
+        assert!(!remove_desktop_shortcut(&profile).unwrap());
     }
 }

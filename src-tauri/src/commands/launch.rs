@@ -128,3 +128,91 @@ pub async fn steam_running() -> Result<bool> {
 pub async fn quit_steam() -> Result<String> {
     steam_shortcuts::quit_steam()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{isolated_root, TestApp};
+    use std::sync::Mutex;
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::Manager;
+
+    fn app_with_launch_request(request: LaunchRequest) -> TestApp {
+        mock_builder()
+            .manage(LaunchArgs(Mutex::new(request)))
+            .build(mock_context(noop_assets()))
+            .unwrap()
+    }
+
+    fn launch_request() -> LaunchRequest {
+        LaunchRequest {
+            profile: Some("main".to_string()),
+            launch: true,
+            vanilla: false,
+            hide: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn launch_requests_are_returned_from_the_cli_state() {
+        let app = app_with_launch_request(launch_request());
+
+        let request = get_launch_request(app.state::<LaunchArgs>()).await.unwrap();
+
+        assert_eq!(request.profile, Some("main".to_string()));
+        assert!(request.launch);
+        assert!(!request.vanilla);
+        assert!(request.hide);
+    }
+
+    #[tokio::test]
+    async fn shortcuts_are_created_and_removed_on_disk() {
+        // Guard against writing to the developer's real desktop directory.
+        isolated_root();
+
+        let path = create_profile_shortcut("launch-shortcut".to_string(), None, None)
+            .await
+            .unwrap();
+        assert!(path.starts_with(isolated_root()));
+        assert!(path.exists());
+
+        let status = profile_shortcut_status("launch-shortcut".to_string())
+            .await
+            .unwrap();
+        assert_eq!(status.desktop_path, Some(path.clone()));
+        assert!(status.desktop_content.is_none());
+
+        assert!(remove_profile_shortcut("launch-shortcut".to_string())
+            .await
+            .unwrap());
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn a_missing_desktop_shortcut_falls_back_to_rendered_content() {
+        isolated_root();
+
+        let status = profile_shortcut_status("launch-missing".to_string())
+            .await
+            .unwrap();
+
+        assert!(status.desktop_path.is_none());
+        assert!(!status.in_steam);
+        let content = status.desktop_content.unwrap();
+        assert!(content.contains("launch-missing"));
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn adding_to_steam_fails_without_a_steam_install() {
+        isolated_root();
+        // Other tests create a shortcut file in the same fake tree.
+        let _steam = crate::test_support::shared_tree_guard();
+
+        // Either Steam is running (rejected up front) or there is no userdata
+        // to write to; both are errors as far as the caller is concerned.
+        assert!(add_profile_to_steam("launch-steam".to_string(), None)
+            .await
+            .is_err());
+    }
+}

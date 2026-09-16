@@ -126,4 +126,51 @@ mod tests {
         assert_eq!(slugify("My Cool Profile!"), "my-cool-profile");
         assert_eq!(slugify("!!!"), "profile");
     }
+
+    #[test]
+    fn parses_inline_profile_and_alias_flags() {
+        let r = parse_args(&[
+            "--profile=Inline".into(),
+            "--hidden".into(),
+            "--minimized".into(),
+            "--unknown".into(),
+        ]);
+        assert_eq!(r.profile.as_deref(), Some("Inline"));
+        assert!(r.hide);
+        assert!(!r.launch && !r.vanilla);
+    }
+
+    #[test]
+    fn ignores_a_trailing_profile_flag_and_other_schemes() {
+        let r = parse_args(&["--profile".into(), "ronmm://other".into()]);
+        // The scheme is not a launch link, so nothing is applied.
+        assert_eq!(r.profile, Some("ronmm://other".to_string()));
+        assert!(!r.launch);
+
+        let trailing = parse_args(&["--launch".into(), "--profile".into()]);
+        assert!(trailing.launch);
+        assert_eq!(trailing.profile, None);
+    }
+
+    #[test]
+    fn deep_links_overwrite_earlier_flags() {
+        let r = parse_args(&[
+            "--launch".into(),
+            "ronmm://launch?profile=Deep&hide=0&launch=0".into(),
+        ]);
+        assert_eq!(r.profile.as_deref(), Some("Deep"));
+        assert!(!r.hide && !r.launch);
+    }
+
+    #[test]
+    fn deep_link_query_values_are_decoded() {
+        let r = parse_deep_link("ronmm://launch?profile=A+B%2Fc&vanilla=true").unwrap();
+        assert_eq!(r.profile.as_deref(), Some("A B/c"));
+        assert!(r.vanilla);
+
+        // A link with no query still asks for a hidden launch.
+        let bare = parse_deep_link("ronmm://launch").unwrap();
+        assert!(bare.launch && bare.hide);
+        assert_eq!(bare.profile, None);
+    }
 }

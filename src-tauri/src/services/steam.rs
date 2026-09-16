@@ -297,4 +297,88 @@ mod tests {
         // For now, just verify the function signature compiles
         let _ = detect_game_path();
     }
+
+    #[test]
+    fn parse_library_folders_skips_missing_paths_and_unterminated_values() {
+        let temp_dir = create_mock_steam_dir();
+        let existing = temp_dir.path().join("ExistingLibrary");
+        fs::create_dir_all(&existing).unwrap();
+        let missing = temp_dir.path().join("MissingLibrary");
+
+        let content = format!(
+            "\"libraryfolders\"\n{{\n    \"0\"\n    {{\n        \"path\"\t\t\"{}\"\n    }}\n    \"1\"\n    {{\n        \"path\"\t\t\"{}\"\n    }}\n    \"2\"\n    {{\n        \"path\"\n    }}\n    \"3\"\n    {{\n        \"path\"\t\t\"unterminated\n    }}\n}}\n",
+            missing.display(),
+            existing.display()
+        );
+        fs::write(
+            temp_dir.path().join("steamapps").join("libraryfolders.vdf"),
+            content,
+        )
+        .unwrap();
+
+        let libraries = parse_library_folders(temp_dir.path()).unwrap();
+
+        assert!(libraries.contains(&temp_dir.path().to_path_buf()));
+        assert!(libraries.contains(&existing));
+        assert!(!libraries.contains(&missing));
+    }
+
+    #[test]
+    fn parse_library_folders_reports_unreadable_vdf() {
+        let temp_dir = create_mock_steam_dir();
+        // A directory where the vdf file belongs makes the read fail.
+        fs::create_dir_all(temp_dir.path().join("steamapps").join("libraryfolders.vdf")).unwrap();
+
+        assert!(parse_library_folders(temp_dir.path()).is_err());
+    }
+
+    #[test]
+    fn detect_game_path_requires_both_manifest_and_install() {
+        // Writes into the shared fake Steam tree; other tests assert on what is
+        // (not) installed there.
+        let _steam = crate::test_support::shared_tree_guard();
+        let root = crate::test_support::isolated_root();
+        let steamapps = root.join(".steam/steam/steamapps");
+        let manifest = steamapps.join("appmanifest_1144200.acf");
+        let game = steamapps.join("common").join("Ready Or Not");
+
+        // A manifest without the install directory is not enough.
+        fs::create_dir_all(steamapps.join("common")).unwrap();
+        fs::write(&manifest, "\"AppState\"\n{\n}\n").unwrap();
+        assert!(detect_game_path().is_err());
+
+        // With the install directory present the path is returned.
+        fs::create_dir_all(&game).unwrap();
+        assert_eq!(detect_game_path().unwrap(), game);
+
+        fs::remove_dir_all(&game).unwrap();
+        fs::remove_file(&manifest).unwrap();
+    }
+
+    #[test]
+    fn test_get_fmod_desktop_path() {
+        let game_path = PathBuf::from("/path/to/Ready Or Not");
+        assert_eq!(
+            get_fmod_desktop_path(&game_path),
+            PathBuf::from("/path/to/Ready Or Not/ReadyOrNot/Content/FMOD/Desktop")
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn proton_savegames_and_config_resolve_under_the_steam_library() {
+        let root = crate::test_support::isolated_root();
+        let proton_prefix = root
+            .join(".steam/steam/steamapps/compatdata/1144200/pfx/drive_c/users/steamuser")
+            .join("AppData/Local/ReadyOrNot/Saved");
+
+        assert_eq!(
+            get_savegames_path().unwrap(),
+            proton_prefix.join("SaveGames")
+        );
+        assert_eq!(
+            get_config_path().unwrap(),
+            proton_prefix.join("Config").join("Windows")
+        );
+    }
 }

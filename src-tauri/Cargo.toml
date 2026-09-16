@@ -61,4 +61,7 @@ strip = true
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt"] }
 mockito = "1"
+# `tauri::test` (mock runtime) is behind the `test` feature, and dependencies
+# are compiled without cfg(test), so it has to be requested explicitly here.
+tauri = { version = "2", features = ["test"] }
 

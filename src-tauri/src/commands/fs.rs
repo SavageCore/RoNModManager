@@ -94,3 +94,39 @@ pub async fn open_dir(
 
     Ok(canonical.to_string_lossy().to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::AppConfig;
+    use crate::test_support::{isolated_root, mock_app_with, scratch_dir};
+    use tauri::Manager;
+
+    #[test]
+    fn file_exists_follows_the_filesystem() {
+        let app = mock_app_with(AppConfig::default());
+        let state = app.state::<AppState>();
+        let dir = scratch_dir("fs-exists");
+        let present = dir.path().join("present.txt");
+        std::fs::write(&present, b"x").unwrap();
+
+        assert!(file_exists(
+            state.clone(),
+            present.to_string_lossy().to_string()
+        ));
+        assert!(!file_exists(
+            state,
+            dir.path().join("missing.txt").to_string_lossy().to_string()
+        ));
+    }
+
+    #[test]
+    fn archive_root_lives_under_the_app_data_dir() {
+        let app = mock_app_with(AppConfig::default());
+
+        let root = get_archive_root_path(app.state::<AppState>()).unwrap();
+
+        assert!(std::path::Path::new(&root).ends_with("staged/archives"));
+        assert!(std::path::Path::new(&root).starts_with(isolated_root()));
+    }
+}

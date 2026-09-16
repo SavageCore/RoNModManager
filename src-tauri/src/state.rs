@@ -279,6 +279,7 @@ pub fn load_config_fallback() -> Result<AppConfig> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::config::LogLevel;
     use tempfile::TempDir;
 
     /// AppState pointed at a throwaway config file, so `update_config`
@@ -373,5 +374,41 @@ mod tests {
         assert!(!state.should_open_nexus_url(5933));
         // A different mod id is independent.
         assert!(state.should_open_nexus_url(5934));
+    }
+
+    #[test]
+    fn app_roots_live_under_the_isolated_home() {
+        let root = crate::test_support::isolated_root();
+
+        assert!(app_config_root().unwrap().starts_with(root));
+        assert!(app_data_root().unwrap().starts_with(root));
+        assert!(app_temp_root().unwrap().ends_with("tmp"));
+        assert!(default_config_path().unwrap().ends_with("config.json"));
+    }
+
+    #[test]
+    fn config_file_failures_fall_back_to_defaults() {
+        let root = crate::test_support::isolated_root();
+        let path = default_config_path().unwrap();
+        let _ = fs::remove_file(&path);
+
+        // No config file yet: nothing to load, so defaults apply and the app
+        // keeps working on a fresh install.
+        let state = AppState::load().unwrap();
+        assert!(state.config_path.starts_with(root));
+        assert_eq!(state.get_config().unwrap().active_profile, None);
+        assert!(load_config_fallback().unwrap().nexus_api_key.is_none());
+
+        // A corrupt file surfaces from `load`, and `Default` still yields a
+        // usable state so startup never fails over a bad config.
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, b"{ not json").unwrap();
+        assert!(AppState::load().is_err());
+
+        let fallback = AppState::default();
+        assert!(fallback.config_path.starts_with(root));
+        assert_eq!(fallback.get_config().unwrap().log_level, LogLevel::Info);
+
+        let _ = fs::remove_file(&path);
     }
 }
