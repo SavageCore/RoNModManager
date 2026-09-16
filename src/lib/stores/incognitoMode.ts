@@ -8,13 +8,20 @@ export const screenshotMode = writable<boolean>(false);
 /// incognito data) - appropriate for a first-run setup wizard screenshot.
 export const wizardScreenshotMode = writable<boolean>(false);
 
+/// Unix timestamp (seconds) for `days` ago - keeps dummy "added x ago"
+/// labels fresh no matter when screenshots are taken.
+const daysAgo = (days: number) =>
+  Math.floor(Date.now() / 1000) - days * 24 * 60 * 60;
+const hoursAgo = (hours: number) =>
+  Math.floor(Date.now() / 1000) - hours * 60 * 60;
+
 export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
   {
     name: "Mission_Pack_Vol1",
     displayName: "Mission Pack Vol. 1",
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/7290",
     managedByManifest: true,
-    installedAt: 1748304000,
+    installedAt: hoursAgo(3),
     installedVersion: "1.0",
     totalSize: 352321536,
     files: [
@@ -24,20 +31,8 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
         exists: true,
         size: 161061274,
       },
-      {
-        name: "Mission_Pack_Vol1_Worlds_P.pak",
-        path: "/mods/Mission_Pack_Vol1_Worlds_P.pak",
-        exists: true,
-        size: 107374182,
-      },
     ],
     addonFiles: [
-      {
-        name: "Mission_Pack_Vol1_Bonus_Mission_P.pak",
-        path: "/mods/Mission_Pack_Vol1_Bonus_Mission_P.pak",
-        exists: true,
-        size: 52428800,
-      },
       {
         name: "Mission_Pack_Vol1_WorldGen.sav",
         path: "/mods/Mission_Pack_Vol1_WorldGen.sav",
@@ -51,7 +46,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     displayName: "CQB Tactics Pack",
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/1042",
     managedByManifest: true,
-    installedAt: 1736899200,
+    installedAt: daysAgo(80),
     installedVersion: "1.4",
     totalSize: 134217728,
     files: [
@@ -68,7 +63,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     displayName: "Urban Warfare Bundle",
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/2187",
     managedByManifest: true,
-    installedAt: 1738540800,
+    installedAt: daysAgo(65),
     installedVersion: "2.0.1",
     totalSize: 356515840,
     files: [
@@ -91,7 +86,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     displayName: "Realistic SWAT Equipment",
     sourceUrl: "https://mod.io/g/readyornot/m/realistic-swat-equipment",
     managedByManifest: false,
-    installedAt: 1740009600,
+    installedAt: daysAgo(50),
     installedVersion: "1.1",
     files: [
       {
@@ -106,7 +101,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     displayName: "Breach and Clear Maps",
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/3301",
     managedByManifest: true,
-    installedAt: 1741305600,
+    installedAt: daysAgo(40),
     installedVersion: "3.2",
     files: [
       {
@@ -131,7 +126,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     displayName: "Night Vision Overhaul",
     sourceUrl: "https://mod.io/g/readyornot/m/nightvision-overhaul",
     managedByManifest: false,
-    installedAt: 1742601600,
+    installedAt: daysAgo(30),
     installedVersion: "1.0",
     files: [
       {
@@ -146,7 +141,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     displayName: "Radio Comms Rework",
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/4455",
     managedByManifest: true,
-    installedAt: 1744243200,
+    installedAt: daysAgo(21),
     installedVersion: "1.3",
     files: [
       {
@@ -161,7 +156,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     displayName: "Suspect AI Overhaul",
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/5123",
     managedByManifest: true,
-    installedAt: 1745539200,
+    installedAt: daysAgo(14),
     installedVersion: "2.5",
     files: [
       {
@@ -181,7 +176,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     displayName: "Modular Gear Pack",
     sourceUrl: "https://mod.io/g/readyornot/m/modular-gear-pack",
     managedByManifest: false,
-    installedAt: 1746662400,
+    installedAt: daysAgo(9),
     installedVersion: "1.2",
     files: [
       {
@@ -196,7 +191,7 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     displayName: "Tactical HUD",
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/6078",
     managedByManifest: false,
-    installedAt: 1747612800,
+    installedAt: daysAgo(4),
     installedVersion: "1.0.2",
     files: [
       {
