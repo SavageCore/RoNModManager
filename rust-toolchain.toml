@@ -1,0 +1,10 @@
+# Pinned Rust toolchain: local dev, lefthook hooks and CI must all use the
+# same compiler, otherwise a newer clippy on CI fails the build on lints the
+# local toolchain has never heard of (e.g. clippy::question_mark additions).
+# New lints only land in minor stable releases, never patches, so pinning the
+# minor track gets security fixes without surprise lints.
+# Bump deliberately: install locally, run `make lint-backend`, then update.
+[toolchain]
+channel = "1.98"
+components = ["clippy", "rustfmt", "llvm-tools-preview"]
+profile = "minimal"
