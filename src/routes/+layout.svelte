@@ -808,6 +808,13 @@
     });
 
     void (async () => {
+      try {
+        const [isScreenshot, isWizard] = await Promise.all([
+          screenshotModePromise.catch(() => false),
+          wizardScreenshotModePromise.catch(() => false),
+        ]);
+        if (isScreenshot || isWizard) return;
+      } catch {}
       const lastCheckedAt = $updateCheckStore;
       if (
         lastCheckedAt &&

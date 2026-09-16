@@ -386,6 +386,12 @@
   }
   let isApplyingProfile = false;
   let expandedGroups: Record<string, boolean> = {};
+  // In incognito/screenshot mode the first dummy mod (Mission Pack Vol. 1,
+  // which carries add-ons including worldgen data) starts expanded so
+  // screenshots show the expanded view with add-ons.
+  $: if ($incognitoMode && !expandedGroups["Mission_Pack_Vol1"]) {
+    expandedGroups = { ...expandedGroups, Mission_Pack_Vol1: true };
+  }
   let isDraggingOver = false;
   let isProcessingFiles = false;
   const pendingFileQueue: Array<{
@@ -668,6 +674,11 @@
   function focus(node: HTMLElement) {
     node.focus();
     return {};
+  }
+
+  // Display helper: tag keys stay lowercase internally, but render upper-first.
+  function formatTagName(tag: string): string {
+    return tag.length > 0 ? tag[0].toUpperCase() + tag.slice(1) : tag;
   }
 
   const DEFAULT_PROFILE_NAME = "Default";
@@ -1906,7 +1917,7 @@
           class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs cursor-pointer"
         >
           <Tag size={10} />
-          {tagName}
+          {formatTagName(tagName)}
         </button>
       {/each}
       {#if activeTagFilters.size > 0}
@@ -2196,7 +2207,7 @@
                         ...(await Promise.all(
                           effectiveTagNames.map((tag) =>
                             CheckMenuItem.new({
-                              text: tag,
+                              text: formatTagName(tag),
                               checked:
                                 selectedMods.size > 0
                                   ? [...selectedMods].every((m) =>
@@ -2506,10 +2517,10 @@
                             ? 100
                             : 40}%, transparent); color: var(--clr-success-300);"
                           class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none cursor-pointer"
-                          title="Filter by tag: {tag}"
+                          title="Filter by tag: {formatTagName(tag)}"
                         >
                           <Tag size={10} />
-                          {tag}
+                          {formatTagName(tag)}
                         </button>
                       {/each}
                     </div>

@@ -10,6 +10,43 @@ export const wizardScreenshotMode = writable<boolean>(false);
 
 export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
   {
+    name: "Mission_Pack_Vol1",
+    displayName: "Mission Pack Vol. 1",
+    sourceUrl: "https://www.nexusmods.com/readyornot/mods/7290",
+    managedByManifest: true,
+    installedAt: 1748304000,
+    installedVersion: "1.0",
+    totalSize: 352321536,
+    files: [
+      {
+        name: "Mission_Pack_Vol1_P.pak",
+        path: "/mods/Mission_Pack_Vol1_P.pak",
+        exists: true,
+        size: 161061274,
+      },
+      {
+        name: "Mission_Pack_Vol1_Worlds_P.pak",
+        path: "/mods/Mission_Pack_Vol1_Worlds_P.pak",
+        exists: true,
+        size: 107374182,
+      },
+    ],
+    addonFiles: [
+      {
+        name: "Mission_Pack_Vol1_Bonus_Mission_P.pak",
+        path: "/mods/Mission_Pack_Vol1_Bonus_Mission_P.pak",
+        exists: true,
+        size: 52428800,
+      },
+      {
+        name: "Mission_Pack_Vol1_WorldGen.sav",
+        path: "/mods/Mission_Pack_Vol1_WorldGen.sav",
+        exists: true,
+        size: 31457280,
+      },
+    ],
+  },
+  {
     name: "CQB_Tactics_Pack",
     displayName: "CQB Tactics Pack",
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/1042",
@@ -165,26 +202,6 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
       {
         name: "Tactical_HUD_P.pak",
         path: "/mods/Tactical_HUD_P.pak",
-        exists: true,
-      },
-    ],
-  },
-  {
-    name: "Mission_Pack_Vol1",
-    displayName: "Mission Pack Vol. 1",
-    sourceUrl: "https://www.nexusmods.com/readyornot/mods/7290",
-    managedByManifest: true,
-    installedAt: 1748304000,
-    installedVersion: "1.0",
-    files: [
-      {
-        name: "Mission_Pack_Vol1_P.pak",
-        path: "/mods/Mission_Pack_Vol1_P.pak",
-        exists: true,
-      },
-      {
-        name: "Mission_Pack_Vol1_Worlds_P.pak",
-        path: "/mods/Mission_Pack_Vol1_Worlds_P.pak",
         exists: true,
       },
     ],
