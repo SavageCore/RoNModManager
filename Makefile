@@ -94,7 +94,7 @@ coverage-frontend: ## Run Vitest with coverage thresholds
 	npm run test:unit:coverage
 
 coverage-backend: ## Run Rust tests with llvm-cov line-coverage gate (requires cargo-llvm-cov)
-	cargo llvm-cov --manifest-path $(CARGO_MANIFEST) --lib --fail-under-lines 25 --summary-only
+	cargo llvm-cov --manifest-path $(CARGO_MANIFEST) --lib --fail-under-lines 55 --summary-only
 
 # ── Screenshots ───────────────────────────────────────────────────────────────
 

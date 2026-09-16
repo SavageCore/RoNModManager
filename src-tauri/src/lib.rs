@@ -5,6 +5,8 @@ pub mod commands;
 pub mod models;
 pub mod services;
 pub mod state;
+#[cfg(test)]
+pub mod test_support;
 
 use crate::commands::{
     auth, collections, config, game, launch, modpack, mods, profiles, sharing, sync, tags,

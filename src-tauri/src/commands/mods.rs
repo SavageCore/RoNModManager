@@ -3861,3 +3861,344 @@ mod pure_helper_tests {
         )));
     }
 }
+
+#[cfg(test)]
+mod command_tests {
+    use super::*;
+    use crate::models::AppConfig;
+    use crate::state::app_data_root;
+    use crate::test_support::{isolated_root, mock_app_with, scratch_dir, TestApp};
+    use tauri::Manager;
+
+    fn staging_root() -> PathBuf {
+        app_data_root().unwrap().join("staged")
+    }
+
+    fn manifest(archive: &str, files: Vec<PathBuf>) -> manifest::InstallManifest {
+        manifest::InstallManifest {
+            source_archive: archive.to_string(),
+            display_name: None,
+            source_url: None,
+            installed_files: files,
+            installed_at: 1,
+            content_hash: None,
+            nexus_file_id: None,
+            installed_version: None,
+        }
+    }
+
+    /// Staged tree root, created the way `get_staging_root` would.
+    fn save_manifest(manifest_data: manifest::InstallManifest) {
+        fs::create_dir_all(staging_root()).unwrap();
+        manifest::ManifestManager::new(&staging_root())
+            .save_manifest(&manifest_data)
+            .unwrap();
+    }
+
+    fn app_with_config(config: AppConfig) -> TestApp {
+        mock_app_with(config)
+    }
+
+    /// A game tree with the given pak files already linked into `~mods`.
+    fn game_with_mods(paks: &[&str]) -> tempfile::TempDir {
+        let game = scratch_dir("mods-game");
+        let mods_path = steam::get_mods_path(game.path());
+        fs::create_dir_all(&mods_path).unwrap();
+        for pak in paks {
+            fs::write(mods_path.join(pak), b"pak").unwrap();
+        }
+        fs::write(mods_path.join("notes.txt"), b"not a pak").unwrap();
+        game
+    }
+
+    #[test]
+    fn reading_a_manifest_returns_none_until_one_is_stored() {
+        let _ = isolated_root();
+
+        assert!(read_manifest_for_archive("nothing.zip".to_string())
+            .unwrap()
+            .is_none());
+
+        save_manifest({
+            let mut m = manifest("stored.zip", vec![PathBuf::from("/staged/a.pak")]);
+            m.display_name = Some("Stored Mod".to_string());
+            m
+        });
+
+        let json = read_manifest_for_archive("stored.zip".to_string())
+            .unwrap()
+            .unwrap();
+        assert_eq!(json["display_name"], "Stored Mod");
+        assert_eq!(json["source_archive"], "stored.zip");
+    }
+
+    #[tokio::test]
+    async fn the_addon_map_round_trips_through_the_staging_tree() {
+        let app = app_with_config(AppConfig::default());
+        let state = app.state::<AppState>();
+        fs::create_dir_all(staging_root()).unwrap();
+        let map = HashMap::from([(
+            "parent.zip".to_string(),
+            vec!["addon-a.zip".to_string(), "addon-b.zip".to_string()],
+        )]);
+
+        set_addon_map(state.clone(), map.clone()).unwrap();
+
+        assert_eq!(get_addon_map(state).unwrap(), map);
+    }
+
+    #[tokio::test]
+    async fn cancelling_nexus_downloads_targets_the_right_waits() {
+        let app = app_with_config(AppConfig::default());
+        let state = app.state::<AppState>();
+        let first = state.register_nexus_wait();
+        let second = state.register_nexus_wait();
+
+        cancel_nexus_download(state.clone(), Some(first))
+            .await
+            .unwrap();
+        assert!(state.is_nexus_wait_cancelled(first));
+        assert!(!state.is_nexus_wait_cancelled(second));
+
+        // Unknown ids are a no-op rather than an error.
+        cancel_nexus_download(state.clone(), Some(9_999))
+            .await
+            .unwrap();
+        assert!(!state.is_nexus_wait_cancelled(second));
+
+        // No id cancels every active wait (the close-app dialog path).
+        cancel_nexus_download(state.clone(), None).await.unwrap();
+        assert!(state.is_nexus_wait_cancelled(second));
+    }
+
+    #[tokio::test]
+    async fn premium_status_is_false_without_an_api_key() {
+        let app = app_with_config(AppConfig::default());
+
+        assert!(!check_nexus_premium(app.state::<AppState>()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn mod_lists_are_built_from_the_linked_folder() {
+        let game = game_with_mods(&["b.pak", "a_P.pak"]);
+        let app = app_with_config(AppConfig {
+            game_path: Some(game.path().to_path_buf()),
+            ..AppConfig::default()
+        });
+        let state = app.state::<AppState>();
+
+        let mods = get_mod_list(state.clone()).await.unwrap();
+
+        // Sorted by name, and only paks are listed.
+        assert_eq!(
+            mods.iter().map(|m| m.name.clone()).collect::<Vec<_>>(),
+            vec!["a_P.pak".to_string(), "b.pak".to_string()]
+        );
+        assert!(mods
+            .iter()
+            .all(|m| matches!(m.status, ModStatus::Installed)));
+
+        // Without a configured game path there is nothing to list.
+        let unconfigured = app_with_config(AppConfig::default());
+        assert!(get_mod_list(unconfigured.state::<AppState>())
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn mod_lists_are_empty_when_the_game_folder_is_stock() {
+        let game = scratch_dir("mods-stock");
+        let app = app_with_config(AppConfig {
+            game_path: Some(game.path().to_path_buf()),
+            ..AppConfig::default()
+        });
+
+        assert!(get_mod_list(app.state::<AppState>())
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn display_names_are_trimmed_and_cleared() {
+        let app = app_with_config(AppConfig::default());
+        let state = app.state::<AppState>();
+        save_manifest(manifest("rename.zip", Vec::new()));
+
+        update_mod_display_name(
+            state.clone(),
+            "rename.zip".to_string(),
+            "  Nice Name  ".to_string(),
+        )
+        .await
+        .unwrap();
+        let stored = manifest::ManifestManager::new(&staging_root())
+            .load_manifest("rename.zip")
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.display_name, Some("Nice Name".to_string()));
+
+        update_mod_display_name(state.clone(), "rename.zip".to_string(), "   ".to_string())
+            .await
+            .unwrap();
+        let stored = manifest::ManifestManager::new(&staging_root())
+            .load_manifest("rename.zip")
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.display_name, None);
+
+        assert!(
+            update_mod_display_name(state, "missing.zip".to_string(), "Name".to_string())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn source_urls_are_cleaned_and_stored() {
+        let app = app_with_config(AppConfig::default());
+        let state = app.state::<AppState>();
+        save_manifest(manifest("source.zip", Vec::new()));
+
+        update_mod_source_url(
+            state.clone(),
+            "source.zip".to_string(),
+            "https://example.com/source.zip?token=secret#files".to_string(),
+            Some("1.2.3".to_string()),
+        )
+        .await
+        .unwrap();
+
+        let stored = manifest::ManifestManager::new(&staging_root())
+            .load_manifest("source.zip")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            stored.source_url,
+            Some("https://example.com/source.zip".to_string())
+        );
+        assert_eq!(stored.installed_version, Some("1.2.3".to_string()));
+    }
+
+    #[tokio::test]
+    async fn source_urls_create_a_manifest_for_unstaged_archives() {
+        let app = app_with_config(AppConfig::default());
+        let state = app.state::<AppState>();
+
+        update_mod_source_url(
+            state,
+            "brand-new.zip".to_string(),
+            "https://example.com/brand-new.zip".to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let stored = manifest::ManifestManager::new(&staging_root())
+            .load_manifest("brand-new.zip")
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.source_archive, "brand-new.zip");
+        assert_eq!(
+            stored.source_url,
+            Some("https://example.com/brand-new.zip".to_string())
+        );
+        assert!(stored.installed_version.is_none());
+    }
+
+    #[tokio::test]
+    async fn blank_source_urls_clear_the_stored_value() {
+        let app = app_with_config(AppConfig::default());
+        let state = app.state::<AppState>();
+        let mut stored = manifest("clear.zip", Vec::new());
+        stored.source_url = Some("https://example.com/clear.zip".to_string());
+        save_manifest(stored);
+
+        update_mod_source_url(state, "clear.zip".to_string(), "  ".to_string(), None)
+            .await
+            .unwrap();
+
+        let reloaded = manifest::ManifestManager::new(&staging_root())
+            .load_manifest("clear.zip")
+            .unwrap()
+            .unwrap();
+        assert!(reloaded.source_url.is_none());
+    }
+
+    #[tokio::test]
+    async fn nexus_file_ids_are_only_stored_for_known_archives() {
+        let app = app_with_config(AppConfig::default());
+        let state = app.state::<AppState>();
+        save_manifest(manifest("nexus.zip", Vec::new()));
+
+        update_nexus_file_id(state.clone(), "nexus.zip".to_string(), 777)
+            .await
+            .unwrap();
+        let stored = manifest::ManifestManager::new(&staging_root())
+            .load_manifest("nexus.zip")
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.nexus_file_id, Some(777));
+
+        // Unknown archives are a silent no-op.
+        update_nexus_file_id(state, "unknown.zip".to_string(), 1)
+            .await
+            .unwrap();
+    }
+
+    /// A minimal zip archive with the given entries, written where the archive
+    /// queries expect to read from.
+    fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {
+        use std::io::Write;
+        let file = fs::File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+        for (name, body) in entries {
+            zip.start_file(*name, options).unwrap();
+            zip.write_all(body).unwrap();
+        }
+        zip.finish().unwrap();
+    }
+
+    #[tokio::test]
+    async fn archive_queries_reject_unreadable_archives() {
+        let _app = app_with_config(AppConfig::default());
+        let dir = scratch_dir("mods-archive");
+        let missing = dir.path().join("missing.zip");
+
+        assert!(get_archive_pak_files(missing.to_string_lossy().to_string())
+            .await
+            .is_err());
+
+        let garbage = dir.path().join("garbage.zip");
+        fs::write(&garbage, b"not a zip").unwrap();
+        assert!(get_archive_pak_files(garbage.to_string_lossy().to_string())
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn archive_queries_list_paks_and_ue4ss_folders() {
+        let _app = app_with_config(AppConfig::default());
+        let dir = scratch_dir("mods-archive-zip");
+        let archive = dir.path().join("MyMod.zip");
+        write_zip(
+            &archive,
+            &[
+                ("MyMod_P.pak", b"pak-bytes"),
+                ("readme.txt", b"docs"),
+                ("ue4ss/Mods/ThingMod/scripts/main.lua", b"print(1)"),
+            ],
+        );
+        let path = archive.to_string_lossy().to_string();
+
+        let paks = get_archive_pak_files(path.clone()).await.unwrap();
+        assert_eq!(paks.len(), 1);
+        assert_eq!(paks[0].name, "MyMod_P.pak");
+        assert_eq!(paks[0].path, "MyMod_P.pak");
+        assert_eq!(paks[0].size, 9);
+
+        // A pak-only archive has no native Windows binaries to warn about.
+        assert!(check_archive_blocked(path).await.unwrap().is_empty());
+    }
+}

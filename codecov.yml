@@ -1,0 +1,47 @@
+# Codecov configuration.
+#
+# Two flags are uploaded by .github/workflows/ci.yml: `frontend` (vitest v8
+# lcov from the lint-frontend job) and `backend` (cargo-llvm-cov lcov from the
+# coverage-backend job). Carryforward keeps the last known coverage for a flag
+# when a run does not upload it, so a frontend-only or backend-only change
+# cannot zero out half the project.
+coverage:
+  precision: 2
+  round: down
+  range: "40...90"
+  status:
+    project:
+      default:
+        target: auto
+        # Allow a small dip rather than failing on noise.
+        threshold: 1%
+    patch:
+      default:
+        # New code is expected to come with tests, but this is advisory: the
+        # project status is the gate.
+        target: 70%
+        threshold: 5%
+        informational: true
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
+
+flags:
+  frontend:
+    carryforward: true
+    paths:
+      - src/
+      - tests/
+      - scripts/
+      - userscript/
+  backend:
+    carryforward: true
+    paths:
+      - src-tauri/src/
+
+ignore:
+  - "src/lib/assets"
+  - "src/app.html"
+  - "codecov.yml"

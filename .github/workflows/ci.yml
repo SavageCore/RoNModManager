@@ -95,10 +95,12 @@ jobs:
         with:
           tool: cargo-llvm-cov
 
-      # Ratchet gate on total line coverage (measured ~28% in Sep 2026; the
-      # Tauri command glue pulls the average down). Bump when coverage grows.
+      # Ratchet gate on total line coverage. The number includes the inline
+      # #[cfg(test)] bodies llvm-cov instruments, so it runs well above the
+      # production-only figure (measured ~62% total / ~46% production in Sep
+      # 2026). Bump it whenever coverage grows.
       - name: Generate backend lcov
-        run: cargo llvm-cov --manifest-path src-tauri/Cargo.toml --lib --lcov --output-path lcov-backend.info --fail-under-lines 25 --remap-path-prefix
+        run: cargo llvm-cov --manifest-path src-tauri/Cargo.toml --lib --lcov --output-path lcov-backend.info --fail-under-lines 55 --remap-path-prefix
       - name: Upload backend coverage to Codecov
         uses: codecov/codecov-action@v5
         with:

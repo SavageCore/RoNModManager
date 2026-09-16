@@ -542,4 +542,335 @@ mod tests {
         assert_eq!(format_speed(1_073_741_824), "1.0 GiB/s");
         assert_eq!(format_speed(2_684_354_560), "2.5 GiB/s");
     }
+
+    mod commands {
+        use super::*;
+        use crate::models::{AppConfig, Profile};
+        use crate::services::manifest::InstallManifest;
+        use crate::test_support::{isolated_root, mock_app_with, TestApp};
+        use tauri::Manager;
+
+        fn staging_root() -> PathBuf {
+            isolated_root().join("data/ronmodmanager-dev/staged")
+        }
+
+        /// Writes a manifest for a staged archive, as the installer would.
+        fn save_manifest(manifest: InstallManifest) {
+            ManifestManager::new(&staging_root())
+                .save_manifest(&manifest)
+                .unwrap();
+        }
+
+        fn manifest(archive: &str, files: Vec<PathBuf>) -> InstallManifest {
+            InstallManifest {
+                source_archive: archive.to_string(),
+                display_name: None,
+                source_url: None,
+                installed_files: files,
+                installed_at: 1,
+                content_hash: None,
+                nexus_file_id: None,
+                installed_version: None,
+            }
+        }
+
+        fn app_with_profile(profile: Profile) -> TestApp {
+            profiles::save_profile(&profile).unwrap();
+            mock_app_with(AppConfig {
+                active_profile: Some(profile.name.clone()),
+                ..AppConfig::default()
+            })
+        }
+
+        fn modpack_json() -> &'static str {
+            r#"{
+                "schemaVersion": 1,
+                "name": "Remote Pack",
+                "version": "3.1.4",
+                "description": "",
+                "author": null,
+                "mods": {},
+                "collections": {
+                    "Favourites": { "default_enabled": true, "mods": ["a.zip"] },
+                    "Maps": { "default_enabled": false, "mods": ["map.zip"] }
+                }
+            }"#
+        }
+
+        #[tokio::test]
+        async fn the_modpack_url_is_persisted() {
+            let app = mock_app_with(AppConfig::default());
+            let state = app.state::<AppState>();
+
+            set_modpack_url(
+                "https://example.com/modpack.json".to_string(),
+                state.clone(),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                state.get_config().unwrap().modpack_url,
+                Some("https://example.com/modpack.json".to_string())
+            );
+        }
+
+        #[tokio::test]
+        async fn remote_collections_are_fetched_and_flattened() {
+            let mut server = mockito::Server::new_async().await;
+            let mock = server
+                .mock("GET", "/modpack.json")
+                .with_status(200)
+                .with_body(modpack_json())
+                .create_async()
+                .await;
+            let app = mock_app_with(AppConfig {
+                modpack_url: Some(server.url()),
+                ..AppConfig::default()
+            });
+
+            let collections = get_modpack_collections(app.state::<AppState>())
+                .await
+                .unwrap();
+
+            mock.assert_async().await;
+            assert!(collections.get("Favourites").unwrap().default_enabled);
+            assert_eq!(
+                collections.get("Maps").unwrap().mods,
+                vec!["map.zip".to_string()]
+            );
+        }
+
+        #[tokio::test]
+        async fn remote_collections_need_a_configured_url() {
+            let app = mock_app_with(AppConfig::default());
+
+            assert!(get_modpack_collections(app.state::<AppState>())
+                .await
+                .is_err());
+        }
+
+        #[tokio::test]
+        async fn building_a_modpack_uses_the_installed_manifests() {
+            let mut profile = Profile::new(
+                "modpack-build".to_string(),
+                vec!["a.zip".to_string(), "b.zip".to_string()],
+            );
+            profile.collections.insert(
+                "Favourites".to_string(),
+                vec!["a.zip".to_string(), "not-installed.zip".to_string()],
+            );
+            profile
+                .collections
+                .insert("Empty".to_string(), vec!["not-installed.zip".to_string()]);
+            profile.enabled_collections = vec!["Favourites".to_string()];
+            profile.tags.insert(
+                "Broken".to_string(),
+                vec!["b.zip".to_string(), "not-installed.zip".to_string()],
+            );
+            profile
+                .broken_mods
+                .insert("a.zip".to_string(), "crashes".to_string());
+            profile
+                .broken_mods
+                .insert("not-installed.zip".to_string(), "gone".to_string());
+            profile.no_world_gen = vec!["b.zip".to_string(), "not-installed.zip".to_string()];
+            let app = app_with_profile(profile);
+
+            let mut a = manifest(
+                "a.zip",
+                vec![
+                    PathBuf::from("/staged/mods/a/Fav_P.pak"),
+                    PathBuf::from("/staged/mods/a/readme.txt"),
+                ],
+            );
+            a.source_url = Some("https://example.com/a.zip?token=secret#frag".to_string());
+            a.content_hash = Some("abc123".to_string());
+            a.nexus_file_id = Some(4242);
+            save_manifest(a);
+            save_manifest(manifest(
+                "b.zip",
+                vec![
+                    PathBuf::from("/staged/mods/b/Map_P.pak"),
+                    PathBuf::from("/staged/mods/b/Map.sav"),
+                ],
+            ));
+            addon_map::write_addon_map(&HashMap::from([(
+                "a.zip".to_string(),
+                vec!["a-addon.zip".to_string()],
+            )]))
+            .unwrap();
+
+            let pack = build_modpack_from_installed(app.state::<AppState>())
+                .await
+                .unwrap();
+
+            assert_eq!(pack.schema_version, 1);
+            assert_eq!(pack.name, "modpack-build ModPack");
+            assert_eq!(pack.version, "0.1.0");
+            assert_eq!(pack.mods.len(), 2);
+            let a_entry = pack.mods.get("a.zip").unwrap();
+            assert!(a_entry.enabled);
+            assert_eq!(a_entry.content_hash, Some("abc123".to_string()));
+            assert_eq!(a_entry.nexus_file_id, Some(4242));
+            // Query strings and fragments must not leak into the export.
+            assert_eq!(
+                a_entry.source_url,
+                Some("https://example.com/a.zip".to_string())
+            );
+            assert_eq!(
+                a_entry.selected_pak_files,
+                Some(vec!["Fav_P.pak".to_string()])
+            );
+            assert_eq!(
+                pack.mods.get("b.zip").unwrap().selected_pak_files,
+                Some(vec!["Map_P.pak".to_string()])
+            );
+
+            // Collections, tags and notes only travel with mods in the pack.
+            assert_eq!(pack.collections.len(), 1);
+            let favourites = pack.collections.get("Favourites").unwrap();
+            assert!(favourites.default_enabled);
+            assert_eq!(favourites.mods, vec!["a.zip".to_string()]);
+            assert_eq!(pack.tags.get("Broken"), Some(&vec!["b.zip".to_string()]));
+            assert_eq!(pack.broken.get("a.zip"), Some(&"crashes".to_string()));
+            assert!(!pack.broken.contains_key("not-installed.zip"));
+            assert_eq!(pack.no_world_gen, vec!["b.zip".to_string()]);
+            assert_eq!(
+                pack.addons.get("a.zip"),
+                Some(&vec!["a-addon.zip".to_string()])
+            );
+        }
+
+        #[tokio::test]
+        async fn building_a_modpack_needs_the_active_profile() {
+            let app = mock_app_with(AppConfig {
+                active_profile: Some("modpack-missing".to_string()),
+                ..AppConfig::default()
+            });
+
+            assert!(build_modpack_from_installed(app.state::<AppState>())
+                .await
+                .is_err());
+        }
+
+        #[tokio::test]
+        async fn applying_modpack_metadata_merges_into_the_active_profile() {
+            let mut profile = Profile::new(
+                "modpack-apply".to_string(),
+                vec!["disabled.zip".to_string(), "kept.zip".to_string()],
+            );
+            profile
+                .tags
+                .insert("Existing".to_string(), vec!["kept.zip".to_string()]);
+            profile
+                .collections
+                .insert("Existing".to_string(), vec!["kept.zip".to_string()]);
+            profile
+                .broken_mods
+                .insert("kept.zip".to_string(), "known".to_string());
+            let app = app_with_profile(profile);
+            let state = app.state::<AppState>();
+            // The app creates the staging tree on first install; the addon map
+            // write below needs it to exist.
+            fs::create_dir_all(staging_root()).unwrap();
+
+            let pack: ModPack = serde_json::from_str(
+                r#"{
+                    "schemaVersion": 1,
+                    "name": "Incoming",
+                    "version": "1.0.0",
+                    "description": "",
+                    "author": null,
+                    "mods": {
+                        "disabled.zip": { "enabled": false, "source_url": null }
+                    },
+                    "collections": {
+                        "Favourites": { "default_enabled": true, "mods": ["kept.zip"] },
+                        "Extra": { "default_enabled": false, "mods": ["new.zip"] }
+                    },
+                    "addons": { "kept.zip": ["kept-addon.zip"] },
+                    "tags": { "Existing": ["kept.zip"], "New": ["new.zip"] },
+                    "broken": { "kept.zip": "", "new.zip": "broken upstream" },
+                    "noWorldGen": ["new.zip"]
+                }"#,
+            )
+            .unwrap();
+
+            apply_modpack_profile_metadata(state.clone(), pack)
+                .await
+                .unwrap();
+
+            let saved = profiles::get_profile("modpack-apply").unwrap().unwrap();
+            // A disabled mod is dropped from the installed set.
+            assert_eq!(saved.installed_mod_names, vec!["kept.zip".to_string()]);
+            // Existing entries are extended without duplicating.
+            assert_eq!(
+                saved.tags.get("Existing"),
+                Some(&vec!["kept.zip".to_string()])
+            );
+            assert_eq!(saved.tags.get("New"), Some(&vec!["new.zip".to_string()]));
+            assert!(saved
+                .enabled_collections
+                .contains(&"Favourites".to_string()));
+            assert!(!saved.enabled_collections.contains(&"Extra".to_string()));
+            assert_eq!(
+                saved.collections.get("Existing"),
+                Some(&vec!["kept.zip".to_string()])
+            );
+            assert_eq!(
+                saved.collections.get("Extra"),
+                Some(&vec!["new.zip".to_string()])
+            );
+            // An existing note wins over an empty incoming one.
+            assert_eq!(
+                saved.broken_mods.get("kept.zip"),
+                Some(&"known".to_string())
+            );
+            assert_eq!(
+                saved.broken_mods.get("new.zip"),
+                Some(&"broken upstream".to_string())
+            );
+            assert_eq!(saved.no_world_gen, vec!["new.zip".to_string()]);
+            assert_eq!(
+                addon_map::read_addon_map().unwrap().get("kept.zip"),
+                Some(&vec!["kept-addon.zip".to_string()])
+            );
+        }
+
+        #[tokio::test]
+        async fn applying_modpack_metadata_needs_an_active_profile() {
+            let app = mock_app_with(AppConfig::default());
+
+            let pack: ModPack = serde_json::from_str(
+                r#"{"schemaVersion":1,"name":"P","version":"1","description":"","author":null,"mods":{},"collections":{}}"#,
+            )
+            .unwrap();
+
+            assert!(
+                apply_modpack_profile_metadata(app.state::<AppState>(), pack)
+                    .await
+                    .is_err()
+            );
+        }
+
+        #[tokio::test]
+        async fn applying_modpack_metadata_rejects_a_missing_profile() {
+            let app = mock_app_with(AppConfig {
+                active_profile: Some("modpack-apply-missing".to_string()),
+                ..AppConfig::default()
+            });
+
+            let pack: ModPack = serde_json::from_str(
+                r#"{"schemaVersion":1,"name":"P","version":"1","description":"","author":null,"mods":{},"collections":{}}"#,
+            )
+            .unwrap();
+
+            assert!(
+                apply_modpack_profile_metadata(app.state::<AppState>(), pack)
+                    .await
+                    .is_err()
+            );
+        }
+    }
 }

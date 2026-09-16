@@ -53,3 +53,41 @@ pub async fn open_modio_login(app: tauri::AppHandle) -> Result<()> {
     });
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::mock_app_with;
+    use tauri::Manager;
+
+    #[tokio::test]
+    async fn auth_status_follows_the_stored_token() {
+        let app = mock_app_with(AppConfig {
+            oauth_token: Some("token".to_string()),
+            ..AppConfig::default()
+        });
+
+        assert!(get_auth_status(app.state::<AppState>()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn logout_clears_the_token() {
+        let app = mock_app_with(AppConfig {
+            oauth_token: Some("token".to_string()),
+            ..AppConfig::default()
+        });
+        let state = app.state::<AppState>();
+
+        logout(state.clone()).await.unwrap();
+
+        assert!(state.get_config().unwrap().oauth_token.is_none());
+        assert!(!get_auth_status(state).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn validation_without_a_token_is_false_and_never_calls_out() {
+        let app = mock_app_with(AppConfig::default());
+
+        assert!(!validate_token(app.state::<AppState>()).await.unwrap());
+    }
+}

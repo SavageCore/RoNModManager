@@ -360,3 +360,124 @@ describe("triggerDownload and fireDeepLink", () => {
     expect(document.querySelector("a")).toBeNull();
   });
 });
+
+describe("gmRequest failure modes", () => {
+  it("accepts a non-string response body", async () => {
+    gmHandler = (opts) =>
+      opts.onload({
+        response: '{"url":"https://dl.example/a.zip"}',
+        status: 200,
+        responseHeaders: "content-type: application/json",
+      });
+    await expect(main.requestGenerateDownloadUrl(26475, "1111")).resolves.toBe(
+      "https://dl.example/a.zip",
+    );
+  });
+
+  it("resolves null when the request errors or times out", async () => {
+    gmHandler = (opts) => opts.onerror();
+    await expect(
+      main.requestGenerateDownloadUrl(26475, "1111"),
+    ).resolves.toBeNull();
+
+    gmHandler = (opts) => opts.ontimeout();
+    await expect(
+      main.scrapeDeepDownloadLink("https://www.nexusmods.com/x"),
+    ).resolves.toBeNull();
+  });
+
+  it("resolves null when no request API is available", async () => {
+    vi.stubGlobal("GM_xmlhttpRequest", undefined);
+    try {
+      await expect(
+        main.requestGenerateDownloadUrl(26475, "1111"),
+      ).resolves.toBeNull();
+    } finally {
+      vi.stubGlobal("GM_xmlhttpRequest", (opts: GmOpts) => gmHandler?.(opts));
+    }
+  });
+});
+
+describe("scrapeDeepDownloadLink raw text fallback", () => {
+  it("reads entity-encoded file JSON the DOM scan cannot see", async () => {
+    respondWithText(
+      `<html><head><meta name="file-data" file="{&quot;downloadUrl&quot;:&quot;https://dl.example/f.zip&quot;}"></head><body>nothing here</body></html>`,
+    );
+    await expect(
+      main.scrapeDeepDownloadLink("https://www.nexusmods.com/x"),
+    ).resolves.toBe("https://dl.example/f.zip");
+  });
+
+  it("ignores embedded JSON without a download URL", async () => {
+    respondWithText(
+      `<html><body><div class="file-block" file="{&quot;id&quot;:5}"></div></body></html>`,
+    );
+    await expect(
+      main.scrapeDeepDownloadLink("https://www.nexusmods.com/x"),
+    ).resolves.toBeNull();
+  });
+});
+
+describe("normalizeDownloadUrl passthrough", () => {
+  it("returns unrelated URLs untouched", async () => {
+    await expect(
+      main.normalizeDownloadUrl("https://example.com/a.zip", "1111"),
+    ).resolves.toBe("https://example.com/a.zip");
+    // A GenerateDownloadUrl address is already final.
+    await expect(
+      main.normalizeDownloadUrl(
+        "https://www.nexusmods.com/Core/Libs/Common/Managers/Downloads?GenerateDownloadUrl",
+        "1111",
+      ),
+    ).resolves.toContain("GenerateDownloadUrl");
+    expect(gmHandler).toBeNull();
+  });
+});
+
+describe("collectFileVariants DOM merge", () => {
+  it("merges live-DOM file data onto the files-tab rows", async () => {
+    respondWithText(FILES_HTML);
+    document.body.innerHTML = `<mod-download-buttons main-file='{"id":26475,"downloadUrl":"https://ab1.nexus-cdn.com/dom.zip","is_primary":true}'></mod-download-buttons>`;
+
+    const variants = await main.collectFileVariants("1234");
+
+    // One row, enriched by the page rather than duplicated.
+    expect(variants).toHaveLength(1);
+    expect(variants[0].fileId).toBe(26475);
+    expect(variants[0].downloadUrl).toBe("https://ab1.nexus-cdn.com/dom.zip");
+    expect(variants[0].isPrimary).toBe(true);
+    // The files tab still supplies the display name.
+    expect(variants[0].prettyName).toBe("Simple Mod Menu");
+  });
+
+  it("keeps the files-tab values when the page offers none", async () => {
+    respondWithText(FILES_HTML);
+    document.body.innerHTML = `<mod-download-buttons main-file='{"id":26475}'></mod-download-buttons>`;
+
+    const variants = await main.collectFileVariants("1234");
+
+    expect(variants).toHaveLength(1);
+    expect(variants[0].downloadUrl).toBeUndefined();
+    expect(variants[0].prettyName).toBe("Simple Mod Menu");
+  });
+});
+
+describe("fetchFilesTabVariants parse failure", () => {
+  it("returns [] when the tab HTML cannot be parsed", async () => {
+    const realParser = globalThis.DOMParser;
+    respondWithText("<html><body>broken</body></html>");
+    vi.stubGlobal(
+      "DOMParser",
+      class {
+        parseFromString() {
+          throw new Error("unparseable");
+        }
+      },
+    );
+    try {
+      await expect(main.fetchFilesTabVariants("1234")).resolves.toEqual([]);
+    } finally {
+      vi.stubGlobal("DOMParser", realParser);
+    }
+  });
+});

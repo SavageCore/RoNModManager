@@ -351,4 +351,361 @@ mod tests {
         let (_dir, state) = state_with_config(AppConfig::default());
         assert_eq!(resolve_sync_details(&state).unwrap(), (None, None));
     }
+
+    mod commands {
+        use super::*;
+        use crate::services::profiles as profile_service;
+        use crate::test_support::{isolated_root, mock_app_with, TestApp};
+        use tauri::Manager;
+
+        /// A profile stored in the isolated app-data dir, plus an app whose
+        /// active profile points at it.
+        fn app_with_profile(name: &str) -> TestApp {
+            profile_service::save_profile(&Profile::new(name.to_string(), Vec::new())).unwrap();
+            mock_app_with(AppConfig {
+                active_profile: Some(name.to_string()),
+                ..AppConfig::default()
+            })
+        }
+
+        #[tokio::test]
+        async fn listing_profiles_creates_the_default_and_activates_it() {
+            let app = mock_app_with(AppConfig::default());
+            let state = app.state::<AppState>();
+
+            let profiles = list_profiles(state.clone()).await.unwrap();
+
+            assert!(profiles.iter().any(|p| p.name == "Default"));
+            assert_eq!(
+                state.get_config().unwrap().active_profile,
+                Some("Default".to_string())
+            );
+        }
+
+        #[tokio::test]
+        async fn listing_profiles_switches_away_from_a_stale_active_profile() {
+            let app = mock_app_with(AppConfig {
+                active_profile: Some("deleted-profile".to_string()),
+                ..AppConfig::default()
+            });
+            let state = app.state::<AppState>();
+
+            list_profiles(state.clone()).await.unwrap();
+
+            assert_eq!(
+                state.get_config().unwrap().active_profile,
+                Some("Default".to_string())
+            );
+        }
+
+        #[tokio::test]
+        async fn profiles_are_read_and_written_by_name() {
+            isolated_root();
+
+            assert!(get_profile("prof-round-trip".to_string())
+                .await
+                .unwrap()
+                .is_none());
+
+            let saved = save_profile(
+                "prof-round-trip".to_string(),
+                Some("for testing".to_string()),
+                vec!["a.zip".to_string()],
+            )
+            .await
+            .unwrap();
+            assert_eq!(saved.description, Some("for testing".to_string()));
+
+            let loaded = get_profile("prof-round-trip".to_string())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(loaded.installed_mod_names, vec!["a.zip".to_string()]);
+
+            delete_profile("prof-round-trip".to_string()).await.unwrap();
+            assert!(get_profile("prof-round-trip".to_string())
+                .await
+                .unwrap()
+                .is_none());
+        }
+
+        #[tokio::test]
+        async fn saving_over_a_profile_keeps_its_collections_and_tags() {
+            let mut existing = Profile::new("prof-keep".to_string(), Vec::new());
+            existing.enabled_collections = vec!["Favourites".to_string()];
+            existing
+                .collections
+                .insert("Favourites".to_string(), vec!["a.zip".to_string()]);
+            existing
+                .tags
+                .insert("Broken".to_string(), vec!["b.zip".to_string()]);
+            existing
+                .collection_colors
+                .insert("Favourites".to_string(), "#fff".to_string());
+            existing
+                .broken_mods
+                .insert("b.zip".to_string(), "note".to_string());
+            existing.no_world_gen = vec!["map.zip".to_string()];
+            existing.sync_remote_host = Some("deploy@example.com".to_string());
+            let created_at = existing.created_at.clone();
+            profile_service::save_profile(&existing).unwrap();
+
+            let saved = save_profile("prof-keep".to_string(), None, vec!["c.zip".to_string()])
+                .await
+                .unwrap();
+
+            assert_eq!(saved.enabled_collections, vec!["Favourites".to_string()]);
+            assert_eq!(
+                saved.collections.get("Favourites"),
+                Some(&vec!["a.zip".to_string()])
+            );
+            assert_eq!(saved.tags.get("Broken"), Some(&vec!["b.zip".to_string()]));
+            assert_eq!(
+                saved.collection_colors.get("Favourites"),
+                Some(&"#fff".to_string())
+            );
+            assert_eq!(saved.broken_mods.get("b.zip"), Some(&"note".to_string()));
+            assert_eq!(saved.no_world_gen, vec!["map.zip".to_string()]);
+            assert_eq!(saved.created_at, created_at);
+            assert_eq!(saved.installed_mod_names, vec!["c.zip".to_string()]);
+        }
+
+        #[tokio::test]
+        async fn renaming_a_profile_moves_the_file_and_the_active_pointer() {
+            let app = app_with_profile("prof-rename-old");
+            let state = app.state::<AppState>();
+
+            let renamed = rename_profile(
+                "  prof-rename-old  ".to_string(),
+                "  prof-rename-new  ".to_string(),
+                Some("renamed".to_string()),
+                vec!["a.zip".to_string()],
+                state.clone(),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(renamed.name, "prof-rename-new");
+            assert!(profile_service::get_profile("prof-rename-old")
+                .unwrap()
+                .is_none());
+            assert!(profile_service::get_profile("prof-rename-new")
+                .unwrap()
+                .is_some());
+            assert_eq!(
+                state.get_config().unwrap().active_profile,
+                Some("prof-rename-new".to_string())
+            );
+        }
+
+        #[tokio::test]
+        async fn renaming_rejects_bad_input() {
+            let app = app_with_profile("prof-rename-guard");
+            let state = app.state::<AppState>();
+            profile_service::save_profile(&Profile::new(
+                "prof-rename-taken".to_string(),
+                Vec::new(),
+            ))
+            .unwrap();
+
+            let same = rename_profile(
+                "prof-rename-guard".to_string(),
+                "prof-rename-guard".to_string(),
+                None,
+                Vec::new(),
+                state.clone(),
+            )
+            .await;
+            assert!(same.unwrap_err().to_string().contains("must be different"));
+
+            let empty = rename_profile(
+                "  ".to_string(),
+                "somewhere".to_string(),
+                None,
+                Vec::new(),
+                state.clone(),
+            )
+            .await;
+            assert!(empty.unwrap_err().to_string().contains("is required"));
+
+            let taken = rename_profile(
+                "prof-rename-guard".to_string(),
+                "prof-rename-taken".to_string(),
+                None,
+                Vec::new(),
+                state.clone(),
+            )
+            .await;
+            assert!(taken.unwrap_err().to_string().contains("already exists"));
+
+            let missing = rename_profile(
+                "nope".to_string(),
+                "prof-rename-fresh".to_string(),
+                None,
+                Vec::new(),
+                state,
+            )
+            .await;
+            assert!(missing.unwrap_err().to_string().contains("not found"));
+        }
+
+        #[tokio::test]
+        async fn duplicating_a_profile_copies_it_under_a_new_name() {
+            let mut source = Profile::new("prof-dup-src".to_string(), vec!["a.zip".to_string()]);
+            source
+                .collections
+                .insert("Favourites".to_string(), vec!["a.zip".to_string()]);
+            profile_service::save_profile(&source).unwrap();
+
+            let copy = duplicate_profile("prof-dup-src".to_string(), "prof-dup-copy".to_string())
+                .await
+                .unwrap();
+
+            assert_eq!(copy.name, "prof-dup-copy");
+            assert_eq!(copy.installed_mod_names, vec!["a.zip".to_string()]);
+            assert!(copy.collections.contains_key("Favourites"));
+            assert!(profile_service::get_profile("prof-dup-src")
+                .unwrap()
+                .is_some());
+        }
+
+        #[tokio::test]
+        async fn duplicating_rejects_bad_input() {
+            profile_service::save_profile(&Profile::new("prof-dup-guard".to_string(), Vec::new()))
+                .unwrap();
+            profile_service::save_profile(&Profile::new("prof-dup-taken".to_string(), Vec::new()))
+                .unwrap();
+
+            let same = duplicate_profile("a".to_string(), "a".to_string()).await;
+            assert!(same.unwrap_err().to_string().contains("must be different"));
+
+            let empty = duplicate_profile("a".to_string(), "  ".to_string()).await;
+            assert!(empty.unwrap_err().to_string().contains("is required"));
+
+            let taken =
+                duplicate_profile("prof-dup-guard".to_string(), "prof-dup-taken".to_string()).await;
+            assert!(taken.unwrap_err().to_string().contains("already exists"));
+
+            let missing = duplicate_profile("nope".to_string(), "prof-dup-fresh".to_string()).await;
+            assert!(missing.unwrap_err().to_string().contains("not found"));
+        }
+
+        #[tokio::test]
+        async fn modpack_meta_is_read_from_and_written_to_the_active_profile() {
+            let app = app_with_profile("prof-meta");
+            let state = app.state::<AppState>();
+
+            assert!(get_modpack_meta(state.clone()).await.unwrap().is_none());
+
+            set_modpack_meta(
+                "My Pack".to_string(),
+                "2.0.0".to_string(),
+                Some("notes".to_string()),
+                Some("SavageCore".to_string()),
+                state.clone(),
+            )
+            .await
+            .unwrap();
+
+            let meta = get_modpack_meta(state).await.unwrap().unwrap();
+            assert_eq!(meta.name, "My Pack");
+            assert_eq!(meta.version, "2.0.0");
+            assert_eq!(meta.description, "notes");
+            assert_eq!(meta.author, Some("SavageCore".to_string()));
+        }
+
+        #[tokio::test]
+        async fn modpack_meta_reads_are_safe_without_an_active_profile() {
+            let app = mock_app_with(AppConfig::default());
+
+            assert!(get_modpack_meta(app.state::<AppState>())
+                .await
+                .unwrap()
+                .is_none());
+            assert!(set_modpack_meta(
+                "pack".to_string(),
+                "1.0.0".to_string(),
+                None,
+                None,
+                app.state::<AppState>(),
+            )
+            .await
+            .is_err());
+        }
+
+        #[tokio::test]
+        async fn sync_details_prefer_the_profile_then_fall_back_to_the_config() {
+            let app = app_with_profile("prof-sync");
+            let state = app.state::<AppState>();
+            state
+                .update_config(|config| {
+                    config.sync_remote_host = Some("global@example.com".to_string());
+                    config.sync_remote_path = Some("/global".to_string());
+                })
+                .unwrap();
+
+            let inherited = get_sync_details(state.clone()).await.unwrap();
+            assert_eq!(inherited.host, Some("global@example.com".to_string()));
+            assert_eq!(inherited.path, Some("/global".to_string()));
+
+            set_sync_details(
+                Some("  deploy@example.com ".to_string()),
+                Some("/srv/mods".to_string()),
+                state.clone(),
+            )
+            .await
+            .unwrap();
+
+            let overridden = get_sync_details(state.clone()).await.unwrap();
+            assert_eq!(overridden.host, Some("deploy@example.com".to_string()));
+            assert_eq!(overridden.path, Some("/srv/mods".to_string()));
+
+            // Clearing the input falls back to the global config again.
+            set_sync_details(Some("   ".to_string()), None, state.clone())
+                .await
+                .unwrap();
+            let cleared = get_sync_details(state).await.unwrap();
+            assert_eq!(cleared.host, Some("global@example.com".to_string()));
+            assert_eq!(cleared.path, Some("/global".to_string()));
+        }
+
+        #[tokio::test]
+        async fn sync_details_writes_require_an_active_profile() {
+            let app = mock_app_with(AppConfig::default());
+
+            assert!(set_sync_details(None, None, app.state::<AppState>())
+                .await
+                .is_err());
+        }
+
+        #[tokio::test]
+        async fn applying_a_profile_activates_it() {
+            profile_service::save_profile(&Profile::new(
+                "prof-apply".to_string(),
+                vec!["a.zip".to_string()],
+            ))
+            .unwrap();
+            let app = mock_app_with(AppConfig::default());
+            let state = app.state::<AppState>();
+
+            let applied = apply_profile("prof-apply".to_string(), state.clone())
+                .await
+                .unwrap();
+
+            assert_eq!(applied.name, "prof-apply");
+            assert_eq!(
+                state.get_config().unwrap().active_profile,
+                Some("prof-apply".to_string())
+            );
+        }
+
+        #[tokio::test]
+        async fn applying_an_unknown_profile_is_rejected() {
+            let app = mock_app_with(AppConfig::default());
+
+            assert!(apply_profile("nope".to_string(), app.state::<AppState>())
+                .await
+                .is_err());
+        }
+    }
 }

@@ -35,3 +35,57 @@ impl From<AppError> for String {
         value.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn variants_display_with_a_category_prefix() {
+        let io = AppError::from(std::io::Error::new(std::io::ErrorKind::NotFound, "gone"));
+        assert_eq!(io.to_string(), "I/O error: gone");
+
+        let json = AppError::from(serde_json::from_str::<u8>("nope").unwrap_err());
+        assert!(json.to_string().starts_with("JSON error: "));
+
+        assert_eq!(
+            AppError::Validation("bad input".to_string()).to_string(),
+            "Validation error: bad input"
+        );
+        assert_eq!(
+            AppError::NotFound("mod.zip".to_string()).to_string(),
+            "Not found: mod.zip"
+        );
+        assert_eq!(
+            AppError::Unsupported("no sftp".to_string()).to_string(),
+            "Unsupported operation: no sftp"
+        );
+        assert_eq!(
+            AppError::BlockedWindowsOnlyDll(vec!["native.dll".to_string()]).to_string(),
+            "Windows-only native mod: [\"native.dll\"]"
+        );
+    }
+
+    #[tokio::test]
+    async fn http_errors_display_with_the_http_prefix() {
+        let err = reqwest::Client::new()
+            .get("http://127.0.0.1:1/")
+            .send()
+            .await
+            .expect_err("connecting to a closed port must fail");
+        assert!(AppError::from(err).to_string().starts_with("HTTP error: "));
+    }
+
+    #[test]
+    fn errors_serialize_as_their_display_string() {
+        let err = AppError::NotFound("mod.zip".to_string());
+        assert_eq!(
+            serde_json::to_string(&err).unwrap(),
+            "\"Not found: mod.zip\""
+        );
+
+        // Commands return `String` errors through this conversion.
+        let message: String = err.into();
+        assert_eq!(message, "Not found: mod.zip");
+    }
+}

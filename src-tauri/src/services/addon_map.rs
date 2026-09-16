@@ -36,3 +36,54 @@ pub fn write_addon_map(map: &AddonMap) -> Result<(), AppError> {
     fs::write(&path, data).map_err(AppError::Io)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::isolated_root;
+
+    #[test]
+    fn addon_map_path_lives_under_the_staging_root() {
+        isolated_root();
+        assert_eq!(
+            get_addon_map_path().unwrap(),
+            crate::state::app_data_root()
+                .unwrap()
+                .join("staged")
+                .join("addon_map.json")
+        );
+    }
+
+    #[test]
+    fn write_then_read_round_trips_and_reports_malformed_json() {
+        isolated_root();
+        let path = get_addon_map_path().unwrap();
+        // write_addon_map does not create the staging root; callers stage first.
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+
+        // An empty map is stored as an empty JSON object, not left absent.
+        write_addon_map(&HashMap::new()).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{}");
+        assert!(read_addon_map().unwrap().is_empty());
+
+        let map = HashMap::from([
+            (
+                "cov-parent.zip".to_string(),
+                vec!["cov-addon-a.zip".to_string(), "cov-addon-b.zip".to_string()],
+            ),
+            ("cov-solo.zip".to_string(), Vec::new()),
+        ]);
+        write_addon_map(&map).unwrap();
+        assert_eq!(read_addon_map().unwrap(), map);
+
+        // Malformed JSON is reported, not silently treated as an empty map.
+        fs::write(&path, "{ not a map").unwrap();
+        let err = read_addon_map().unwrap_err();
+        assert!(matches!(err, AppError::Validation(_)), "got {err:?}");
+        assert!(err.to_string().contains("Failed to parse addon map"));
+
+        // A missing file reads as an empty map.
+        fs::remove_file(&path).unwrap();
+        assert!(read_addon_map().unwrap().is_empty());
+    }
+}

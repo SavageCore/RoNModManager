@@ -708,4 +708,185 @@ mod tests {
             None
         );
     }
+
+    mod commands {
+        use super::*;
+        use crate::models::AppConfig;
+        use crate::test_support::{isolated_root, mock_app_with, scratch_dir};
+        use tauri::Manager;
+
+        /// Registers a Ready or Not install inside the isolated Steam tree and
+        /// returns its library root, so `steam::detect_game_path` finds it.
+        fn install_ready_or_not() -> PathBuf {
+            let library = isolated_root().join("fake-library");
+            let game = library.join("steamapps/common/Ready Or Not");
+            fs::create_dir_all(&game).unwrap();
+            fs::write(
+                library.join("steamapps/appmanifest_1144200.acf"),
+                b"\"AppState\" {}",
+            )
+            .unwrap();
+            library
+        }
+
+        /// `detect_game_path` only scans known Steam locations, so the fake
+        /// library has to be registered in libraryfolders.vdf.
+        fn register_fake_library(library: &Path) {
+            let steam = isolated_root().join(".steam/steam");
+            fs::create_dir_all(steam.join("steamapps")).unwrap();
+            fs::write(
+                steam.join("steamapps/libraryfolders.vdf"),
+                format!(
+                    "\"libraryfolders\"\n{{\n    \"1\"\n    {{\n        \"path\"\t\t\"{}\"\n    }}\n}}\n",
+                    library.display()
+                ),
+            )
+            .unwrap();
+        }
+
+        fn unregister_fake_library() {
+            let _ =
+                fs::remove_file(isolated_root().join(".steam/steam/steamapps/libraryfolders.vdf"));
+        }
+
+        #[tokio::test]
+        async fn detecting_the_game_path_reports_none_until_one_is_registered() {
+            let app = mock_app_with(AppConfig::default());
+            let state = app.state::<AppState>();
+            unregister_fake_library();
+
+            assert_eq!(detect_game_path(state.clone()).await.unwrap(), None);
+
+            let library = install_ready_or_not();
+            register_fake_library(&library);
+
+            let detected = detect_game_path(state).await.unwrap().unwrap();
+            assert!(detected.ends_with("steamapps/common/Ready Or Not"));
+
+            // Leave the tree as we found it so the other tests stay isolated.
+            unregister_fake_library();
+        }
+
+        #[tokio::test]
+        async fn setting_the_game_path_validates_the_directory() {
+            let app = mock_app_with(AppConfig::default());
+            let state = app.state::<AppState>();
+
+            let missing = set_game_path(
+                isolated_root().join("nope").to_string_lossy().to_string(),
+                state.clone(),
+            )
+            .await;
+            assert!(missing.unwrap_err().contains("does not exist"));
+
+            let game = scratch_dir("game-path");
+            set_game_path(game.path().to_string_lossy().to_string(), state.clone())
+                .await
+                .unwrap();
+
+            assert_eq!(
+                state.get_config().unwrap().game_path,
+                Some(game.path().to_path_buf())
+            );
+        }
+
+        #[tokio::test]
+        async fn syncing_links_requires_a_configured_game_path() {
+            let app = mock_app_with(AppConfig::default());
+            let state = app.state::<AppState>();
+
+            assert!(sync_mod_links(state.clone(), vec!["a.zip".to_string()])
+                .await
+                .is_err());
+            assert!(ensure_game_stock(state.clone()).await.is_err());
+            assert!(launch_vanilla_game(state).await.is_err());
+        }
+
+        #[tokio::test]
+        async fn syncing_links_creates_the_live_folders() {
+            let game = scratch_dir("game-sync");
+            let app = mock_app_with(AppConfig {
+                game_path: Some(game.path().to_path_buf()),
+                ..AppConfig::default()
+            });
+            let state = app.state::<AppState>();
+
+            sync_mod_links(state.clone(), vec!["not-installed.zip".to_string()])
+                .await
+                .unwrap();
+            assert!(steam::get_mods_path(game.path()).is_dir());
+
+            // An empty enabled set returns the folder to stock.
+            ensure_game_stock(state).await.unwrap();
+            assert!(steam::get_mods_path(game.path()).is_dir());
+        }
+
+        #[tokio::test]
+        async fn game_running_is_delegated_to_the_watcher() {
+            assert_eq!(is_game_running(), game_watch::is_game_running());
+        }
+
+        #[tokio::test]
+        async fn launch_option_status_reports_platform_support() {
+            let status = ue4ss_launch_option_status();
+
+            assert_eq!(status.supported, cfg!(target_os = "linux"));
+            // No Steam userdata in the isolated tree, so nothing is set yet.
+            assert!(!status.already_set);
+        }
+
+        #[tokio::test]
+        async fn setting_the_launch_option_without_steam_userdata_fails() {
+            let result = set_ue4ss_launch_option();
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn exit_cleanup_is_suppressed_on_request() {
+            let app = mock_app_with(AppConfig {
+                link_on_launch_only: true,
+                ..AppConfig::default()
+            });
+            let state = app.state::<AppState>();
+
+            assert!(!state
+                .suppress_exit_cleanup
+                .load(std::sync::atomic::Ordering::Relaxed));
+
+            suppress_exit_cleanup(state.clone());
+
+            assert!(state
+                .suppress_exit_cleanup
+                .load(std::sync::atomic::Ordering::Relaxed));
+        }
+
+        #[tokio::test]
+        async fn exit_cleanup_restores_stock_when_link_on_launch_only_is_on() {
+            let game = scratch_dir("game-exit");
+            let app = mock_app_with(AppConfig {
+                game_path: Some(game.path().to_path_buf()),
+                link_on_launch_only: true,
+                ..AppConfig::default()
+            });
+            let state = app.state::<AppState>();
+
+            cleanup_to_stock_on_exit(&state);
+
+            // Nothing to assert beyond it not panicking, but the folder must
+            // have been created by the stock sync pass.
+            assert!(steam::get_mods_path(game.path()).is_dir());
+
+            // Suppressed cleanup leaves the tree untouched.
+            suppress_exit_cleanup(state.clone());
+            cleanup_to_stock_on_exit(&state);
+        }
+
+        #[tokio::test]
+        async fn exit_cleanup_does_nothing_without_link_on_launch_only() {
+            let app = mock_app_with(AppConfig::default());
+            let state = app.state::<AppState>();
+
+            cleanup_to_stock_on_exit(&state);
+        }
+    }
 }

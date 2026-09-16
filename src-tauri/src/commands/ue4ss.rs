@@ -77,3 +77,181 @@ pub async fn set_ue4ss_settings(
         stale_shims_removed,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::AppConfig;
+    use crate::test_support::{mock_app_with, scratch_dir};
+    use tauri::Manager;
+
+    fn update() -> Ue4ssSettingsUpdate {
+        Ue4ssSettingsUpdate {
+            use_object_array_cache: false,
+            engine_major_version: "5.3".to_string(),
+            engine_minor_version: "2".to_string(),
+            graphics_api: "dx11".to_string(),
+            hook_begin_play: false,
+            console_mode: Ue4ssConsoleMode::None,
+        }
+    }
+
+    /// A game tree with a hand-installed ini the commands can patch in place.
+    fn game_dir_with_ini(contents: &str) -> tempfile::TempDir {
+        let dir = scratch_dir("ue4ss-game");
+        let ini = dir
+            .path()
+            .join("ReadyOrNot/Binaries/Win64/ue4ss/UE4SS-settings.ini");
+        std::fs::create_dir_all(ini.parent().unwrap()).unwrap();
+        std::fs::write(ini, contents).unwrap();
+        dir
+    }
+
+    #[tokio::test]
+    async fn settings_default_to_the_modding_guide_without_a_game_path() {
+        let app = mock_app_with(AppConfig::default());
+
+        let settings = get_ue4ss_settings(app.state::<AppState>()).await.unwrap();
+
+        assert!(!settings.settings_present);
+        assert_eq!(settings.graphics_api, ue4ss::GUIDE_GRAPHICS_API);
+        assert_eq!(
+            settings.engine_major_version,
+            ue4ss::GUIDE_MAJOR_VERSION.to_string()
+        );
+        assert_eq!(settings.console_mode, Ue4ssConsoleMode::Gui);
+    }
+
+    #[tokio::test]
+    async fn missing_runtime_reports_empty_stock_settings() {
+        let game = scratch_dir("ue4ss-empty");
+        let app = mock_app_with(AppConfig {
+            game_path: Some(game.path().to_path_buf()),
+            ..AppConfig::default()
+        });
+
+        let settings = get_ue4ss_settings(app.state::<AppState>()).await.unwrap();
+
+        assert!(!settings.settings_present);
+        assert_eq!(settings.graphics_api, "opengl");
+        assert!(settings.use_object_array_cache);
+    }
+
+    #[tokio::test]
+    async fn writing_settings_requires_a_game_path() {
+        let app = mock_app_with(AppConfig::default());
+
+        assert!(set_ue4ss_settings(app.state::<AppState>(), update())
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn writing_settings_rejects_an_unknown_graphics_api() {
+        let game = scratch_dir("ue4ss-bad-api");
+        let app = mock_app_with(AppConfig {
+            game_path: Some(game.path().to_path_buf()),
+            ..AppConfig::default()
+        });
+
+        let result = set_ue4ss_settings(
+            app.state::<AppState>(),
+            Ue4ssSettingsUpdate {
+                graphics_api: "directx".to_string(),
+                ..update()
+            },
+        )
+        .await;
+
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown GraphicsAPI"));
+    }
+
+    #[tokio::test]
+    async fn writing_settings_without_a_runtime_is_rejected() {
+        let game = scratch_dir("ue4ss-no-ini");
+        let app = mock_app_with(AppConfig {
+            game_path: Some(game.path().to_path_buf()),
+            ..AppConfig::default()
+        });
+
+        assert!(set_ue4ss_settings(app.state::<AppState>(), update())
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn settings_round_trip_through_the_ini() {
+        let game = game_dir_with_ini("");
+        let app = mock_app_with(AppConfig {
+            game_path: Some(game.path().to_path_buf()),
+            ..AppConfig::default()
+        });
+        let state = app.state::<AppState>();
+
+        let first = set_ue4ss_settings(state.clone(), update()).await.unwrap();
+        assert!(first.changed);
+        assert_eq!(first.stale_shims_removed, 0);
+
+        let settings = get_ue4ss_settings(state.clone()).await.unwrap();
+        assert!(settings.settings_present);
+        assert_eq!(settings.graphics_api, "dx11");
+        assert_eq!(settings.engine_major_version, "5.3");
+        assert_eq!(settings.engine_minor_version, "2");
+        assert_eq!(settings.console_mode, Ue4ssConsoleMode::None);
+        assert!(!settings.use_object_array_cache);
+        assert!(!settings.hook_begin_play);
+
+        // Re-applying the same values writes nothing.
+        let second = set_ue4ss_settings(state, update()).await.unwrap();
+        assert!(!second.changed);
+    }
+
+    #[tokio::test]
+    async fn engine_versions_are_trimmed_and_the_api_lower_cased() {
+        let game = game_dir_with_ini("");
+        let app = mock_app_with(AppConfig {
+            game_path: Some(game.path().to_path_buf()),
+            ..AppConfig::default()
+        });
+        let state = app.state::<AppState>();
+
+        set_ue4ss_settings(
+            state.clone(),
+            Ue4ssSettingsUpdate {
+                engine_major_version: "  5.4 ".to_string(),
+                engine_minor_version: " 1 ".to_string(),
+                graphics_api: "Vulkan".to_string(),
+                ..update()
+            },
+        )
+        .await
+        .unwrap();
+
+        let settings = get_ue4ss_settings(state).await.unwrap();
+        assert_eq!(settings.engine_major_version, "5.4");
+        assert_eq!(settings.engine_minor_version, "1");
+        assert_eq!(settings.graphics_api, "vulkan");
+    }
+
+    #[tokio::test]
+    async fn stale_shims_are_swept_when_settings_are_written() {
+        let game = game_dir_with_ini("");
+        let shim = game.path().join("ReadyOrNot/Binaries/Win64/xinput1_3.dll");
+        std::fs::create_dir_all(shim.parent().unwrap()).unwrap();
+        std::fs::write(&shim, b"stale").unwrap();
+        let app = mock_app_with(AppConfig {
+            game_path: Some(game.path().to_path_buf()),
+            ..AppConfig::default()
+        });
+
+        let result = set_ue4ss_settings(app.state::<AppState>(), update())
+            .await
+            .unwrap();
+
+        assert_eq!(result.stale_shims_removed, 1);
+        assert!(!shim.exists());
+    }
+}

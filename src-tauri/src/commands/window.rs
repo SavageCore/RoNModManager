@@ -103,3 +103,127 @@ pub async fn get_window_state(state: State<'_, AppState>) -> Result<WindowState,
         y: config.window_y,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::AppConfig;
+    use crate::test_support::{mock_app_with, test_state};
+    use std::sync::Mutex;
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::Manager;
+
+    #[test]
+    fn startup_urls_are_handed_out_once() {
+        let app = mock_builder()
+            .manage(StartupUrls(Mutex::new(Some(vec![
+                "ronmodmanager://mod/1".to_string()
+            ]))))
+            .build(mock_context(noop_assets()))
+            .unwrap();
+        let state = app.state::<StartupUrls>();
+
+        assert_eq!(
+            get_startup_urls(state.clone()),
+            vec!["ronmodmanager://mod/1".to_string()]
+        );
+        // Taken, so a second read must not replay the same launch.
+        assert!(get_startup_urls(state).is_empty());
+    }
+
+    #[test]
+    fn startup_urls_default_to_empty_when_never_set() {
+        let app = mock_builder()
+            .manage(StartupUrls(Mutex::new(None)))
+            .build(mock_context(noop_assets()))
+            .unwrap();
+
+        assert!(get_startup_urls(app.state::<StartupUrls>()).is_empty());
+    }
+
+    #[test]
+    fn screenshot_env_vars_are_reported() {
+        assert!(!is_screenshot_mode());
+        assert!(!is_wizard_screenshot_mode());
+        assert_eq!(screenshot_theme(), None);
+
+        std::env::set_var("SCREENSHOT_MODE", "1");
+        std::env::set_var("WIZARD_SCREENSHOT", "1");
+        std::env::set_var("SCREENSHOT_THEME", "dark");
+        assert!(is_screenshot_mode());
+        assert!(is_wizard_screenshot_mode());
+        assert_eq!(screenshot_theme(), Some("dark".to_string()));
+
+        std::env::remove_var("SCREENSHOT_MODE");
+        std::env::remove_var("WIZARD_SCREENSHOT");
+        std::env::remove_var("SCREENSHOT_THEME");
+        assert!(!is_screenshot_mode());
+        assert!(!is_wizard_screenshot_mode());
+        assert_eq!(screenshot_theme(), None);
+    }
+
+    #[test]
+    fn geometry_management_defers_to_a_native_wayland_compositor() {
+        std::env::remove_var("WAYLAND_DISPLAY");
+        std::env::remove_var("GDK_BACKEND");
+        assert!(manage_window_geometry());
+
+        std::env::set_var("WAYLAND_DISPLAY", "wayland-0");
+        assert!(!manage_window_geometry());
+
+        // XWayland gives us real position control, so geometry is managed again.
+        std::env::set_var("GDK_BACKEND", "x11");
+        assert!(manage_window_geometry());
+
+        std::env::set_var("GDK_BACKEND", "wayland");
+        assert!(!manage_window_geometry());
+
+        std::env::remove_var("WAYLAND_DISPLAY");
+        std::env::remove_var("GDK_BACKEND");
+    }
+
+    #[tokio::test]
+    async fn window_state_round_trips_partial_updates() {
+        let app = mock_app_with(AppConfig::default());
+        let state = app.state::<AppState>();
+
+        save_window_state(
+            state.clone(),
+            Some(1280.0),
+            Some(720.0),
+            Some(10.0),
+            Some(20.0),
+        )
+        .await
+        .unwrap();
+
+        let saved = get_window_state(state.clone()).await.unwrap();
+        assert_eq!(saved.width, Some(1280.0));
+        assert_eq!(saved.height, Some(720.0));
+        assert_eq!(saved.x, Some(10.0));
+        assert_eq!(saved.y, Some(20.0));
+
+        // A resize must not wipe the recorded position.
+        save_window_state(state.clone(), Some(800.0), None, None, None)
+            .await
+            .unwrap();
+
+        let resized = get_window_state(state).await.unwrap();
+        assert_eq!(resized.width, Some(800.0));
+        assert_eq!(resized.x, Some(10.0));
+        assert_eq!(resized.y, Some(20.0));
+    }
+
+    #[tokio::test]
+    async fn window_state_reads_the_persisted_config() {
+        let state = test_state(AppConfig {
+            window_width: Some(1024.0),
+            ..AppConfig::default()
+        });
+        let app = crate::test_support::mock_app_with_state(state);
+        let window_state = get_window_state(app.state::<AppState>()).await.unwrap();
+
+        assert_eq!(window_state.width, Some(1024.0));
+        assert_eq!(window_state.height, None);
+    }
+}

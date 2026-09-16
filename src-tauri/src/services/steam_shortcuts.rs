@@ -733,4 +733,130 @@ mod tests {
             .launch_options
             .contains("--profile \"Foo\" --launch --hide"));
     }
+
+    mod filesystem {
+        use super::*;
+        use crate::test_support::isolated_root;
+        use std::fs;
+        use std::sync::{Mutex, MutexGuard};
+
+        /// The Steam userdata tree is shared process state, so the file-touching
+        /// tests below serialise on this and start from a clean file.
+        static SHORTCUTS_LOCK: Mutex<()> = Mutex::new(());
+
+        fn shortcuts_path() -> PathBuf {
+            isolated_root().join(".steam/steam/userdata/1/config/shortcuts.vdf")
+        }
+
+        fn reset_userdata() -> (MutexGuard<'static, ()>, PathBuf) {
+            let guard = SHORTCUTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let path = shortcuts_path();
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, b"").unwrap();
+            (guard, path)
+        }
+
+        fn store_entry(app_name: &str) {
+            let mut map: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+            let mut fields = BTreeMap::new();
+            fields.insert("AppName".to_string(), app_name.to_string());
+            fields.insert("Exe".to_string(), "/usr/bin/ronmodmanager".to_string());
+            map.insert("0".to_string(), fields);
+            write_host_file(&shortcuts_path(), &serialize_shortcuts(&map)).unwrap();
+        }
+
+        #[test]
+        fn shortcut_targets_point_at_this_binary() {
+            isolated_root();
+
+            let (exe, start_dir, entry) = shortcut_targets("Some \"Profile\"", false).unwrap();
+
+            assert_eq!(entry.app_name, "RoN - Some Profile");
+            assert!(entry.launch_options.contains("--launch --hide"));
+            assert!(!entry.launch_options.contains("--vanilla"));
+            assert_eq!(entry.exe, exe);
+            assert!(exe.contains("ronmodmanager"));
+            assert!(!start_dir.is_empty());
+
+            let (_, _, vanilla) = shortcut_targets("Some Profile", true).unwrap();
+            assert!(vanilla.launch_options.contains("--vanilla"));
+        }
+
+        #[test]
+        fn host_files_round_trip_and_missing_files_read_as_none() {
+            isolated_root();
+            let dir = isolated_root().join("host-files");
+            fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("shortcuts.vdf");
+
+            assert!(read_host_file(&path).unwrap().is_none());
+
+            write_host_file(&path, b"payload").unwrap();
+            assert_eq!(read_host_file(&path).unwrap().unwrap(), b"payload");
+        }
+
+        #[test]
+        fn steam_status_is_false_without_a_matching_entry() {
+            let (_guard, _path) = reset_userdata();
+
+            assert!(!steam_status("Unknown Profile").unwrap());
+
+            store_entry("RoN - Known Profile");
+            assert!(steam_status("Known Profile").unwrap());
+            assert!(!steam_status("Someone Else").unwrap());
+        }
+
+        #[test]
+        fn profiles_are_added_to_and_removed_from_steam_shortcuts() {
+            let (_guard, path) = reset_userdata();
+            if is_steam_running() {
+                // Steam rewrites shortcuts.vdf on exit, so the real code refuses
+                // to touch it while the client is open - same here.
+                eprintln!("skipped: Steam is running");
+                return;
+            }
+
+            let updated = add_to_steam("Filesystem Profile", false).unwrap();
+            assert_eq!(updated, vec![path.clone()]);
+            assert!(steam_status("Filesystem Profile").unwrap());
+
+            // Re-adding replaces the existing entry instead of duplicating it.
+            add_to_steam("Filesystem Profile", false).unwrap();
+            let stored = parse_shortcuts(&read_host_file(&path).unwrap().unwrap()).unwrap();
+            let matches = stored
+                .values()
+                .filter(|v| {
+                    v.get("AppName")
+                        .map(|n| n == "RoN - Filesystem Profile")
+                        .unwrap_or(false)
+                })
+                .count();
+            assert_eq!(matches, 1);
+
+            let removed = remove_from_steam("Filesystem Profile").unwrap();
+            assert_eq!(removed, vec![path.clone()]);
+            assert!(!steam_status("Filesystem Profile").unwrap());
+        }
+
+        #[test]
+        fn removing_an_absent_profile_leaves_steam_alone() {
+            let (_guard, path) = reset_userdata();
+            store_entry("RoN - Kept Profile");
+            if is_steam_running() {
+                eprintln!("skipped: Steam is running");
+                return;
+            }
+
+            let updated = remove_from_steam("Not In Steam").unwrap();
+
+            assert!(updated.is_empty());
+            assert!(steam_status("Kept Profile").unwrap());
+            assert_eq!(
+                parse_shortcuts(&read_host_file(&path).unwrap().unwrap())
+                    .unwrap()
+                    .len(),
+                1
+            );
+        }
+    }
 }
