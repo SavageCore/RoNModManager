@@ -11,7 +11,7 @@ export RUSTC_WRAPPER := ccache
 .PHONY: help install dev dev-xwayland build build-fast build-frontend release \
         lint format check lint-frontend lint-backend fmt-backend clippy lint-all \
         test-frontend test-backend test \
-        screenshots screenshots-build \
+        screenshots screenshots-build screenshots-force \
         vendor flatpak-deps update-appstream flatpak-build flatpak-build-clean flatpak-build-fast flatpak-bundle flatpak-install flatpak-install-remote flatpak-run flatpak \
         clean watch
 
@@ -102,6 +102,9 @@ screenshot: screenshots ## Take light + dark screenshots
 
 screenshots: ## Take light + dark screenshots (rebuild with make screenshots-build if Rust changed)
 	node scripts/take-screenshots.mjs
+
+screenshots-force: ## Retake all screenshots, keeping everything (bypass unchanged check)
+	SCREENSHOT_FORCE=1 node scripts/take-screenshots.mjs
 
 screenshots-build: ## Build debug binary then take screenshots (run after Rust changes)
 	cargo build --manifest-path $(CARGO_MANIFEST)

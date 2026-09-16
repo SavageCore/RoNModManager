@@ -11,6 +11,12 @@
  * Usage:
  *   node scripts/take-screenshots.mjs            # all pages, light + dark
  *   WIZARD_PASS=1 node scripts/take-screenshots.mjs  # just the wizard welcome page
+ *
+ * Only screenshots whose pixels actually changed are kept: each capture is
+ * written to a staging dir and promoted over the previous file only when an
+ * ImageMagick RMSE comparison (with a small fuzz for antialiasing noise)
+ * reports a difference. Unchanged files are left untouched so `git status`
+ * stays clean. Set SCREENSHOT_FORCE=1 to overwrite everything.
  */
 import { spawn, execSync } from "child_process";
 import { fileURLToPath } from "url";
@@ -20,6 +26,25 @@ import fs from "fs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
 const OUT = path.join(ROOT, "docs", "screenshots");
+const STAGING = path.join(OUT, ".tmp");
+// Normalized RMSE below this counts as "unchanged". Observed run-to-run
+// noise for identical pages sits around 0.008-0.011, so the default keeps
+// clear of that. Override with SCREENSHOT_FUZZ=0.005 etc. to tune sensitivity.
+const FUZZ_THRESHOLD = parseFloat(process.env.SCREENSHOT_FUZZ ?? "0.02");
+const forceOverwrite = process.env.SCREENSHOT_FORCE === "1";
+if (forceOverwrite) console.log("Force mode: all screenshots will be kept.");
+
+// Prefer `magick` subcommands on ImageMagick v7 (the legacy `convert` /
+// `import` / `compare` shims print a deprecation warning on every call).
+let importCmd = "import";
+let convertCmd = "convert";
+let compareCmd = "compare";
+try {
+  execSync("which magick", { stdio: "ignore" });
+  importCmd = "magick import";
+  convertCmd = "magick";
+  compareCmd = "magick compare";
+} catch {}
 
 const appBinary = path.join(
   ROOT,
@@ -36,7 +61,13 @@ if (!fs.existsSync(appBinary)) {
 }
 console.log(`Binary: ${path.relative(ROOT, appBinary)}`);
 
-for (const tool of ["xdotool", "convert", "import"]) {
+const useMagick = importCmd.startsWith("magick");
+for (const tool of [
+  "xdotool",
+  useMagick ? "magick" : "convert",
+  useMagick ? "magick" : "import",
+  useMagick ? "magick" : "compare",
+]) {
   try {
     execSync(`which ${tool}`, { stdio: "ignore" });
   } catch {
@@ -127,7 +158,16 @@ function x(cmd) {
   return execSync(`DISPLAY=${display} ${cmd}`, { encoding: "utf8" });
 }
 
-function waitForWindowToDisappear(timeoutMs = 10000) {
+function windowIds() {
+  try {
+    const ids = x(`xdotool search --name "RoN Mod Manager"`).trim();
+    return ids ? new Set(ids.split("\n")) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function waitForWindowToDisappear(timeoutMs = 15000) {
   return new Promise((resolve) => {
     const start = Date.now();
     const interval = setInterval(() => {
@@ -156,17 +196,30 @@ async function killApp(app) {
       { stdio: "ignore" },
     );
   } catch {}
+  // The next launch must not mistake this window for the fresh one.
+  await waitForWindowToDisappear();
 }
 
-function waitForWindow(timeoutMs = 20000) {
+function waitForWindow(timeoutMs = 20000, knownIds = new Set()) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const interval = setInterval(() => {
       try {
         const ids = x(`xdotool search --name "RoN Mod Manager"`).trim();
         if (ids) {
-          clearInterval(interval);
-          resolve(ids.split("\n").at(-1));
+          // Prefer a window ID we have not seen before; fall back to the
+          // last match only once the old windows are gone.
+          const fresh = ids.split("\n").find((id) => !knownIds.has(id));
+          if (fresh) {
+            clearInterval(interval);
+            resolve(fresh);
+            return;
+          }
+          if (knownIds.size === 0) {
+            clearInterval(interval);
+            resolve(ids.split("\n").at(-1));
+            return;
+          }
         }
       } catch {}
       if (Date.now() - start > timeoutMs) {
@@ -178,6 +231,7 @@ function waitForWindow(timeoutMs = 20000) {
 }
 
 async function launchApp(theme, wizardPass) {
+  const knownIds = windowIds();
   const app = spawn(appBinary, [], {
     env: {
       ...process.env,
@@ -197,7 +251,7 @@ async function launchApp(theme, wizardPass) {
     process.exit(1);
   });
 
-  const wid = await waitForWindow();
+  const wid = await waitForWindow(20000, knownIds);
   console.log(`Window ID: ${wid}`);
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -217,27 +271,109 @@ async function launchApp(theme, wizardPass) {
   return { app, wid };
 }
 
-async function capture(wid, name, theme) {
-  const dir = path.join(OUT, theme);
-  fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `${name}.png`);
-  execSync(`DISPLAY=${display} import -window ${wid} "${file}"`);
-  const borderColor = theme === "dark" ? "#ffffff" : "#333333";
-  execSync(
-    `convert "${file}" -bordercolor "${borderColor}" -border 40 "${file}"`,
-  );
-  console.log(`  ✓  ${name}`);
+let changedCount = 0;
+let totalCount = 0;
+
+function imageDiff(oldFile, newFile) {
+  try {
+    // `compare` exits 0 when identical, 1 when different; metric goes to stderr.
+    const out = execSync(
+      `${compareCmd} -metric RMSE -fuzz 1% "${oldFile}" "${newFile}" null: 2>&1`,
+      { encoding: "utf8" },
+    );
+    return { metric: parseMetric(out), raw: out.trim() };
+  } catch (err) {
+    const out = (err.stdout ?? "").toString() + (err.stderr ?? "").toString();
+    if (!out.trim())
+      return { metric: err.status === 0 ? 0 : Number.NaN, raw: "" };
+    return { metric: parseMetric(out), raw: out.trim() };
+  }
 }
 
+function parseMetric(out) {
+  const m = out.match(/\(([0-9.]+)\)/);
+  return m ? parseFloat(m[1]) : Number.NaN;
+}
+
+// One-line human reason when no RMSE metric could be parsed (e.g. the
+// images have different dimensions, so compare errors out).
+function diffDetail(raw) {
+  const first = (raw.split("\n").pop() ?? "").trim();
+  if (/widths? or heights? differ/i.test(first)) return "size differs";
+  if (!first) return "compare failed";
+  return first.length > 120 ? first.slice(0, 117) + "..." : first;
+}
+
+async function capture(wid, name, theme) {
+  totalCount++;
+  const dir = path.join(OUT, theme);
+  fs.mkdirSync(dir, { recursive: true });
+  const stagingDir = path.join(STAGING, theme);
+  fs.mkdirSync(stagingDir, { recursive: true });
+  const file = path.join(dir, `${name}.png`);
+  const staged = path.join(stagingDir, `${name}.png`);
+  execSync(`DISPLAY=${display} ${importCmd} -window ${wid} "${staged}"`);
+  const borderColor = theme === "dark" ? "#ffffff" : "#333333";
+  execSync(
+    `${convertCmd} "${staged}" -bordercolor "${borderColor}" -border 40 "${staged}"`,
+  );
+  if (!fs.existsSync(file)) {
+    fs.renameSync(staged, file);
+    changedCount++;
+    console.log(`  ✓  ${name} (new)`);
+    return true;
+  }
+  if (forceOverwrite) {
+    fs.renameSync(staged, file);
+    changedCount++;
+    console.log(`  ✓  ${name} (forced)`);
+    return true;
+  }
+  const { metric, raw } = imageDiff(file, staged);
+  const label = Number.isNaN(metric)
+    ? diffDetail(raw)
+    : `RMSE ${metric.toFixed(4)}`;
+  if (metric < FUZZ_THRESHOLD) {
+    fs.rmSync(staged);
+    console.log(`  =  ${name} (unchanged, ${label})`);
+    return false;
+  } else {
+    fs.renameSync(staged, file);
+    changedCount++;
+    console.log(`  ✓  ${name} (updated, ${label})`);
+    return true;
+  }
+}
+
+// Capture the wizard page for each theme. When the first theme comes back
+// unchanged, the remaining themes are skipped - theme pairs only ever differ
+// when the first one changed. Force mode still captures everything.
+let wizardChanged = forceOverwrite;
 for (const theme of themes) {
+  if (!wizardChanged && !forceOverwrite && theme !== themes[0]) {
+    console.log(
+      `\n── ${theme.toUpperCase()} WIZARD ──\n  - skipped (${themes[0]} unchanged)`,
+    );
+    continue;
+  }
   console.log(`\n── ${theme.toUpperCase()} WIZARD ──`);
   const { app, wid } = await launchApp(theme, true);
-  await capture(wid, "wizard", theme);
+  const changed = await capture(wid, "wizard", theme);
+  wizardChanged = wizardChanged || changed;
   await killApp(app);
 }
 
 if (!wizardOnly) {
+  // Same group-skip for the main pages: if the first theme had zero changes,
+  // the second theme launch is skipped entirely.
+  let groupChanged = forceOverwrite;
   for (const theme of themes) {
+    if (!groupChanged && !forceOverwrite && theme !== themes[0]) {
+      console.log(
+        `\n── ${theme.toUpperCase()} ──\n  - skipped (${themes[0]} unchanged)`,
+      );
+      continue;
+    }
     console.log(`\n── ${theme.toUpperCase()} ──`);
     const { app, wid } = await launchApp(theme, false);
     const pages = ["mods", "collections", "profiles", "settings"];
@@ -245,17 +381,21 @@ if (!wizardOnly) {
       const name = pages[i];
       x(`xdotool key --window ${wid} --clearmodifiers ${i + 1}`);
       await new Promise((r) => setTimeout(r, 1200));
-      await capture(wid, name, theme);
+      const changed = await capture(wid, name, theme);
+      if (theme === themes[0]) groupChanged = groupChanged || changed;
     }
     await killApp(app);
   }
 }
 
 vite.kill();
+fs.rmSync(STAGING, { recursive: true, force: true });
 
 if (originalConfig) {
   fs.writeFileSync(configFile, originalConfig);
   console.log("Restored original config");
 }
 
-console.log(`\nSaved to ${path.relative(ROOT, OUT)}/`);
+console.log(
+  `\nSaved to ${path.relative(ROOT, OUT)}/ (${changedCount}/${totalCount} changed)`,
+);
