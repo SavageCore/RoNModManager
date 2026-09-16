@@ -19,6 +19,34 @@
   <releases>
 
 
+    <release version="0.0.15" date="2026-09-16">
+      <description>
+        <ul>
+          <li>Restore official-remote updates and publish appstream metadata</li>
+          <li>Make launch button pressable and add missing primary button alias</li>
+          <li>Launch button uses primary blue with dark-blue hover like Add Modpack</li>
+          <li>One-click profile launch via desktop shortcut and Steam library entry</li>
+          <li>Sweep live Win64/ue4ss residue on stock cleanup, keep UE4SS.log</li>
+          <li>Fmt and metainfo touch-ups</li>
+          <li>Ignore .commandcode directory</li>
+          <li>Avoid async onMount returning cleanup</li>
+          <li>Cover toast warnings/actions and queue same-name branch</li>
+          <li>Bump the cargo-dependencies group</li>
+          <li>Bump the npm-dependencies group with 3 updates</li>
+          <li>Hold typescript at v6 until svelte-check supports TS 7</li>
+          <li>Add shared modUpdates store with 1h throttle</li>
+          <li>Check mod updates at startup with status bar feedback</li>
+          <li>Mods page reuses startup update check; sticky status with loader</li>
+          <li>Show cached mod-update status when startup check is throttled</li>
+          <li>No emdashes, trim comments</li>
+          <li>Gate coverage in pre-push, cover corrupt cache</li>
+          <li>Migrate from husky to lefthook</li>
+          <li>Stop update queue blocking on pending Nexus downloads</li>
+          <li>Lint package.json with eslint-package-json</li>
+          <li>Block Windows-only native UE4SS mods, add mod-folder picker, support nested bundles</li>
+        </ul>
+      </description>
+    </release>
 
     <release version="0.0.14" date="2026-09-13">
       <description>
