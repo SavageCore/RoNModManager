@@ -29,6 +29,14 @@ jobs:
       - run: npm run lint
       - run: npm run check
       - run: npm run test:unit:coverage
+      - name: Upload frontend coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+          flags: frontend
+          fail_ci_if_error: false
+          verbose: true
 
   lint-backend:
     runs-on: ubuntu-24.04
@@ -89,4 +97,13 @@ jobs:
 
       # Ratchet gate on total line coverage (measured ~28% in Sep 2026; the
       # Tauri command glue pulls the average down). Bump when coverage grows.
-      - run: cargo llvm-cov --manifest-path src-tauri/Cargo.toml --lib --fail-under-lines 25 --summary-only
+      - name: Generate backend lcov
+        run: cargo llvm-cov --manifest-path src-tauri/Cargo.toml --lib --lcov --output-path coverage/lcov-backend.info --fail-under-lines 25 --remap-path-prefix
+      - name: Upload backend coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./lcov-backend.info
+          flags: backend
+          fail_ci_if_error: false
+          verbose: true
