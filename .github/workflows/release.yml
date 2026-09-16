@@ -7,7 +7,7 @@ on:
 
 jobs:
   create-release:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     outputs:
@@ -265,7 +265,7 @@ jobs:
           sed -i "s/ICON_SHA256/${ICON_SHA}/" packaging/aur/PKGBUILD
           sed -i "s/DESKTOP_SHA256/${DESKTOP_SHA}/" packaging/aur/PKGBUILD
       - name: Push to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v3
+        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
         with:
           pkgname: ronmodmanager-bin
           pkgbuild: ./packaging/aur/PKGBUILD
