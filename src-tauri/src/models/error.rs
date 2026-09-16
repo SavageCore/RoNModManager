@@ -17,6 +17,8 @@ pub enum AppError {
     NotFound(String),
     #[error("Unsupported operation: {0}")]
     Unsupported(String),
+    #[error("Windows-only native mod: {0:?}")]
+    BlockedWindowsOnlyDll(Vec<String>),
 }
 
 impl Serialize for AppError {

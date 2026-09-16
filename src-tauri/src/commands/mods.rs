@@ -661,6 +661,7 @@ pub async fn install_mods(
                 &consumer_client,
                 &consumer_download_root,
                 None,
+                None,
                 download_hash.clone(),
             )
             .await;
@@ -2771,6 +2772,36 @@ pub struct PakFileInfo {
 }
 
 #[tauri::command]
+pub async fn check_archive_blocked(
+    #[allow(non_snake_case)] filePath: String,
+) -> Result<Vec<String>> {
+    // Fail-fast pre-install check: list archive entries and flag any native
+    // Windows binaries that won't run under Proton. Lets the frontend warn the
+    // user before the PAK picker + install. Pure UE4SS runtime archives
+    // (bundles_runtime) return empty - their DLLs are allowlisted, and the
+    // recursive `ensure_installed` install must not be gated.
+    let path = PathBuf::from(&filePath);
+    let entry_names = tokio::task::spawn_blocking(move || {
+        installer::list_archive_entry_names(&path).unwrap_or_default()
+    })
+    .await
+    .map_err(|e| AppError::Validation(format!("Archive scan task failed: {e}")))?;
+
+    if let Some(layout) = installer::detect_ue4ss_layout(&entry_names) {
+        if layout.bundles_runtime {
+            return Ok(vec![]);
+        }
+        // Native C++ UE4SS mods load fine where the game runs natively - the
+        // block (and its Linux-specific warning) only applies off Windows.
+        if cfg!(windows) {
+            return Ok(vec![]);
+        }
+        return Ok(installer::detect_blocked_native_binaries(&entry_names));
+    }
+    Ok(vec![])
+}
+
+#[tauri::command]
 pub async fn get_archive_pak_files(
     #[allow(non_snake_case)] filePath: String,
 ) -> Result<Vec<PakFileInfo>> {
@@ -2784,11 +2815,27 @@ pub async fn get_archive_pak_files(
 }
 
 #[tauri::command]
+pub async fn get_archive_ue4ss_mods(
+    #[allow(non_snake_case)] filePath: String,
+) -> Result<Vec<installer::Ue4ssModFolder>> {
+    // Archive listing does blocking file IO - run it on the blocking pool
+    // like the PAK scan in `get_archive_pak_files`.
+    let path = PathBuf::from(&filePath);
+    tokio::task::spawn_blocking(move || {
+        let entries = installer::list_archive_entries(&path)?;
+        Ok(installer::list_ue4ss_mod_folders(&entries))
+    })
+    .await
+    .map_err(|e| AppError::Validation(format!("Archive scan task failed: {e}")))?
+}
+
+#[tauri::command]
 pub async fn install_local_mod(
     app: AppHandle,
     state: State<'_, AppState>,
     #[allow(non_snake_case)] filePath: String,
     #[allow(non_snake_case)] selectedPakFiles: Option<Vec<String>>,
+    #[allow(non_snake_case)] selectedUe4ssMods: Option<Vec<String>>,
     #[allow(non_snake_case)] precomputedHash: Option<String>,
 ) -> Result<LocalModInstallResult> {
     let config = state.get_config()?;
@@ -2835,6 +2882,8 @@ pub async fn install_local_mod(
 
     let temp_root = crate::state::app_temp_root()?;
     let pak_filter_set: Option<HashSet<String>> = selectedPakFiles.map(|v| v.into_iter().collect());
+    let ue4ss_mod_filter_set: Option<HashSet<String>> =
+        selectedUe4ssMods.map(|v| v.into_iter().collect());
 
     // Track concurrent installs for diagnostics: the frontend queue is meant
     // to serialize these. If two ever overlap we log both file names so the
@@ -2864,6 +2913,7 @@ pub async fn install_local_mod(
         &state.client,
         &temp_root,
         pak_filter_set.as_ref(),
+        ue4ss_mod_filter_set.as_ref(),
         precomputedHash,
     )
     .await;
@@ -3033,6 +3083,7 @@ pub(crate) async fn install_downloaded_file(
     client: &reqwest::Client,
     temp_root: &Path,
     pak_filter: Option<&HashSet<String>>,
+    ue4ss_mod_filter: Option<&HashSet<String>>,
     precomputed_hash: Option<String>,
 ) -> Result<bool> {
     let content_hash = if let Some(hash) = precomputed_hash {
@@ -3135,6 +3186,20 @@ pub(crate) async fn install_downloaded_file(
     .unwrap_or_default();
     if let Some(layout) = installer::detect_ue4ss_layout(&entry_names) {
         if !layout.bundles_runtime {
+            // Block Windows-only native DLLs/EXEs (e.g. UE4SS C++ mods shipping
+            // `Mods/<mod>/dlls/main.dll`) before installing the runtime or
+            // extracting. Pure runtime archives (`bundles_runtime`) are exempt:
+            // their DLLs are allowlisted, and this guards the recursive
+            // `ensure_installed` path from gating itself. Native mods load
+            // fine where the game runs natively, so this only fires off
+            // Windows.
+            if !cfg!(windows) {
+                let blocked = installer::detect_blocked_native_binaries(&entry_names);
+                if !blocked.is_empty() {
+                    return Err(AppError::BlockedWindowsOnlyDll(blocked));
+                }
+            }
+
             // Boxed because this closes a (runtime-guarded, non-infinite) recursive cycle:
             // ensure_installed itself calls back into install_downloaded_file to install
             // the UE4SS archive it downloads.
@@ -3205,6 +3270,7 @@ pub(crate) async fn install_downloaded_file(
         let zip_path = path.clone();
         let zip_context = staged_context.clone();
         let zip_filter = pak_filter.cloned();
+        let zip_ue4ss_filter = ue4ss_mod_filter.cloned();
         let zip_app = app.clone();
         let zip_archive_name = archive_name.clone();
         let report = tokio::task::spawn_blocking(move || {
@@ -3241,6 +3307,7 @@ pub(crate) async fn install_downloaded_file(
                     );
                 },
                 zip_filter.as_ref(),
+                zip_ue4ss_filter.as_ref(),
             )
         })
         .await
@@ -3277,8 +3344,15 @@ pub(crate) async fn install_downloaded_file(
         let rar_context = staged_context.clone();
         let rar_temp = temp_root.to_path_buf();
         let rar_filter = pak_filter.cloned();
+        let rar_ue4ss_filter = ue4ss_mod_filter.cloned();
         let report = tokio::task::spawn_blocking(move || {
-            installer::install_rar_archive(&rar_path, &rar_context, &rar_temp, rar_filter.as_ref())
+            installer::install_rar_archive(
+                &rar_path,
+                &rar_context,
+                &rar_temp,
+                rar_filter.as_ref(),
+                rar_ue4ss_filter.as_ref(),
+            )
         })
         .await
         .map_err(|e| AppError::Validation(format!("Extraction task failed: {e}")))??;
@@ -3309,12 +3383,14 @@ pub(crate) async fn install_downloaded_file(
         let sevenz_context = staged_context.clone();
         let sevenz_temp = temp_root.to_path_buf();
         let sevenz_filter = pak_filter.cloned();
+        let sevenz_ue4ss_filter = ue4ss_mod_filter.cloned();
         let report = tokio::task::spawn_blocking(move || {
             installer::install_7z_archive(
                 &sevenz_path,
                 &sevenz_context,
                 &sevenz_temp,
                 sevenz_filter.as_ref(),
+                sevenz_ue4ss_filter.as_ref(),
             )
         })
         .await

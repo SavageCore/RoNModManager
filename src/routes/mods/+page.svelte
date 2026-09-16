@@ -8,6 +8,7 @@
     createCollection,
     getConfig,
     getArchivePakFiles,
+    getArchiveUe4ssMods,
     getInstalledModGroups,
     getProfile,
     installLocalMod,
@@ -48,6 +49,11 @@
     pakSelectionStore,
     requestPakSelection,
   } from "$lib/stores/pakSelection";
+  import Ue4ssModSelectionModal from "$lib/components/Ue4ssModSelectionModal.svelte";
+  import {
+    ue4ssModSelectionStore,
+    requestUe4ssModSelection,
+  } from "$lib/stores/ue4ssModSelection";
   import NexusFileSelectionModal from "$lib/components/NexusFileSelectionModal.svelte";
   import { nexusFileSelectionStore } from "$lib/stores/nexusFileSelection";
   import NexusFreeDownloadModal from "$lib/components/NexusFreeDownloadModal.svelte";
@@ -1421,6 +1427,7 @@
         console.log("Installing file:", entry.path);
         try {
           let selectedPaks: string[] | undefined;
+          let selectedUe4ssMods: string[] | undefined;
           const ext = entry.path.split(".").pop()?.toLowerCase() ?? "";
           if (ext === "zip" || ext === "rar" || ext === "7z") {
             try {
@@ -1445,12 +1452,39 @@
             } catch {
               // fall through - install all
             }
+            try {
+              const ue4ssMods = await getArchiveUe4ssMods(entry.path);
+              if (ue4ssMods.length > 1) {
+                modAddQueueStore.markRunning(
+                  entry.queueId,
+                  "Select UE4SS mods to install...",
+                );
+                importLogStore.setWaitingForInput(entry.queueId);
+                const selected = await requestUe4ssModSelection(
+                  entry.fileName,
+                  ue4ssMods,
+                );
+                importLogStore.clearWaitingForInput(entry.queueId);
+                if (selected === null) {
+                  modAddQueueStore.markError(entry.queueId, "Cancelled");
+                  continue;
+                }
+                selectedUe4ssMods = selected;
+              }
+            } catch {
+              // fall through - install all
+            }
           }
           modAddQueueStore.markRunning(
             entry.queueId,
             `Installing ${entry.fileName}...`,
           );
-          await installLocalMod(entry.path, selectedPaks);
+          await installLocalMod(
+            entry.path,
+            selectedPaks,
+            null,
+            selectedUe4ssMods,
+          );
           modAddQueueStore.markDone(
             entry.queueId,
             `Installed ${entry.fileName}`,
@@ -1752,6 +1786,21 @@
   />
 {/if}
 
+{#if $ue4ssModSelectionStore}
+  <Ue4ssModSelectionModal
+    archiveName={$ue4ssModSelectionStore.archiveName}
+    mods={$ue4ssModSelectionStore.mods}
+    on:select={(e) => {
+      $ue4ssModSelectionStore?.resolve(e.detail.selected);
+      ue4ssModSelectionStore.set(null);
+    }}
+    on:cancel={() => {
+      $ue4ssModSelectionStore?.resolve(null);
+      ue4ssModSelectionStore.set(null);
+    }}
+  />
+{/if}
+
 {#if $nexusFileSelectionStore}
   <NexusFileSelectionModal
     modName={$nexusFileSelectionStore.modName}
@@ -1771,7 +1820,8 @@
   <NexusFreeDownloadModal
     downloads={$manualDownloadStore.pendingFiles}
     pickerActive={$nexusFileSelectionStore !== null ||
-      $pakSelectionStore !== null}
+      $pakSelectionStore !== null ||
+      $ue4ssModSelectionStore !== null}
     on:close={() => manualDownloadStore.dismiss()}
     on:addmore={() => {
       manualDownloadStore.dismiss();

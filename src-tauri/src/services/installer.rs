@@ -3,6 +3,7 @@ use std::fs;
 use std::io::{Chain, Cursor, Read, Seek, SeekFrom, Take, Write};
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
 use unrar::Archive as RarArchive;
 use zip::read::ZipFile;
 use zip::{CompressionMethod, ZipArchive};
@@ -84,6 +85,43 @@ const UE4SS_STOCK_MODS: &[&str] = &[
     "jsbLuaProfilerMod",
 ];
 
+/// Basenames of UE4SS runtime DLLs that are safe to install on Linux (they run
+/// under Proton). Any other `.dll` / `.exe` in an archive is a native Windows
+/// C++ mod binary that won't load under Proton and must be blocked.
+const ALLOWED_RUNTIME_BINARIES: &[&str] = &["ue4ss.dll", "dwmapi.dll", "xinput1_3.dll"];
+
+/// Scan archive entry names for native Windows binaries (`.dll`, `.exe`) that
+/// are NOT part of the allowlisted UE4SS runtime. Returns the list of blocked
+/// file paths (as-is from the archive) that are Windows-only.
+///
+/// Callers should skip this check when the archive is a plain UE4SS runtime
+/// archive (`bundles_runtime == true`): those DLLs are allowlisted here, and
+/// skipping avoids gating the recursive `ensure_installed` install.
+pub fn detect_blocked_native_binaries(entry_names: &[String]) -> Vec<String> {
+    let mut blocked = Vec::new();
+    for name in entry_names {
+        let path = Path::new(name);
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(str::to_ascii_lowercase);
+        let is_blocked_ext = matches!(ext.as_deref(), Some("dll") | Some("exe") | Some("asi"));
+        if !is_blocked_ext {
+            continue;
+        }
+        let file_name = path
+            .file_name()
+            .and_then(|f| f.to_str())
+            .map(str::to_ascii_lowercase)
+            .unwrap_or_default();
+        if ALLOWED_RUNTIME_BINARIES.contains(&file_name.as_str()) {
+            continue;
+        }
+        blocked.push(name.clone());
+    }
+    blocked
+}
+
 /// A UE4SS mod archive (Lua/Blueprint script mod, or the UE4SS runtime itself)
 /// needs its entries routed to `<game>/ReadyOrNot/Binaries/Win64/...` rather
 /// than the usual `~mods` folder. Since that path starts with `ReadyOrNot`,
@@ -118,10 +156,31 @@ pub struct Ue4ssLayout {
     /// install the user's mod folder(s) from such archives, relying on the
     /// pinned UE4SS managed by `ensure_installed`.
     pub bundles_mod: bool,
-    /// First component of entry names to strip before classification (the
-    /// wrapper folder, e.g. `ue4ss/` or `package/`, present in some bundled
-    /// mod archives).
-    pub wrapper: Option<String>,
+    /// Path components to strip before classification (the wrapper folder,
+    /// e.g. `ue4ss/`, `package/`, or a multi-level path like
+    /// `<download_folder>/SwatPathAround_Bundle/Win64/ue4ss` for double-nested
+    /// archives). Stored as a `PathBuf` so multi-component wrappers strip
+    /// cleanly.
+    pub wrapper: Option<PathBuf>,
+}
+
+/// Strip `prefix` from `path` case-insensitively, component by component.
+/// Returns the remaining path when every prefix component matches (by
+/// `eq_ignore_ascii_case`); `None` when the path doesn't start with `prefix`.
+fn strip_prefix_ci(path: &Path, prefix: &Path) -> Option<PathBuf> {
+    let mut path_comps = path.components();
+    let mut prefix_comps = prefix.components();
+    loop {
+        match prefix_comps.next() {
+            Some(p) => {
+                let c = path_comps.next()?;
+                if !p.as_os_str().eq_ignore_ascii_case(c.as_os_str()) {
+                    return None;
+                }
+            }
+            None => return Some(path_comps.as_path().to_path_buf()),
+        }
+    }
 }
 
 /// Inspect an archive's entry names (no extraction needed) and decide whether
@@ -131,7 +190,7 @@ pub fn detect_ue4ss_layout(entry_names: &[String]) -> Option<Ue4ssLayout> {
     let mut is_ue4ss = false;
     let mut has_ue4ss_dll = false;
     let mut has_top_level_mods_dir = false;
-    let mut wrapper: Option<String> = None;
+    let mut wrapper: Option<PathBuf> = None;
 
     for name in entry_names {
         let path = Path::new(name);
@@ -184,15 +243,21 @@ pub fn detect_ue4ss_layout(entry_names: &[String]) -> Option<Ue4ssLayout> {
         // settings, or a `Mods/`/`UE4SS_SDK_Backends` subtree at depth 2.
         // A bare mod folder (`<mod>/Scripts/main.lua`, no `Mods/` parent) is
         // NOT a wrapper - it is the mod itself (standalone shape).
+        // Runtime files must sit directly under the wrapper (depth 2) so this
+        // doesn't mis-fire on deeply-nested archives (e.g. a download-folder
+        // name plus `_Bundle/Win64/ue4ss/...`); those are handled by the
+        // multi-level detection below.
         if !is_root_level {
             if let Some(first) = first_component {
                 let second = path
                     .components()
                     .nth(1)
                     .and_then(|c| c.as_os_str().to_str());
-                let is_wrapper = file_name.eq_ignore_ascii_case("UE4SS.dll")
+                let depth = path.components().count();
+                let is_wrapper = (file_name.eq_ignore_ascii_case("UE4SS.dll")
                     || file_name.eq_ignore_ascii_case("dwmapi.dll")
-                    || file_name.eq_ignore_ascii_case("UE4SS-settings.ini")
+                    || file_name.eq_ignore_ascii_case("UE4SS-settings.ini"))
+                    && depth == 2
                     || second
                         .map(|s| s.eq_ignore_ascii_case("Mods"))
                         .unwrap_or(false)
@@ -203,11 +268,30 @@ pub fn detect_ue4ss_layout(entry_names: &[String]) -> Option<Ue4ssLayout> {
                     && !(second
                         .map(|s| s.eq_ignore_ascii_case("Scripts"))
                         .unwrap_or(false)
-                        && path.components().count() == 3)
+                        && depth == 3)
                 {
                     is_ue4ss = true;
-                    wrapper = Some(first.to_string());
+                    wrapper = Some(PathBuf::from(first));
                     has_top_level_mods_dir = true;
+                }
+            }
+        }
+
+        // Detect a multi-level wrapper: some authors re-zip the UE4SS runtime
+        // under a nested folder structure (e.g. a download-folder name plus a
+        // `_Bundle/Win64/ue4ss` subtree). Find the first `Mods/` component at
+        // any depth and treat everything before it as the wrapper so the
+        // remaining tree reads as the standard experimental layout. Only runs
+        // when the single-level detection above didn't already find one.
+        if wrapper.is_none() {
+            let comps: Vec<_> = path.components().collect();
+            for (i, comp) in comps.iter().enumerate().skip(1) {
+                if comp.as_os_str().eq_ignore_ascii_case("Mods") {
+                    let wrapper_path: PathBuf = comps[..i].iter().collect();
+                    wrapper = Some(wrapper_path);
+                    has_top_level_mods_dir = true;
+                    is_ue4ss = true;
+                    break;
                 }
             }
         }
@@ -223,19 +307,19 @@ pub fn detect_ue4ss_layout(entry_names: &[String]) -> Option<Ue4ssLayout> {
     // (`<mod>/Scripts/main.lua`, no `Mods/` parent, no runtime files).
     // Stock helpers and the runtime's own metadata files don't count.
     let mut bare_mod_folder = false;
-    let user_mods: Vec<&str> = entry_names
+    let user_mods: Vec<String> = entry_names
         .iter()
         .filter_map(|name| {
             let path = Path::new(name);
             let stripped = match &wrapper {
-                Some(w) => path.strip_prefix(format!("{w}/")).unwrap_or(path),
-                None => path,
+                Some(w) => strip_prefix_ci(path, w).unwrap_or_else(|| path.to_path_buf()),
+                None => path.to_path_buf(),
             };
             let mut comps = stripped.components();
             let first = comps.next()?;
             if first.as_os_str().eq_ignore_ascii_case("Mods") {
-                let mod_name = comps.next()?.as_os_str().to_str()?;
-                if UE4SS_STOCK_MODS.contains(&mod_name)
+                let mod_name = comps.next()?.as_os_str().to_str()?.to_string();
+                if UE4SS_STOCK_MODS.contains(&mod_name.as_str())
                     || mod_name == "shared"
                     || mod_name == "mods.txt"
                     || mod_name == "mods.json"
@@ -353,30 +437,176 @@ pub fn rewrite_ue4ss_path(raw: &Path, layout: &Ue4ssLayout) -> Option<PathBuf> {
         if layout.wrapper.is_none() && layout.prefix.ends_with(Path::new("Win64/ue4ss/Mods")) {
             return Some(layout.prefix.join(raw));
         }
-        let stripped: &Path = match &layout.wrapper {
-            Some(w) => {
-                // `PathBuf::strip_prefix` is case-sensitive on some platforms, so
-                // match the first component case-insensitively then strip it.
-                let first = raw.components().next();
-                match first {
-                    Some(c) if c.as_os_str().eq_ignore_ascii_case(w) => {
-                        raw.strip_prefix(c.as_os_str()).unwrap_or(raw)
-                    }
-                    _ => raw,
-                }
-            }
-            None => raw,
+        let stripped: Option<PathBuf> = match &layout.wrapper {
+            Some(w) => strip_prefix_ci(raw, w),
+            None => None,
         };
-        return user_ue4ss_mod_subpath(stripped).map(|rel| layout.prefix.join(rel));
+        // Mixed bundles (e.g. a UE4SS mod plus a `ReadyOrNot/Content` pak in
+        // one archive) carry entries outside the wrapper. Game-rooted ones
+        // pass through verbatim so they classify as Overrides/paks normally;
+        // anything else falls through to the mod-subpath check below and is
+        // skipped (author extras like READMEs).
+        if stripped.is_none() {
+            let first = raw.components().next().map(|c| c.as_os_str());
+            if first
+                .map(|f| f == "ReadyOrNot" || f == "_overrides")
+                .unwrap_or(false)
+            {
+                return Some(raw.to_path_buf());
+            }
+        }
+        let stripped = stripped.unwrap_or_else(|| raw.to_path_buf());
+        return user_ue4ss_mod_subpath(&stripped).map(|rel| layout.prefix.join(rel));
     }
 
     Some(layout.prefix.join(raw))
 }
 
-/// List every file entry's name in a zip/rar/7z archive without extracting.
-/// Used to detect a UE4SS layout up front - both inside the extractors below
-/// and by callers deciding whether to install the UE4SS runtime first.
-pub fn list_archive_entry_names(archive_path: &Path) -> Result<Vec<String>> {
+/// One selectable UE4SS unit inside an archive (a `Mods/<name>` folder or a
+/// `Mods/shared/<sub>` sub-library), with the file count and total
+/// uncompressed bytes behind it for the picker UI.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Ue4ssModFolder {
+    pub name: String,
+    pub path: String,
+    pub file_count: usize,
+    pub size: u64,
+}
+
+/// Strip the layout wrapper (if any) from a raw archive entry path.
+/// Shared by `rewrite_ue4ss_path` and the mod-folder enumeration so both see
+/// the same tree.
+fn strip_wrapper(raw: &Path, layout: &Ue4ssLayout) -> PathBuf {
+    match &layout.wrapper {
+        Some(w) => strip_prefix_ci(raw, w).unwrap_or_else(|| raw.to_path_buf()),
+        None => raw.to_path_buf(),
+    }
+}
+
+/// The selectable install unit for a wrapper-stripped path: a top-level mod
+/// folder (`Mods/<name>`, keyed as `<name>`) or a shared-library subfolder
+/// (`Mods/shared/<sub>`, keyed as `shared/<sub>`). `Mods/shared/UEHelpers`
+/// always installs (every Lua mod needs it) and files directly under
+/// `Mods/shared/` ride along with it, so neither is selectable. Stock helpers
+/// and non-mod paths return `None`. The bare-mod-folder shape (no `Mods/`
+/// segment) keys on its first component.
+fn ue4ss_selectable_unit(stripped: &Path, layout: &Ue4ssLayout) -> Option<String> {
+    let mut comps = stripped.components();
+    let first = comps.next()?.as_os_str().to_str()?;
+    if first.eq_ignore_ascii_case("Mods") {
+        let name = comps.next()?.as_os_str().to_str()?;
+        if UE4SS_STOCK_MODS
+            .iter()
+            .any(|s| s.eq_ignore_ascii_case(name))
+            || name.eq_ignore_ascii_case("mods.txt")
+            || name.eq_ignore_ascii_case("mods.json")
+        {
+            return None;
+        }
+        if name.eq_ignore_ascii_case("shared") {
+            // Shared sub-libraries (e.g. `shared/jsbProfiler`) are
+            // individually deselectable; `UEHelpers`, and loose files directly
+            // under `shared/`, always install.
+            let sub = comps.next()?.as_os_str().to_str()?;
+            if sub.eq_ignore_ascii_case("UEHelpers") {
+                return None;
+            }
+            // A loose file directly under `shared/` (no deeper components)
+            // is not a sub-library - it rides along with the shared install.
+            comps.next()?;
+            return Some(format!("shared/{sub}"));
+        }
+        return Some(name.to_string());
+    }
+    // Bare mod folder at the archive root: the first component is the mod.
+    if layout.wrapper.is_none() && layout.prefix.ends_with(Path::new("Win64/ue4ss/Mods")) {
+        return Some(first.to_string());
+    }
+    None
+}
+
+/// Filtered variant of `rewrite_ue4ss_path`: additionally drops entries that
+/// belong to a deselected UE4SS unit (mod folder or shared sub-library).
+/// `filter` holds the selected unit names (`None` = install all).
+/// `shared/UEHelpers`, stock helpers and runtime files are unaffected - they
+/// are never selectable.
+pub fn rewrite_ue4ss_path_filtered(
+    raw: &Path,
+    layout: &Ue4ssLayout,
+    filter: Option<&HashSet<String>>,
+) -> Option<PathBuf> {
+    if let Some(selected) = filter {
+        if layout.bundles_mod {
+            let stripped = strip_wrapper(raw, layout);
+            if let Some(unit) = ue4ss_selectable_unit(&stripped, layout) {
+                if !selected.contains(&unit) {
+                    return None;
+                }
+            }
+        }
+    }
+    rewrite_ue4ss_path(raw, layout)
+}
+
+/// Group an archive's `(entry name, uncompressed size)` pairs into selectable
+/// UE4SS units (mod folders plus shared sub-libraries like
+/// `shared/jsbProfiler`). Returns an empty vec when the archive is not a mod
+/// bundle. `shared/UEHelpers`, stock helpers and runtime metadata are
+/// excluded - they always install silently.
+pub fn list_ue4ss_mod_folders(entries: &[(String, u64)]) -> Vec<Ue4ssModFolder> {
+    let names: Vec<String> = entries.iter().map(|(n, _)| n.clone()).collect();
+    let Some(layout) = detect_ue4ss_layout(&names) else {
+        return vec![];
+    };
+    if !layout.bundles_mod {
+        return vec![];
+    }
+    // Unit name -> (unit, file count, bytes), keyed case-insensitively so
+    // `SwatPathAround` vs `swatpatharound` can't split rows.
+    let mut grouped: std::collections::HashMap<String, (String, usize, u64)> =
+        std::collections::HashMap::new();
+    for (name, size) in entries {
+        let raw = Path::new(name);
+        let stripped = strip_wrapper(raw, &layout);
+        let Some(unit) = ue4ss_selectable_unit(&stripped, &layout) else {
+            continue;
+        };
+        let key = unit.to_ascii_lowercase();
+        // Display path mirrors where the unit lands in-game.
+        let display = format!("Mods/{unit}");
+        grouped
+            .entry(key)
+            .and_modify(|(_, count, bytes)| {
+                *count += 1;
+                *bytes = bytes.saturating_add(*size);
+            })
+            .or_insert((display, 1, *size));
+    }
+    let mut folders: Vec<Ue4ssModFolder> = grouped
+        .into_values()
+        .map(|(path, file_count, size)| {
+            let name = path.strip_prefix("Mods/").unwrap_or(&path).to_string();
+            Ue4ssModFolder {
+                name,
+                path,
+                file_count,
+                size,
+            }
+        })
+        .collect();
+    folders.sort_by(|a, b| {
+        a.name
+            .to_ascii_lowercase()
+            .cmp(&b.name.to_ascii_lowercase())
+    });
+    folders
+}
+
+/// List every file entry's `(name, uncompressed size)` in a zip/rar/7z
+/// archive without extracting. Backs both the name-only listing and the
+/// UE4SS mod-folder picker (which needs per-folder byte totals).
+pub fn list_archive_entries(archive_path: &Path) -> Result<Vec<(String, u64)>> {
     let extension = archive_path
         .extension()
         .and_then(|e| e.to_str())
@@ -386,31 +616,34 @@ pub fn list_archive_entry_names(archive_path: &Path) -> Result<Vec<String>> {
         let file = fs::File::open(archive_path)?;
         let mut archive = ZipArchive::new(file)
             .map_err(|e| AppError::Validation(format!("invalid zip archive: {e}")))?;
-        let mut names = Vec::with_capacity(archive.len());
+        let mut entries = Vec::with_capacity(archive.len());
         for i in 0..archive.len() {
             let entry = archive
                 .by_index(i)
                 .map_err(|e| AppError::Validation(format!("zip entry error: {e}")))?;
             if !entry.is_dir() {
-                names.push(entry.name().to_string());
+                entries.push((entry.name().to_string(), entry.size()));
             }
         }
-        return Ok(names);
+        return Ok(entries);
     }
 
     if extension.eq_ignore_ascii_case("rar") {
         let archive = RarArchive::new(archive_path)
             .open_for_listing()
             .map_err(|e| AppError::Validation(format!("failed to open RAR: {e:?}")))?;
-        let mut names = Vec::new();
+        let mut entries = Vec::new();
         for entry_result in archive {
             let entry = entry_result
                 .map_err(|e| AppError::Validation(format!("RAR entry error: {e:?}")))?;
             if !entry.is_directory() {
-                names.push(entry.filename.to_string_lossy().to_string());
+                entries.push((
+                    entry.filename.to_string_lossy().to_string(),
+                    entry.unpacked_size,
+                ));
             }
         }
-        return Ok(names);
+        return Ok(entries);
     }
 
     if extension.eq_ignore_ascii_case("7z") {
@@ -420,15 +653,25 @@ pub fn list_archive_entry_names(archive_path: &Path) -> Result<Vec<String>> {
             .files
             .iter()
             .filter(|f| !f.is_directory)
-            .map(|f| f.name.clone())
+            .map(|f| (f.name.clone(), f.size))
             .collect());
     }
 
     Ok(vec![])
 }
 
+/// List every file entry's name in a zip/rar/7z archive without extracting.
+/// Used to detect a UE4SS layout up front - both inside the extractors below
+/// and by callers deciding whether to install the UE4SS runtime first.
+pub fn list_archive_entry_names(archive_path: &Path) -> Result<Vec<String>> {
+    Ok(list_archive_entries(archive_path)?
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect())
+}
+
 pub fn install_archive(archive_path: &Path, context: &InstallContext) -> Result<InstallReport> {
-    install_archive_with_progress(archive_path, context, |_| {}, None)
+    install_archive_with_progress(archive_path, context, |_| {}, None, None)
 }
 
 type LzmaEntryDecoder = xz2::read::XzDecoder<Chain<Cursor<Vec<u8>>, Take<fs::File>>>;
@@ -508,6 +751,7 @@ pub fn install_archive_with_progress<F>(
     context: &InstallContext,
     mut on_progress: F,
     pak_filter: Option<&HashSet<String>>,
+    ue4ss_mod_filter: Option<&HashSet<String>>,
 ) -> Result<InstallReport>
 where
     F: FnMut(ArchiveProgress),
@@ -542,7 +786,7 @@ where
         let raw_path = Path::new(entry.name());
         let entry_path = match ue4ss
             .as_ref()
-            .and_then(|layout| rewrite_ue4ss_path(raw_path, layout))
+            .and_then(|layout| rewrite_ue4ss_path_filtered(raw_path, layout, ue4ss_mod_filter))
         {
             Some(p) => p,
             None => {
@@ -587,7 +831,7 @@ where
         let entry_name = entry.name().to_string();
         let entry_path = match ue4ss
             .as_ref()
-            .and_then(|layout| rewrite_ue4ss_path(raw_path, layout))
+            .and_then(|layout| rewrite_ue4ss_path_filtered(raw_path, layout, ue4ss_mod_filter))
         {
             Some(p) => p,
             None => {
@@ -770,6 +1014,7 @@ pub fn install_rar_archive(
     context: &InstallContext,
     temp_root: &Path,
     pak_filter: Option<&HashSet<String>>,
+    ue4ss_mod_filter: Option<&HashSet<String>>,
 ) -> Result<InstallReport> {
     let mut report = InstallReport::default();
 
@@ -806,9 +1051,9 @@ pub fn install_rar_archive(
         }
 
         let raw_entry_path = Path::new(&entry_name);
-        let rewritten = ue4ss
-            .as_ref()
-            .and_then(|layout| rewrite_ue4ss_path(raw_entry_path, layout));
+        let rewritten = ue4ss.as_ref().and_then(|layout| {
+            rewrite_ue4ss_path_filtered(raw_entry_path, layout, ue4ss_mod_filter)
+        });
         let skip_for_bundled_runtime = rewritten.is_none() && ue4ss.is_some();
         if skip_for_bundled_runtime {
             archive = header
@@ -944,6 +1189,7 @@ pub fn install_7z_archive(
     context: &InstallContext,
     temp_root: &Path,
     pak_filter: Option<&HashSet<String>>,
+    ue4ss_mod_filter: Option<&HashSet<String>>,
 ) -> Result<InstallReport> {
     let mut report = InstallReport::default();
 
@@ -972,7 +1218,7 @@ pub fn install_7z_archive(
             .to_path_buf();
         let rel_path = match ue4ss
             .as_ref()
-            .and_then(|layout| rewrite_ue4ss_path(&raw_rel_path, layout))
+            .and_then(|layout| rewrite_ue4ss_path_filtered(&raw_rel_path, layout, ue4ss_mod_filter))
         {
             Some(p) => p,
             None => {
@@ -1358,7 +1604,7 @@ mod tests {
         assert_eq!(layout.prefix, Path::new("ReadyOrNot/Binaries/Win64"));
         assert!(layout.bundles_runtime);
         assert!(!layout.bundles_mod);
-        assert_eq!(layout.wrapper.as_deref(), Some("ue4ss"));
+        assert_eq!(layout.wrapper.as_deref(), Some(Path::new("ue4ss")));
 
         // Runtime files route into the ue4ss/ subtree, not the Win64 root.
         let dll = rewrite_ue4ss_path(Path::new("ue4ss/UE4SS.dll"), &layout)
@@ -1448,7 +1694,7 @@ mod tests {
         assert_eq!(layout.prefix, Path::new("ReadyOrNot/Binaries/Win64"));
         assert!(!layout.bundles_runtime);
         assert!(layout.bundles_mod);
-        assert_eq!(layout.wrapper.as_deref(), Some("ue4ss"));
+        assert_eq!(layout.wrapper.as_deref(), Some(Path::new("ue4ss")));
 
         // Wrapper is stripped and the user mod routes into the runtime's
         // ue4ss/Mods subtree where the experimental loader reads it.
@@ -1496,7 +1742,7 @@ mod tests {
         ];
         let layout = detect_ue4ss_layout(&names).expect("should detect UE4SS layout");
         assert!(layout.bundles_mod);
-        assert_eq!(layout.wrapper.as_deref(), Some("UE4SS"));
+        assert_eq!(layout.wrapper.as_deref(), Some(Path::new("UE4SS")));
 
         let rewritten =
             rewrite_ue4ss_path(Path::new("UE4SS/Mods/CustomMod/Scripts/main.lua"), &layout)
@@ -1505,6 +1751,102 @@ mod tests {
             rewritten,
             Path::new("ReadyOrNot/Binaries/Win64/ue4ss/Mods/CustomMod/Scripts/main.lua")
         );
+    }
+
+    #[test]
+    fn detect_ue4ss_layout_for_double_nested_wrapper_bundle() {
+        // SwatPathAround 8250 "Bundle" layout: the UE4SS runtime + mod are
+        // nested two levels deep inside a download-folder-named wrapper:
+        // `<root>/SwatPathAround_Bundle/Win64/ue4ss/Mods/SwatPathAround/...`
+        let names = vec![
+            "SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/dwmapi.dll"
+                .to_string(),
+            "SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/UE4SS.dll"
+                .to_string(),
+            "SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/UE4SS-settings.ini"
+                .to_string(),
+            "SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/Docs/installation-guide.md"
+                .to_string(),
+            "SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/MemberVarLayoutTemplates/MemberVariableLayout.ini"
+                .to_string(),
+            "SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/Mods/mods.txt"
+                .to_string(),
+            "SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/Mods/mods.json"
+                .to_string(),
+            "SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/Mods/shared/UEHelpers/UEHelpers.lua"
+                .to_string(),
+            "SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/Mods/BPModLoaderMod/Scripts/main.lua"
+                .to_string(),
+            "SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/Mods/SwatPathAround/enabled.txt"
+                .to_string(),
+            "SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/Mods/SwatPathAround/Scripts/main.lua"
+                .to_string(),
+        ];
+        let layout = detect_ue4ss_layout(&names).expect("should detect UE4SS layout");
+        assert_eq!(layout.prefix, Path::new("ReadyOrNot/Binaries/Win64"));
+        assert!(!layout.bundles_runtime);
+        assert!(layout.bundles_mod);
+        assert_eq!(
+            layout.wrapper.as_deref(),
+            Some(Path::new(
+                "SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss"
+            ))
+        );
+
+        // User mod files route into the runtime's ue4ss/Mods subtree.
+        let rewritten = rewrite_ue4ss_path(
+            Path::new("SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/Mods/SwatPathAround/Scripts/main.lua"),
+            &layout,
+        )
+        .expect("user mod file should not be skipped");
+        assert_eq!(
+            rewritten,
+            Path::new("ReadyOrNot/Binaries/Win64/ue4ss/Mods/SwatPathAround/Scripts/main.lua")
+        );
+
+        // Shared Lua library installs.
+        let shared = rewrite_ue4ss_path(
+            Path::new("SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/Mods/shared/UEHelpers/UEHelpers.lua"),
+            &layout,
+        )
+        .expect("shared Lua library should install");
+        assert_eq!(
+            shared,
+            Path::new("ReadyOrNot/Binaries/Win64/ue4ss/Mods/shared/UEHelpers/UEHelpers.lua")
+        );
+
+        // Bundled runtime files, stock helpers, docs, and template directories
+        // are all skipped (not under Mods/, so user_ue4ss_mod_subpath is None).
+        assert!(rewrite_ue4ss_path(
+            Path::new("SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/UE4SS.dll"),
+            &layout
+        )
+        .is_none());
+        assert!(rewrite_ue4ss_path(
+            Path::new("SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/dwmapi.dll"),
+            &layout
+        )
+        .is_none());
+        assert!(rewrite_ue4ss_path(
+            Path::new("SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/Docs/installation-guide.md"),
+            &layout
+        )
+        .is_none());
+        assert!(rewrite_ue4ss_path(
+            Path::new("SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/MemberVarLayoutTemplates/MemberVariableLayout.ini"),
+            &layout
+        )
+        .is_none());
+        assert!(rewrite_ue4ss_path(
+            Path::new("SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/Mods/BPModLoaderMod/Scripts/main.lua"),
+            &layout
+        )
+        .is_none());
+        assert!(rewrite_ue4ss_path(
+            Path::new("SwatPathAround Bundle 8250 1 2026 uwrWHLEPO/SwatPathAround_Bundle/Win64/ue4ss/Mods/mods.txt"),
+            &layout
+        )
+        .is_none());
     }
 
     #[test]
@@ -1556,7 +1898,7 @@ mod tests {
         let filter =
             std::collections::HashSet::from([String::from("Mod/Variants/Blue/shared.pak")]);
         let report =
-            install_archive_with_progress(&archive, &context, |_| {}, Some(&filter)).unwrap();
+            install_archive_with_progress(&archive, &context, |_| {}, Some(&filter), None).unwrap();
 
         assert_eq!(report.installed, 1);
         assert_eq!(report.skipped, 2);
@@ -1755,7 +2097,7 @@ mod tests {
         assert_eq!(layout.prefix, Path::new("ReadyOrNot/Binaries/Win64"));
         assert!(!layout.bundles_runtime);
         assert!(layout.bundles_mod);
-        assert_eq!(layout.wrapper.as_deref(), Some("package"));
+        assert_eq!(layout.wrapper.as_deref(), Some(Path::new("package")));
 
         // The user's mod routes into the runtime's ue4ss/Mods subtree;
         // everything else is skipped.
@@ -1839,6 +2181,246 @@ mod tests {
         assert!(context
             .game_path
             .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods/shared/UEHelpers/UEHelpers.lua")
+            .exists());
+    }
+
+    #[test]
+    fn detect_blocked_native_binaries_flags_mod_dll() {
+        // SWAT Unleashed "ModOnly" layout: Lua mod + native C++ DLL under
+        // `Mods/<mod>/dlls/`. The DLL is Windows-only and must be blocked.
+        let names = vec![
+            "ReadyOrNot/Binaries/Win64/Mods/RonCommandNative/enabled.txt".to_string(),
+            "ReadyOrNot/Binaries/Win64/Mods/RonCommandNative/dlls/main.dll".to_string(),
+            "ReadyOrNot/Binaries/Win64/Mods/RonCommandNative/dlls/SWATEnhanced.ini".to_string(),
+            "ReadyOrNot/Binaries/Win64/Mods/RonAIHooks/Scripts/main.lua".to_string(),
+            "ReadyOrNot/Binaries/Win64/Mods/RonAIHooks/enabled.txt".to_string(),
+            "ReadyOrNot/Content/Paks/zzz_RonAI_TacticalFix_V1_P.pak".to_string(),
+        ];
+        let blocked = detect_blocked_native_binaries(&names);
+        assert_eq!(
+            blocked,
+            vec!["ReadyOrNot/Binaries/Win64/Mods/RonCommandNative/dlls/main.dll"]
+        );
+    }
+
+    #[test]
+    fn detect_blocked_native_binaries_allows_runtime_dlls() {
+        // Plain UE4SS runtime archive: `UE4SS.dll`, `dwmapi.dll`,
+        // `xinput1_3.dll` are allowlisted and must NOT be blocked.
+        let names = vec![
+            "dwmapi.dll".to_string(),
+            "UE4SS.dll".to_string(),
+            "UE4SS-settings.ini".to_string(),
+            "xinput1_3.dll".to_string(),
+        ];
+        assert!(detect_blocked_native_binaries(&names).is_empty());
+    }
+
+    #[test]
+    fn detect_blocked_native_binaries_handles_case_variants() {
+        // Basename comparison is case-insensitive.
+        let names = vec![
+            "Mods/SomeMod/dlls/MAIN.DLL".to_string(),
+            "Mods/SomeMod/dlls/Main.Dll".to_string(),
+            "package/UE4SS.DLL".to_string(),
+        ];
+        let blocked = detect_blocked_native_binaries(&names);
+        assert_eq!(
+            blocked,
+            vec!["Mods/SomeMod/dlls/MAIN.DLL", "Mods/SomeMod/dlls/Main.Dll"]
+        );
+    }
+
+    #[test]
+    fn detect_blocked_native_binaries_flags_exe_and_asi() {
+        // `.exe` installers and `.asi` script loader DLLs are also blocked.
+        let names = vec![
+            "installer.exe".to_string(),
+            "re-shade/asi/loader.asi".to_string(),
+            "Mods/ModName/Scripts/main.lua".to_string(),
+        ];
+        let blocked = detect_blocked_native_binaries(&names);
+        assert_eq!(blocked, vec!["installer.exe", "re-shade/asi/loader.asi"]);
+    }
+
+    #[test]
+    fn detect_blocked_native_binaries_empty_for_pure_pak_mod() {
+        let names = vec!["maps/cool_mod.pak".to_string(), "readme.txt".to_string()];
+        assert!(detect_blocked_native_binaries(&names).is_empty());
+    }
+
+    fn swat_path_around_bundle_entries() -> Vec<(String, u64)> {
+        let prefix = "DL/SwatPathAround_Bundle/Win64/ue4ss";
+        vec![
+            (format!("{prefix}/UE4SS.dll"), 100),
+            (format!("{prefix}/Docs/guide.md"), 10),
+            (format!("{prefix}/Mods/mods.txt"), 5),
+            (format!("{prefix}/Mods/BPModLoaderMod/Scripts/main.lua"), 20),
+            (format!("{prefix}/Mods/shared/UEHelpers/UEHelpers.lua"), 30),
+            (format!("{prefix}/Mods/shared/Types.lua"), 40),
+            (format!("{prefix}/Mods/shared/jsbProfiler/jsbProfi.lua"), 50),
+            (format!("{prefix}/Mods/SwatPathAround/enabled.txt"), 0),
+            (format!("{prefix}/Mods/SwatPathAround/Scripts/main.lua"), 60),
+        ]
+    }
+
+    #[test]
+    fn list_ue4ss_mod_folders_groups_mods_and_shared_subs() {
+        let entries = swat_path_around_bundle_entries();
+        let folders = list_ue4ss_mod_folders(&entries);
+        // Only the user mod and the deselectable shared sub-library are
+        // listed: UEHelpers, loose shared files, stock helpers, runtime
+        // files, docs and metadata stay silent.
+        assert_eq!(folders.len(), 2);
+        assert_eq!(folders[0].name, "shared/jsbProfiler");
+        assert_eq!(folders[0].path, "Mods/shared/jsbProfiler");
+        assert_eq!(folders[0].file_count, 1);
+        assert_eq!(folders[0].size, 50);
+        assert_eq!(folders[1].name, "SwatPathAround");
+        assert_eq!(folders[1].path, "Mods/SwatPathAround");
+        assert_eq!(folders[1].file_count, 2);
+        assert_eq!(folders[1].size, 60);
+    }
+
+    #[test]
+    fn list_ue4ss_mod_folders_empty_for_non_bundle() {
+        let entries = vec![
+            ("maps/cool_mod.pak".to_string(), 100),
+            ("readme.txt".to_string(), 10),
+        ];
+        assert!(list_ue4ss_mod_folders(&entries).is_empty());
+    }
+
+    #[test]
+    fn list_ue4ss_mod_folders_empty_for_plain_runtime() {
+        let entries = vec![
+            ("dwmapi.dll".to_string(), 100),
+            ("ue4ss/UE4SS.dll".to_string(), 200),
+            ("ue4ss/Mods/shared/UEHelpers/UEHelpers.lua".to_string(), 30),
+        ];
+        assert!(list_ue4ss_mod_folders(&entries).is_empty());
+    }
+
+    #[test]
+    fn rewrite_filtered_drops_deselected_units_but_keeps_shared_lib() {
+        let entries = swat_path_around_bundle_entries();
+        let names: Vec<String> = entries.iter().map(|(n, _)| n.clone()).collect();
+        let layout = detect_ue4ss_layout(&names).expect("should detect UE4SS layout");
+        assert!(layout.bundles_mod);
+        let selected: HashSet<String> = HashSet::from(["SwatPathAround".to_string()]);
+
+        // Deselected shared sub-library is skipped.
+        assert!(rewrite_ue4ss_path_filtered(
+            Path::new("DL/SwatPathAround_Bundle/Win64/ue4ss/Mods/shared/jsbProfiler/jsbProfi.lua"),
+            &layout,
+            Some(&selected),
+        )
+        .is_none());
+        // Selected user mod installs.
+        let installed = rewrite_ue4ss_path_filtered(
+            Path::new("DL/SwatPathAround_Bundle/Win64/ue4ss/Mods/SwatPathAround/Scripts/main.lua"),
+            &layout,
+            Some(&selected),
+        )
+        .expect("selected mod should install");
+        assert_eq!(
+            installed,
+            Path::new("ReadyOrNot/Binaries/Win64/ue4ss/Mods/SwatPathAround/Scripts/main.lua")
+        );
+        // UEHelpers is never selectable, so the filter can't drop it.
+        let shared = rewrite_ue4ss_path_filtered(
+            Path::new("DL/SwatPathAround_Bundle/Win64/ue4ss/Mods/shared/UEHelpers/UEHelpers.lua"),
+            &layout,
+            Some(&selected),
+        )
+        .expect("shared lib should always install");
+        assert_eq!(
+            shared,
+            Path::new("ReadyOrNot/Binaries/Win64/ue4ss/Mods/shared/UEHelpers/UEHelpers.lua")
+        );
+        // No filter installs everything, as before.
+        assert!(rewrite_ue4ss_path_filtered(
+            Path::new("DL/SwatPathAround_Bundle/Win64/ue4ss/Mods/shared/jsbProfiler/jsbProfi.lua"),
+            &layout,
+            None,
+        )
+        .is_some());
+    }
+
+    #[test]
+    fn rewrite_passes_through_non_wrapper_overrides_in_mixed_bundle() {
+        // SWAT Unleashed 8753 shape: UE4SS mods under a nested Win64 tree plus
+        // a ReadyOrNot/Content pak outside the wrapper.
+        let names = vec![
+            "ReadyOrNot/Binaries/Win64/Mods/RonCommandNative/enabled.txt".to_string(),
+            "ReadyOrNot/Binaries/Win64/Mods/RonAIHooks/Scripts/main.lua".to_string(),
+            "ReadyOrNot/Content/Paks/zzz_RonAI_TacticalFix_V1_P.pak".to_string(),
+            "README.txt".to_string(),
+        ];
+        let layout = detect_ue4ss_layout(&names).expect("should detect UE4SS layout");
+        assert!(layout.bundles_mod);
+
+        // The pak passes through verbatim so it classifies as an Override.
+        let pak = rewrite_ue4ss_path(
+            Path::new("ReadyOrNot/Content/Paks/zzz_RonAI_TacticalFix_V1_P.pak"),
+            &layout,
+        )
+        .expect("pak outside wrapper should pass through");
+        assert_eq!(
+            pak,
+            Path::new("ReadyOrNot/Content/Paks/zzz_RonAI_TacticalFix_V1_P.pak")
+        );
+        assert_eq!(classify_archive_entry(&pak), ModFileType::Override);
+
+        // Mod folders still re-root into the runtime subtree.
+        let lua = rewrite_ue4ss_path(
+            Path::new("ReadyOrNot/Binaries/Win64/Mods/RonAIHooks/Scripts/main.lua"),
+            &layout,
+        )
+        .expect("user mod should install");
+        assert_eq!(
+            lua,
+            Path::new("ReadyOrNot/Binaries/Win64/ue4ss/Mods/RonAIHooks/Scripts/main.lua")
+        );
+
+        // Author extras at the root are still skipped.
+        assert!(rewrite_ue4ss_path(Path::new("README.txt"), &layout).is_none());
+    }
+
+    #[test]
+    fn install_archive_respects_ue4ss_mod_filter() {
+        let temp = TempDir::new().unwrap();
+        let context = create_context(temp.path());
+        fs::create_dir_all(&context.game_path).unwrap();
+
+        let archive = create_test_archive(
+            temp.path(),
+            vec![
+                ("Mods/AlphaMod/enabled.txt", b""),
+                ("Mods/AlphaMod/Scripts/main.lua", b"-- alpha"),
+                ("Mods/BetaMod/enabled.txt", b""),
+                ("Mods/BetaMod/Scripts/main.lua", b"-- beta"),
+                ("Mods/shared/UEHelpers/UEHelpers.lua", b"-- shared"),
+            ],
+        );
+
+        let filter = HashSet::from(["AlphaMod".to_string()]);
+        let report =
+            install_archive_with_progress(&archive, &context, |_| {}, None, Some(&filter)).unwrap();
+
+        assert_eq!(report.installed, 3, "AlphaMod + shared lib install");
+        assert_eq!(report.skipped, 2, "BetaMod files skipped");
+        assert!(context
+            .game_path
+            .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods/AlphaMod/Scripts/main.lua")
+            .exists());
+        assert!(context
+            .game_path
+            .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods/shared/UEHelpers/UEHelpers.lua")
+            .exists());
+        assert!(!context
+            .game_path
+            .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods/BetaMod")
             .exists());
     }
 }

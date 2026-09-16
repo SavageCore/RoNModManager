@@ -5,6 +5,8 @@
     fetchModioRemoteInfo,
     fetchNexusModInfo,
     getArchivePakFiles,
+    getArchiveUe4ssMods,
+    checkArchiveBlocked,
     getTags,
     getAddonMap,
     setAddonMap,
@@ -21,12 +23,14 @@
   import { importLogStore } from "$lib/stores/importLogStore";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { requestPakSelection } from "$lib/stores/pakSelection";
+  import { requestUe4ssModSelection } from "$lib/stores/ue4ssModSelection";
   import { requestNexusFileSelection } from "$lib/stores/nexusFileSelection";
   import type { NexusFileSelectionResult } from "$lib/stores/nexusFileSelection";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { open } from "@tauri-apps/plugin-dialog";
   import { createEventDispatcher, onDestroy, onMount } from "svelte";
   import ModalShell from "./ModalShell.svelte";
+  import WindowsOnlyModModal from "./WindowsOnlyModModal.svelte";
 
   export let isVisible = false;
   export let autoSubmitEntries: Array<{
@@ -71,6 +75,40 @@
     /** When true (and >1 file), extra files become add-ons of the first. */
     linkAsAddons?: boolean;
   }> = [];
+
+  let isWindowsOnlyModalVisible = false;
+  let windowsOnlyBlockedFiles: string[] = [];
+  let windowsOnlyModName = "";
+  let windowsOnlyNexusUrl = "";
+
+  function showWindowsOnlyModal(
+    blockedFiles: string[],
+    modName: string,
+    nexusUrl?: string,
+  ): void {
+    windowsOnlyBlockedFiles = blockedFiles;
+    windowsOnlyModName = modName;
+    windowsOnlyNexusUrl = nexusUrl ?? "";
+    isWindowsOnlyModalVisible = true;
+  }
+
+  function parseBlockedDllError(error: string): string[] | null {
+    const match = error.match(/^Windows-only native mod: (\[.*\])$/s);
+    if (!match) return null;
+    try {
+      const files = JSON.parse(match[1]);
+      if (
+        Array.isArray(files) &&
+        files.length > 0 &&
+        files.every((f: unknown) => typeof f === "string")
+      ) {
+        return files;
+      }
+    } catch {
+      // fall through
+    }
+    return null;
+  }
 
   $: activeQueueCount = $modAddQueueStore.items.filter(
     (item) => item.status === "queued" || item.status === "running",
@@ -332,6 +370,7 @@
           | Awaited<ReturnType<typeof addNexusMod>>
           | Awaited<ReturnType<typeof addModIoMod>>;
         selectedPaks?: string[];
+        selectedUe4ssMods?: string[];
         failed?: boolean;
         // True once the underlying download promise settles, independent of
         // whether queueInstallWork has consumed it yet. d.result alone can't
@@ -564,6 +603,20 @@
                       return;
                     }
                     download.selectedPaks = selectedPaks ?? undefined;
+                    const selectedUe4ssMods = await chooseUe4ssMods(
+                      resolved.archivePath,
+                      resolved.archiveName,
+                      plan.entry.queueId,
+                    );
+                    if (selectedUe4ssMods === null) {
+                      modAddQueueStore.markError(
+                        plan.entry.queueId,
+                        "Cancelled",
+                      );
+                      download.failed = true;
+                      return;
+                    }
+                    download.selectedUe4ssMods = selectedUe4ssMods ?? undefined;
                     importLogStore.setCurrentMod(plan.entry.queueId);
                     modAddQueueStore.markRunning(
                       plan.entry.queueId,
@@ -574,6 +627,7 @@
                         resolved.archivePath,
                         download.selectedPaks,
                         resolved.contentHash,
+                        download.selectedUe4ssMods,
                       );
                       await updateModDisplayName(
                         resolved.archiveName,
@@ -605,10 +659,26 @@
                         installResult.wasDuplicate,
                       );
                     } catch (error) {
-                      modAddQueueStore.markError(
-                        plan.entry.queueId,
-                        `Failed: ${String(error)}`,
-                      );
+                      const msg = String(error);
+                      const blocked = parseBlockedDllError(msg);
+                      if (blocked) {
+                        const modName =
+                          download.result?.name ||
+                          plan.entry.displayName ||
+                          plan.entry.input;
+                        const nexusUrl =
+                          download.result?.sourceUrl || undefined;
+                        showWindowsOnlyModal(blocked, modName, nexusUrl);
+                        modAddQueueStore.markError(
+                          plan.entry.queueId,
+                          "Blocked: Windows-only native mod",
+                        );
+                      } else {
+                        modAddQueueStore.markError(
+                          plan.entry.queueId,
+                          `Failed: ${msg}`,
+                        );
+                      }
                       download.failed = true;
                       plan.failed = true;
                     }
@@ -735,13 +805,23 @@
     }
   }
 
-  async function doInstallFile(filePath: string, selectedPakFiles?: string[]) {
+  async function doInstallFile(
+    filePath: string,
+    selectedPakFiles?: string[],
+    displayName?: string,
+    selectedUe4ssMods?: string[],
+  ) {
     const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
     alertStore.clear();
     const queueId = modAddQueueStore.enqueue(fileName);
     modAddQueueStore.markRunning(queueId, "Installing...");
     try {
-      const result = await installLocalMod(filePath, selectedPakFiles);
+      const result = await installLocalMod(
+        filePath,
+        selectedPakFiles,
+        null,
+        selectedUe4ssMods,
+      );
       if (result.wasDuplicate) {
         modAddQueueStore.markDone(queueId, `${fileName} is already installed`);
         alertStore.info(
@@ -753,8 +833,15 @@
         dispatch("modAdded");
       }
     } catch (error) {
-      modAddQueueStore.markError(queueId, `Failed: ${String(error)}`);
-      alertStore.error(String(error));
+      const msg = String(error);
+      const blocked = parseBlockedDllError(msg);
+      if (blocked) {
+        showWindowsOnlyModal(blocked, displayName || fileName);
+        modAddQueueStore.markError(queueId, "Blocked: Windows-only native mod");
+        return;
+      }
+      modAddQueueStore.markError(queueId, `Failed: ${msg}`);
+      alertStore.error(msg);
     }
   }
 
@@ -797,11 +884,56 @@
     }
   }
 
+  async function chooseUe4ssMods(
+    filePath: string,
+    archiveName: string,
+    queueId?: string,
+  ): Promise<string[] | null | undefined> {
+    const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+    if (ext !== "zip" && ext !== "rar" && ext !== "7z") return undefined;
+    try {
+      const mods = await getArchiveUe4ssMods(filePath);
+      if (mods.length <= 1) return undefined;
+      if (queueId) {
+        modAddQueueStore.markRunning(
+          queueId,
+          "Select UE4SS mods to install...",
+        );
+        importLogStore.setWaitingForInput(queueId);
+      }
+      const result = await requestUe4ssModSelection(archiveName, mods);
+      if (queueId) importLogStore.clearWaitingForInput(queueId);
+      return result;
+    } catch {
+      return undefined;
+    }
+  }
+
   async function installFile(filePath: string) {
     const archiveName = filePath.split(/[\\/]/).pop() ?? filePath;
+
+    // Fail-fast: check for Windows-only native binaries before showing the
+    // PAK picker so the user isn't prompted for an install we'll reject.
+    try {
+      const blocked = await checkArchiveBlocked(filePath);
+      if (blocked.length > 0) {
+        showWindowsOnlyModal(blocked, archiveName);
+        return;
+      }
+    } catch {
+      // If the pre-check itself fails, let installLocalMod handle the error.
+    }
+
     const selectedPaks = await choosePaks(filePath, archiveName);
     if (selectedPaks === null) return;
-    await doInstallFile(filePath, selectedPaks ?? undefined);
+    const selectedUe4ssMods = await chooseUe4ssMods(filePath, archiveName);
+    if (selectedUe4ssMods === null) return;
+    await doInstallFile(
+      filePath,
+      selectedPaks ?? undefined,
+      archiveName,
+      selectedUe4ssMods ?? undefined,
+    );
   }
 
   async function handleAddViaFile() {
@@ -1002,3 +1134,13 @@
     {/if}
   </div>
 </ModalShell>
+
+<WindowsOnlyModModal
+  isVisible={isWindowsOnlyModalVisible}
+  blockedFiles={windowsOnlyBlockedFiles}
+  modName={windowsOnlyModName}
+  nexusUrl={windowsOnlyNexusUrl}
+  onClose={() => {
+    isWindowsOnlyModalVisible = false;
+  }}
+/>

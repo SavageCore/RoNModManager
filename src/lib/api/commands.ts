@@ -138,10 +138,12 @@ export const installLocalMod = (
   filePath: string,
   selectedPakFiles?: string[],
   precomputedHash?: string | null,
+  selectedUe4ssMods?: string[],
 ) =>
   invoke<{ wasDuplicate: boolean }>("install_local_mod", {
     filePath,
     selectedPakFiles: selectedPakFiles ?? null,
+    selectedUe4ssMods: selectedUe4ssMods ?? null,
     precomputedHash: precomputedHash ?? null,
   });
 
@@ -151,8 +153,19 @@ export interface PakFileInfo {
   size: number;
 }
 
+export interface Ue4ssModFolder {
+  name: string;
+  path: string;
+  fileCount: number;
+  size: number;
+}
+
 export const getArchivePakFiles = (filePath: string) =>
   invoke<PakFileInfo[]>("get_archive_pak_files", { filePath });
+export const getArchiveUe4ssMods = (filePath: string) =>
+  invoke<Ue4ssModFolder[]>("get_archive_ue4ss_mods", { filePath });
+export const checkArchiveBlocked = (filePath: string) =>
+  invoke<string[]>("check_archive_blocked", { filePath });
 export interface ModAddResult {
   modId: number;
   name: string;

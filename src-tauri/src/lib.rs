@@ -254,6 +254,8 @@ pub fn run() {
             mods::install_mods,
             mods::install_local_mod,
             mods::get_archive_pak_files,
+            mods::get_archive_ue4ss_mods,
+            mods::check_archive_blocked,
             mods::add_modio_mod,
             mods::add_nexus_mod,
             mods::list_nexus_file_options,

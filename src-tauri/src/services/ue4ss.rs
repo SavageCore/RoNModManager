@@ -942,6 +942,7 @@ pub async fn ensure_installed(
         client,
         temp_root,
         None,
+        None,
         Some(content_hash),
     )
     .await?;

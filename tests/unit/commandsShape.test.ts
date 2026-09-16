@@ -31,16 +31,18 @@ describe("command wrappers", () => {
       filePath: "/tmp/mod.zip",
       selectedPakFiles: null,
       precomputedHash: null,
+      selectedUe4ssMods: null,
     });
   });
 
   it("passes explicit install args through", async () => {
     invoke.mockResolvedValue({ wasDuplicate: true });
-    await installLocalMod("/tmp/mod.zip", ["a.pak"], "abc");
+    await installLocalMod("/tmp/mod.zip", ["a.pak"], "abc", ["ModA"]);
     expect(invoke).toHaveBeenCalledWith("install_local_mod", {
       filePath: "/tmp/mod.zip",
       selectedPakFiles: ["a.pak"],
       precomputedHash: "abc",
+      selectedUe4ssMods: ["ModA"],
     });
   });
 
