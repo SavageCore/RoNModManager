@@ -9,6 +9,7 @@
     XCircle,
   } from "@lucide/svelte";
   import LogPanel from "./LogPanel.svelte";
+  import { tourState } from "$lib/tour/tourEngine";
 
   $: flatLog = $importLogStore.mods.flatMap((m, i) => [
     ...(i > 0 ? ["---"] : []),
@@ -23,6 +24,8 @@
 
 <LogPanel
   title="Import Log"
+  tourId="import-log"
+  steady={$tourState.running}
   isVisible={$importLogStore.isOpen}
   isLoading={isRunning}
   log={flatLog}
@@ -53,6 +56,7 @@
       {/if}
       <button
         class="flex items-center gap-1.5 mb-0.5 w-full text-left"
+        data-tour="import-log-entry"
         on:click={() => importLogStore.toggleExpanded(mod.id)}
       >
         <ChevronRight

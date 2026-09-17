@@ -5,6 +5,7 @@
   import { get } from "svelte/store";
   import { onMount } from "svelte";
   import ModalShell from "$lib/components/ModalShell.svelte";
+  import { registerTourActions } from "$lib/tour/registry";
   import {
     incognitoMode,
     DUMMY_PROFILES,
@@ -79,6 +80,24 @@
 
   onMount(() => {
     void loadProfiles();
+    unregisterTourActions = registerTourActions("profiles", {
+      "open-create-form": () => openForm(),
+      // Non-destructive: keeps anything already typed when a step is re-entered
+      // with Back.
+      "ensure-create-form": () => {
+        if (!showForm) openForm();
+      },
+      "close-create-form": () => closeForm(),
+      // Next on the form's last card saves when something has been typed and
+      // backs out when the form is untouched, so either way the tour moves on.
+      "submit-create-form": () => {
+        if (formName.trim() || formDescription.trim()) {
+          void handleSubmit();
+        } else {
+          closeForm();
+        }
+      },
+    });
     const dismiss = (event: Event) => {
       if (!openMenu) return;
       const t = event.target as HTMLElement;
@@ -93,6 +112,7 @@
     window.addEventListener("scroll", closeMenu, true);
     window.addEventListener("resize", closeMenu);
     return () => {
+      unregisterTourActions?.();
       document.removeEventListener("mousedown", dismiss);
       window.removeEventListener("scroll", closeMenu, true);
       window.removeEventListener("resize", closeMenu);
@@ -187,6 +207,7 @@
   }
 
   let deleteTarget: string | null = null;
+  let unregisterTourActions: (() => void) | null = null;
 
   function askDeleteProfile(name: string) {
     deleteTarget = name;
@@ -412,6 +433,7 @@
               type="text"
               bind:value={formName}
               class="input"
+              data-tour="profile-name"
               placeholder="Profile name"
             />
           </div>
@@ -426,6 +448,7 @@
               id="profile-description"
               bind:value={formDescription}
               class="textarea"
+              data-tour="profile-description"
               placeholder="Profile description"
               rows="2"></textarea>
           </div>
@@ -436,9 +459,11 @@
               {editingProfile ? "" : "New profile will be applied immediately"}
             </div>
           </div>
-          <div class="prefs-row-suffix">
-            <button on:click={handleSubmit} class="btn primary btn-sm"
-              >Save</button
+          <div class="prefs-row-suffix" data-tour="profile-actions">
+            <button
+              on:click={handleSubmit}
+              class="btn primary btn-sm"
+              data-tour="profile-save">Save</button
             >
             <button on:click={closeForm} class="btn btn-sm">Cancel</button>
           </div>
@@ -486,6 +511,7 @@
               <button
                 on:click={() => handleApply(profile.name)}
                 class="btn btn-sm primary"
+                data-tour="profile-apply"
               >
                 <span class="btn-icon"><Play size={14} /></span>Apply</button
               >
@@ -508,8 +534,10 @@
     </div>
     {#if !showForm}
       <div style="margin-top: 0.75rem;">
-        <button on:click={() => openForm()} class="btn primary btn-sm"
-          >+ Create New Profile</button
+        <button
+          on:click={() => openForm()}
+          class="btn primary btn-sm"
+          data-tour="profiles-create">+ Create New Profile</button
         >
       </div>
     {/if}

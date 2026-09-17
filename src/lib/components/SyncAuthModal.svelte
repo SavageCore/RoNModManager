@@ -98,6 +98,7 @@
 <ModalShell
   {isVisible}
   title="SSH Authentication"
+  tourId="sync-auth"
   width="w-[400px] max-w-[92vw]"
   showClose={false}
   closeOnEscape={false}

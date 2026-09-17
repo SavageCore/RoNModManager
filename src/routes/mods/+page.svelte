@@ -251,6 +251,7 @@
     X,
   } from "@lucide/svelte";
   import { onMount } from "svelte";
+  import { registerTourActions } from "$lib/tour/registry";
 
   let modGroups: (InstalledModGroup & { addonFiles?: InstalledModFile[] })[] =
     [];
@@ -316,6 +317,7 @@
   let modSourceFilter: "all" | "nexus" | "modio" = "all";
   let modsForActiveProfile: string[] = [];
   let showAddModModal = false;
+  let unregisterTourActions: (() => void) | null = null;
   let autoSubmitEntries: Array<{
     url: string;
     replacing: string | null;
@@ -1558,6 +1560,18 @@
     void refresh();
     void loadModUpdates();
 
+    // The tour drives a couple of page operations through the registry rather
+    // than reaching into page state.
+    unregisterTourActions = registerTourActions("mods", {
+      "open-add-mod": () => {
+        showAddModModal = true;
+      },
+      "close-add-mod": () => {
+        showAddModModal = false;
+        autoSubmitEntries = [];
+      },
+    });
+
     scrollContainer = modListScrollEl;
     if (scrollContainer) {
       scrollContainer.addEventListener("scroll", updateScrollTopVisibility, {
@@ -1672,6 +1686,7 @@
 
     return () => {
       console.log("Cleaning up mods page listeners");
+      unregisterTourActions?.();
       scrollContainer?.removeEventListener("scroll", updateScrollTopVisibility);
       unsubPending();
       window.removeEventListener("focus", handleAppFocus);
@@ -2086,6 +2101,7 @@
             showAddModModal = true;
           }}
           class="btn btn-sm btn-success"
+          data-tour="mods-add-mod"
           title="Add Mod"
         >
           <Plus size={16} class="inline mr-1" />
@@ -2216,6 +2232,7 @@
             <li
               style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
               class="rounded border group/row"
+              data-tour="mod-row"
               on:contextmenu|preventDefault={async () => {
                 const menu = await Menu.new({
                   items: [
@@ -2406,6 +2423,7 @@
                           <span
                             role="button"
                             tabindex="0"
+                            data-tour="mod-update-badge"
                             title={`Update available${effectiveModUpdates[group.name].latestVersion ? `: ${effectiveModUpdates[group.name].currentVersion ?? "?"} -> ${effectiveModUpdates[group.name].latestVersion}` : ""}`}
                             class="flex items-center gap-0.5 cursor-pointer text-xs rounded px-1.5 border"
                             style="color: #f59e0b; border-color: #f59e0b;"
@@ -2557,6 +2575,7 @@
                   {/if}
                   <label
                     class="gale-switch"
+                    data-tour="mod-row-toggle"
                     class:opacity-50={!!brokenModsMap[group.name]}
                     title={brokenModsMap[group.name] !== undefined
                       ? `Broken: ${brokenModsMap[group.name] || "no note"}`
@@ -2576,6 +2595,7 @@
 
                   <button
                     class="icon-btn-danger"
+                    data-tour="mod-row-delete"
                     title={`Uninstall ${group.displayName ?? group.name}`}
                     on:click={() => {
                       void handleUninstallArchive(group);

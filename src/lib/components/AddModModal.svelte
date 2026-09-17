@@ -18,6 +18,9 @@
   } from "$lib/api/commands";
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import { alertStore } from "$lib/stores/alert";
+  import { addModTourCommand } from "$lib/stores/tourUi";
+  import { applyAddModTourCommand } from "$lib/tour/consumers";
+  import { registerTourActions } from "$lib/tour/registry";
   import { importLogStore } from "$lib/stores/importLogStore";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
   import { requestPakSelection } from "$lib/stores/pakSelection";
@@ -931,6 +934,22 @@
   }
 
   onMount(() => {
+    // Lets the tour's Next button install whatever is in the box, exactly as
+    // pressing Add Mod would.
+    unregisterTourActions = registerTourActions("mods", {
+      "submit-add-mod": () => void handleAddViaLink(),
+    });
+    unsubscribeTourCommand = addModTourCommand.subscribe((cmd) => {
+      const applied = applyAddModTourCommand(cmd, {
+        setTab: (tab) => {
+          activeTab = tab;
+        },
+        setLink: (url) => {
+          modioInput = url;
+        },
+      });
+      if (applied) addModTourCommand.set(null);
+    });
     const appWindow = getCurrentWindow();
     void appWindow
       .onDragDropEvent((event) => {
@@ -954,6 +973,8 @@
   });
 
   onDestroy(() => {
+    unsubscribeTourCommand?.();
+    unregisterTourActions?.();
     unlistenDragDrop?.();
   });
 
@@ -963,6 +984,11 @@
     alertStore.clear();
     dispatch("close");
   }
+
+  // Consume one-shot tour commands. A subscription (rather than a reactive
+  // statement that also writes the store) keeps the dependency graph clean.
+  let unsubscribeTourCommand: (() => void) | null = null;
+  let unregisterTourActions: (() => void) | null = null;
 </script>
 
 <!-- AddMod keeps its own drag-drop listeners; only overlay/panel/header
@@ -979,12 +1005,14 @@
   <div
     class="flex gap-2 mb-4 border-b"
     style="border-color: var(--adw-border-color);"
+    data-tour="addmod-panel"
   >
     <button
       on:click={() => {
         activeTab = "link";
         alertStore.clear();
       }}
+      data-tour="addmod-tab-link"
       style={activeTab === "link"
         ? `color: var(--clr-primary-300); border-bottom: 2px solid var(--clr-primary-300);`
         : `color: var(--clr-text-secondary);`}
@@ -1022,6 +1050,7 @@
             id="modio-input"
             rows="5"
             class="textarea"
+            data-tour="addmod-link-input"
             placeholder="https://mod.io/g/readyornot/m/lustful-remorse&#10;https://mod.io/g/readyornot/m/simple-mod-menu&#10;https://www.nexusmods.com/readyornot/mods/1234"
             bind:value={modioInput}
             on:paste={handlePaste}></textarea>
@@ -1058,6 +1087,7 @@
             on:click={() => handleAddViaLink()}
             disabled={!modioInput.trim()}
             class="flex-1 btn primary"
+            data-tour="addmod-submit"
           >
             Add Mod{parseModInputs(modioInput).length > 1 ? "s" : ""}
           </button>
@@ -1068,6 +1098,7 @@
         <!-- Drop zone -->
         <button
           on:click={handleAddViaFile}
+          data-tour="addmod-drop-zone"
           style="border-color: {isDraggingOver
             ? 'var(--clr-primary-300)'
             : 'var(--adw-border-color)'}; background: {isDraggingOver

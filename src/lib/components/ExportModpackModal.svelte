@@ -45,6 +45,7 @@
 <ModalShell
   {isVisible}
   title="Export Modpack"
+  tourId="export-modal"
   width="w-[420px] max-w-[92vw]"
   showClose={false}
   closeOnEscape={false}
@@ -55,13 +56,14 @@
     <button
       class="text-xs underline opacity-60 hover:opacity-100 cursor-pointer"
       style="color: var(--clr-text);"
+      data-tour="export-guide"
       on:click={() =>
         openUrl(
           "https://github.com/SavageCore/RoNModManager/blob/main/docs/HOSTING_MODPACKS.md",
         )}>Hosting guide</button
     >
   </svelte:fragment>
-  <div class="space-y-3">
+  <div class="space-y-3" data-tour="export-panel">
     <div>
       <label
         for="modpack-name"
@@ -116,7 +118,9 @@
     </div>
   </div>
   <div class="flex justify-end gap-2 mt-6">
-    <button class="btn" on:click={closeModal}>Cancel</button>
+    <button class="btn" data-tour="export-cancel" on:click={closeModal}
+      >Cancel</button
+    >
     <button
       class="btn primary"
       on:click={submit}

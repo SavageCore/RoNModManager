@@ -22,6 +22,7 @@ pub struct ConfigUpdate {
     pub minimize_target: Option<MinimizeTarget>,
     pub asked_close_preference: Option<bool>,
     pub setup_wizard_complete: Option<bool>,
+    pub tutorial_complete: Option<bool>,
     pub log_level: Option<LogLevel>,
     pub link_on_launch_only: Option<bool>,
 }
@@ -86,6 +87,9 @@ pub async fn update_config(state: State<'_, AppState>, updates: ConfigUpdate) ->
         }
         if let Some(v) = updates.setup_wizard_complete {
             config.setup_wizard_complete = v;
+        }
+        if let Some(v) = updates.tutorial_complete {
+            config.tutorial_complete = v;
         }
         if let Some(level) = updates.log_level {
             config.log_level = level;
@@ -244,6 +248,7 @@ mod tests {
             minimize_target: None,
             asked_close_preference: None,
             setup_wizard_complete: None,
+            tutorial_complete: None,
             log_level: None,
             link_on_launch_only: None,
         }
@@ -330,6 +335,7 @@ mod tests {
             minimize_target: Some(MinimizeTarget::Tray),
             asked_close_preference: Some(true),
             setup_wizard_complete: Some(true),
+            tutorial_complete: Some(true),
             log_level: Some(LogLevel::Debug),
             link_on_launch_only: Some(true),
             ..blank_update()
@@ -357,6 +363,7 @@ mod tests {
         assert!(matches!(config.minimize_target, MinimizeTarget::Tray));
         assert!(config.asked_close_preference);
         assert!(config.setup_wizard_complete);
+        assert!(config.tutorial_complete);
         assert_eq!(config.log_level, LogLevel::Debug);
         assert!(config.link_on_launch_only);
     }

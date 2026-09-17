@@ -59,6 +59,8 @@
   import { updateCheckStore } from "$lib/stores/updateCheck";
   import { screenshotMode } from "$lib/stores/incognitoMode";
   import { applyThemeClass } from "$lib/theme";
+  import { clearTutorialComplete, startTour } from "$lib/tour/tourEngine";
+  import { registerTourActions } from "$lib/tour/registry";
   import { getVersion } from "@tauri-apps/api/app";
   import { downloadDir } from "@tauri-apps/api/path";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -110,6 +112,10 @@
   let showModioApiKeyText = false;
   let modioApiKeyModalError = "";
   let theme: "light" | "dark" | "system" = "system";
+  /// Set while the tour's theme demo is running.
+  let themeDemoActive = false;
+  let themeDemoTimer: ReturnType<typeof setTimeout> | null = null;
+  let themeDemoOriginal: "light" | "dark" | "system" = "system";
   let logLevel: "error" | "warn" | "info" | "debug" | "trace" = "info";
   let introSkipApplied = false;
   let applyingIntroSkip = false;
@@ -138,6 +144,7 @@
   let closeAction: CloseAction = "quit";
   let minimizeTarget: MinimizeTarget = "taskbar";
   let linkOnLaunchOnly = false;
+  let tutorialComplete = false;
   let ue4ssPresent = false;
   let ue4ssUseObjectArrayCache = false;
   let ue4ssEngineMajorVersion = "5";
@@ -159,6 +166,7 @@
   }
   let scrollEl: HTMLElement | null = null;
   let showScrollTop = false;
+  let unregisterTourActions: (() => void) | null = null;
 
   $: updateLastChecked = $updateCheckStore ? new Date($updateCheckStore) : null;
 
@@ -269,14 +277,19 @@
     detectedGpu = await detectGpuProfile().catch(() => null);
     if (!selectedGpu && detectedGpu) selectedGpu = detectedGpu;
     gamePath = config.game_path ?? "";
-    theme = config.theme;
-    if (!$screenshotMode) applyThemeClass(theme);
+    // The tour's theme demo owns the theme while it runs, so a config load
+    // landing mid-demo must not snap the window back.
+    if (!themeDemoActive) {
+      theme = config.theme;
+      if (!$screenshotMode) applyThemeClass(theme);
+    }
     await loadSyncDetails();
     onGameLaunch = config.on_game_launch ?? "nothing";
     closeAction = config.close_action ?? "quit";
     minimizeTarget = config.minimize_target ?? "taskbar";
     logLevel = config.log_level ?? "info";
     linkOnLaunchOnly = config.link_on_launch_only ?? false;
+    tutorialComplete = config.tutorial_complete ?? false;
     try {
       const ue4ss = await getUe4ssSettings();
       ue4ssPresent = ue4ss.settingsPresent;
@@ -659,6 +672,42 @@
     showExportModal = true;
   }
 
+  async function replayTutorial() {
+    await clearTutorialComplete();
+    tutorialComplete = false;
+    await startTour();
+  }
+
+  /// The tour shows what the theme setting does by flipping to the other theme
+  /// for a few seconds, then back to the user's own choice. Nothing is
+  /// persisted. `themeDemoActive` keeps the page's own config load from
+  /// resetting the window while the demo runs.
+  function demoTheme() {
+    themeDemoOriginal = theme;
+    themeDemoActive = true;
+    theme = document.documentElement.classList.contains("dark")
+      ? "light"
+      : "dark";
+    applyThemeClass(theme);
+    if (themeDemoTimer) clearTimeout(themeDemoTimer);
+    // Long enough to read the card and watch the whole window change.
+    themeDemoTimer = setTimeout(() => void stopThemeDemo(), 8000);
+  }
+
+  /// Puts the user's own theme back and drops any pending revert. Used by the
+  /// demo's own timer and when the tour leaves the card before it fires.
+  async function stopThemeDemo() {
+    if (themeDemoTimer) {
+      clearTimeout(themeDemoTimer);
+      themeDemoTimer = null;
+    }
+    themeDemoActive = false;
+    // Re-read, in case the config load had not landed when the demo started.
+    const config = await getConfig().catch(() => null);
+    theme = config?.theme ?? themeDemoOriginal;
+    applyThemeClass(theme);
+  }
+
   async function runSync(auth?: SyncAuth) {
     await setSyncDetails(syncRemoteHost.trim(), syncRemotePath.trim());
     syncLogStore.start();
@@ -864,6 +913,23 @@
     scrollEl?.addEventListener("scroll", updateScrollTopVisibility, {
       passive: true,
     });
+    unregisterTourActions = registerTourActions("settings", {
+      "close-export-modal": () => {
+        showExportModal = false;
+      },
+      "open-export-modal": () => void exportInstalledMods(),
+      // Non-destructive: keeps anything already typed when a step is re-entered
+      // with Back.
+      "ensure-export-modal": () => {
+        if (!showExportModal) void exportInstalledMods();
+      },
+      "demo-theme": () => demoTheme(),
+      "stop-theme-demo": () => void stopThemeDemo(),
+      "open-sync-credentials": () => openSyncAuthManual(),
+      "close-sync-credentials": () => {
+        showSyncAuthModal = false;
+      },
+    });
     runningInFlatpak = await isRunningInFlatpak();
     currentVersion = await getVersion();
     void migrateLegacyModpackMeta();
@@ -873,6 +939,8 @@
   onDestroy(() => {
     window.removeEventListener("ron:profile-changed", handleProfileChanged);
     scrollEl?.removeEventListener("scroll", updateScrollTopVisibility);
+    unregisterTourActions?.();
+    if (themeDemoTimer) clearTimeout(themeDemoTimer);
   });
 </script>
 
@@ -902,7 +970,7 @@
           <button class="btn btn-sm" on:click={autodetect}>Auto Detect</button>
         </div>
       </div>
-      <div class="prefs-row">
+      <div class="prefs-row" data-tour="settings-theme">
         <div class="prefs-row-text">
           <div class="prefs-row-title">Theme</div>
         </div>
@@ -920,7 +988,7 @@
           >
         </div>
       </div>
-      <div class="prefs-row">
+      <div class="prefs-row" data-tour="settings-link-on-launch">
         <div class="prefs-row-text">
           <div class="prefs-row-title">Link mods only on launch</div>
           <div class="prefs-row-subtitle">
@@ -1131,7 +1199,7 @@
   <div class="prefs-group">
     <div class="prefs-group-title">Game Tweaks</div>
     <div class="prefs-boxed-list">
-      <div class="prefs-row">
+      <div class="prefs-row" data-tour="settings-intro-skip">
         <div class="prefs-row-text">
           <div class="prefs-row-title">Intro Skip</div>
           <div class="prefs-row-subtitle">Removes startup movies</div>
@@ -1152,7 +1220,7 @@
           >
         </div>
       </div>
-      <div class="prefs-row">
+      <div class="prefs-row" data-tour="settings-optimization">
         <div class="prefs-row-text" style="flex:1">
           <div class="prefs-row-title">Engine.ini Optimization</div>
           <div class="prefs-row-subtitle">
@@ -1333,7 +1401,7 @@
   </div>
 
   <!-- Sync & Export -->
-  <div class="prefs-group">
+  <div class="prefs-group" data-tour="settings-sync-export">
     <div class="prefs-group-title">Sync & Export</div>
     <div class="prefs-boxed-list">
       <div class="prefs-row">
@@ -1342,8 +1410,10 @@
           <div class="prefs-row-subtitle">Export installed mods as modpack</div>
         </div>
         <div class="prefs-row-suffix">
-          <button class="btn btn-sm primary" on:click={exportInstalledMods}
-            >Export</button
+          <button
+            class="btn btn-sm primary"
+            data-tour="settings-export-button"
+            on:click={exportInstalledMods}>Export</button
           >
         </div>
       </div>
@@ -1407,6 +1477,7 @@
               on:click={openSyncAuthManual}>Credentials…</button
             ><button
               class="btn btn-sm primary"
+              data-tour="settings-sync-now"
               disabled={$syncLogStore.isBusy ||
                 !syncRemoteHost.trim() ||
                 !syncRemotePath.trim()}
@@ -1453,6 +1524,27 @@
                 Update{:else}Check for Updates{/if}</button
             >
           </div>{/if}
+      </div>
+    </div>
+  </div>
+  <!-- Tutorial -->
+  <div class="prefs-group" data-tour="settings-tutorial">
+    <div class="prefs-group-title">Tutorial</div>
+    <div class="prefs-boxed-list">
+      <div class="prefs-row">
+        <div class="prefs-row-text">
+          <div class="prefs-row-title">Guided tour</div>
+          <div class="prefs-row-subtitle">
+            {tutorialComplete
+              ? "Completed - replay it any time"
+              : "Not completed yet - it opens on the next launch"}
+          </div>
+        </div>
+        <div class="prefs-row-suffix">
+          <button class="btn btn-sm primary" on:click={replayTutorial}
+            >Replay Tutorial</button
+          >
+        </div>
       </div>
     </div>
   </div>

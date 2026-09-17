@@ -256,6 +256,7 @@ export const updateConfig = (updates: {
   minimize_target?: "taskbar" | "tray";
   asked_close_preference?: boolean;
   setup_wizard_complete?: boolean;
+  tutorial_complete?: boolean;
   log_level?: "error" | "warn" | "info" | "debug" | "trace";
   link_on_launch_only?: boolean;
 }) => invoke<void>("update_config", { updates });

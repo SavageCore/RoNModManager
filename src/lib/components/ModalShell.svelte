@@ -21,6 +21,8 @@
   export let panelStyle =
     "background: var(--clr-surface); border-color: var(--adw-border-color);";
   export let panelClass = "";
+  /// Namespaces a tour anchor on the panel, for the guided tour.
+  export let tourId = "";
 
   const dispatch = createEventDispatcher<{ close: void }>();
 
@@ -42,6 +44,7 @@
     <div
       style={panelStyle}
       class="border rounded-lg shadow-2xl {width} {padding} {panelClass}"
+      data-tour={tourId ? `${tourId}-panel` : undefined}
     >
       {#if title || $$slots.title || $$slots["header-actions"] || showClose}
         <div class={headerClass}>

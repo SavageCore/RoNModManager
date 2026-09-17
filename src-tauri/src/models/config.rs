@@ -113,6 +113,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub setup_wizard_complete: bool,
     #[serde(default)]
+    pub tutorial_complete: bool,
+    #[serde(default)]
     pub optimization_enabled: bool,
     #[serde(default)]
     pub optimization_profile: Option<String>,
@@ -148,6 +150,7 @@ impl Default for AppConfig {
             minimize_target: MinimizeTarget::Taskbar,
             asked_close_preference: false,
             setup_wizard_complete: false,
+            tutorial_complete: false,
             optimization_enabled: false,
             optimization_profile: None,
             log_level: LogLevel::Info,
@@ -190,6 +193,7 @@ mod tests {
         assert_eq!(config.sync_remote_host, None);
         assert_eq!(config.log_level, LogLevel::Info);
         assert!(!config.setup_wizard_complete);
+        assert!(!config.tutorial_complete);
     }
 
     #[test]

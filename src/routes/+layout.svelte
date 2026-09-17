@@ -83,6 +83,9 @@
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import InfoPanel from "$lib/components/InfoPanel.svelte";
   import SetupWizard from "$lib/components/SetupWizard.svelte";
+  import TourOverlay from "$lib/components/TourOverlay.svelte";
+  import { startTour } from "$lib/tour/tourEngine";
+  import { registerTourActions } from "$lib/tour/registry";
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import { importLogStore } from "$lib/stores/importLogStore";
   import { infoLogStore } from "$lib/stores/infoLogStore";
@@ -133,6 +136,7 @@
   let closingFromLaunch = false;
   let forceClose = false;
   let isGameRunning = false;
+  let unregisterShellTourActions: (() => void) | null = null;
 
   function resolveSelectedProfile(
     activeProfile: string | null | undefined,
@@ -382,6 +386,15 @@
   async function handleWizardDismiss() {
     showSetupWizard = false;
     await refreshShellConfigState();
+    const config = await getConfig().catch(() => null);
+    if (
+      config &&
+      !config.tutorial_complete &&
+      !$screenshotMode &&
+      !$wizardScreenshotMode
+    ) {
+      void startTour();
+    }
   }
 
   async function handleClosePreference(
@@ -416,6 +429,12 @@
   onMount(() => {
     const unsubscribe = tokenStore.subscribe((val) => {
       hasSavedToken = val;
+    });
+
+    // The import log lives in the shell, so its tour action is registered here.
+    unregisterShellTourActions = registerTourActions("shell", {
+      "close-import-log": () => importLogStore.close(),
+      "open-import-log": () => importLogStore.open(),
     });
 
     let cleanup = () => {};
@@ -785,7 +804,10 @@
         minimizeTarget = config.minimize_target ?? "taskbar";
         askedClosePreference = config.asked_close_preference ?? false;
 
-        if (!config.setup_wizard_complete && !(await screenshotModePromise)) {
+        const isScreenshot = await screenshotModePromise;
+        const isWizardScreenshot = await wizardScreenshotModePromise;
+        let wizardWillShow = false;
+        if (!config.setup_wizard_complete && !isScreenshot) {
           const hasAnyKey =
             Boolean(config.modio_api_key?.trim()) ||
             Boolean(config.oauth_token?.trim()) ||
@@ -794,12 +816,24 @@
             void updateConfig({ setup_wizard_complete: true });
           } else {
             showSetupWizard = true;
+            wizardWillShow = true;
           }
         }
         // WIZARD_SCREENSHOT forces the setup wizard on even in screenshot mode,
         // so the welcome page can be captured separately from the main pages.
-        if (await wizardScreenshotModePromise) {
+        if (isWizardScreenshot) {
           showSetupWizard = true;
+          wizardWillShow = true;
+        }
+        // First launch tutorial: starts once the wizard is out of the way, or
+        // on the next launch if the app was closed part way through the tour.
+        if (
+          !config.tutorial_complete &&
+          !isScreenshot &&
+          !isWizardScreenshot &&
+          !wizardWillShow
+        ) {
+          void startTour();
         }
       }),
       loadProfiles(),
@@ -971,6 +1005,7 @@
 
     return () => {
       cleanup();
+      unregisterShellTourActions?.();
       if (resizeDebounce) {
         clearTimeout(resizeDebounce);
       }
@@ -1017,6 +1052,7 @@
     <div class="flex items-center gap-2 ml-auto">
       <button
         class="btn btn-sm h-9 w-9 px-0 flex items-center justify-center"
+        data-tour="header-refresh"
         on:click={() => {
           void handleRefreshMetadata();
         }}
@@ -1034,6 +1070,7 @@
       <div
         style="background: var(--clr-btn); color: var(--clr-text);"
         class="flex h-9 items-center gap-2 rounded-lg px-3 text-sm"
+        data-tour="header-profile"
       >
         <label
           for="header-profile-select"
@@ -1107,6 +1144,7 @@
             href={item.href}
             title={item.label}
             aria-label={item.label}
+            data-tour={`nav-${item.href.slice(1)}`}
             style={$page.url.pathname === item.href
               ? `background: var(--clr-primary-300); color: var(--clr-primary-text);`
               : `color: var(--clr-text);`}
@@ -1136,6 +1174,10 @@
 
   {#if showSetupWizard}
     <SetupWizard isVisible={showSetupWizard} onClose={handleWizardDismiss} />
+  {/if}
+
+  {#if !$screenshotMode && !$wizardScreenshotMode}
+    <TourOverlay />
   {/if}
 
   <AuthSetupModal

@@ -12,6 +12,8 @@ src-tauri/.cargo/
 *.flatpak
 .opencode/
 .commandcode/
+# Hermes agent plan/scratch output
+.hermes/
 ronmm.log
 coverage/
 docs/screenshots/.tmp/
