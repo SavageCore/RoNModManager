@@ -40,6 +40,7 @@ vi.mock("../../../src/lib/tour/steps", () => ({
 import TourOverlay from "../../../src/lib/components/TourOverlay.svelte";
 import {
   closeTour,
+  currentStep,
   startTour,
   tourState,
 } from "../../../src/lib/tour/tourEngine";
@@ -238,5 +239,50 @@ describe("TourOverlay", () => {
 
     await fireEvent.click(next);
     expect(screen.getByText("Body two")).not.toBeNull();
+  });
+
+  it("holds Skip tour and Escape back while the first-run setup is on screen", async () => {
+    render(TourOverlay);
+    await startTour();
+    expect(screen.queryByText("Skip tour")).not.toBeNull();
+
+    // Setup comes before the app tour, so there is nothing to cancel yet.
+    tourState.update((state) => ({ ...state, setupPending: true }));
+    await vi.waitFor(() => {
+      expect(screen.queryByText("Skip tour")).toBeNull();
+    });
+
+    await fireEvent.keyDown(window, { key: "Escape" });
+    expect(get(tourState).running).toBe(true);
+
+    // Past the setup cards it is the user's tour again.
+    tourState.update((state) => ({ ...state, setupPending: false }));
+    await vi.waitFor(() => {
+      expect(screen.queryByText("Skip tour")).not.toBeNull();
+    });
+  });
+
+  it("carries the setup fields in the card, with Set up later instead of Skip", async () => {
+    render(TourOverlay);
+    await startTour();
+    currentStep.set({
+      id: "setup",
+      title: "Set up: your game folder",
+      body: "Ready or Not's installation folder.",
+      setup: true,
+    });
+    tourState.update((state) => ({ ...state, setupPending: true }));
+
+    await vi.waitFor(() => {
+      expect(screen.queryByText("Skip tour")).toBeNull();
+    });
+    // The form is the card's own content, and the way out is named here.
+    expect(screen.getByText("Set up later")).not.toBeNull();
+    expect(screen.getByText("Game path")).not.toBeNull();
+
+    await fireEvent.click(screen.getByText("Set up later"));
+    expect(updateConfig).toHaveBeenCalledWith({
+      setup_wizard_complete: true,
+    });
   });
 });

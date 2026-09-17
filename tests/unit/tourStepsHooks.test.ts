@@ -1,6 +1,7 @@
 import { get } from "svelte/store";
 import { describe, expect, it, vi } from "vitest";
 import { TOUR_STEPS } from "../../src/lib/tour/steps";
+import { setupWizardPage } from "../../src/lib/stores/setupWizard";
 import { addModTourCommand } from "../../src/lib/stores/tourUi";
 import type { TourContext } from "../../src/lib/tour/types";
 
@@ -152,5 +153,18 @@ describe("tour step hooks", () => {
       '[data-tour="export-panel"]',
       60000,
     );
+  });
+
+  it("shows the setup page each setup card is about", async () => {
+    const pages: Array<[string, number]> = [
+      ["setup-game-path", 1],
+      ["setup-modio", 2],
+      ["setup-nexus", 3],
+      ["setup-modpack", 4],
+    ];
+    for (const [id, page] of pages) {
+      await stepById(id).enter?.(fakeCtx());
+      expect(get(setupWizardPage)).toBe(page);
+    }
   });
 });

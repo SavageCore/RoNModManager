@@ -13,17 +13,18 @@
     setModpackUrl,
     updateConfig,
   } from "$lib/api/commands";
+  import { setSetupWizardPage, setupWizardPage } from "$lib/stores/setupWizard";
+  import { toastStore } from "$lib/stores/toast";
   import { tokenStore } from "$lib/stores/token";
+  import { registerTourActions } from "$lib/tour/registry";
   import { open } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";
-  import ModalShell from "./ModalShell.svelte";
 
-  export let isVisible = false;
-  export let onClose: () => void;
-
-  let step = 1;
-  const totalSteps = 5;
+  /// The setup pages, as the fields the tour's setup cards carry. The card
+  /// brings the title, the copy, the progress and the Back/Next; this is the
+  /// form and its validation.
+  $: page = $setupWizardPage;
 
   let gamePathInput = "";
   let gamePathError = "";
@@ -46,13 +47,27 @@
   let modpackError = "";
   let savingModpack = false;
 
-  onMount(async () => {
+  onMount(() => {
+    const unregister = registerTourActions("setup", {
+      "save-game-path": handleGamePathNext,
+      "save-modio": handleModioNext,
+      "save-nexus": handleNexusNext,
+      finish: handleModpackFinish,
+      defer: deferSetup,
+    });
+
+    void prepare();
+
+    return unregister;
+  });
+
+  async function prepare() {
     try {
       const config = await getConfig();
       if (config.game_path) gamePathInput = config.game_path;
       if (config.modpack_url) modpackUrlInput = config.modpack_url;
     } catch {
-      // Non-fatal: wizard works with empty defaults.
+      // Non-fatal: the fields work with empty defaults.
     }
     if (!gamePathInput) {
       detectingGamePath = true;
@@ -65,11 +80,19 @@
         detectingGamePath = false;
       }
     }
-  });
+  }
 
-  async function dismiss() {
-    await updateConfig({ setup_wizard_complete: true });
-    onClose();
+  async function completeSetup() {
+    await updateConfig({ setup_wizard_complete: true }).catch(() => {});
+  }
+
+  /// Set up later: the app stops asking, and the engine drops the setup cards
+  /// from the tour so the user gets on with the app.
+  async function deferSetup() {
+    await completeSetup();
+    toastStore.success(
+      "Setup skipped. You can add your keys any time in Settings.",
+    );
   }
 
   async function handleAutodetectGamePath() {
@@ -106,27 +129,32 @@
     }
   }
 
-  async function handleGamePathNext() {
+  /// False means the tour's Next stays put: the error under the field is what
+  /// the user has to deal with first.
+  async function handleGamePathNext(): Promise<boolean> {
     const trimmed = gamePathInput.trim();
     gamePathError = "";
 
+    // Empty is a skip, which is how the card puts it too.
     if (!trimmed) {
-      gamePathError = "Please set your game path, or Skip for now.";
-      return;
+      setSetupWizardPage(2);
+      return true;
     }
 
     savingGamePath = true;
     try {
       await setGamePath(trimmed);
-      step = 3;
+      setSetupWizardPage(2);
+      return true;
     } catch (error) {
       gamePathError = String(error);
+      return false;
     } finally {
       savingGamePath = false;
     }
   }
 
-  async function handleModioNext() {
+  async function handleModioNext(): Promise<boolean> {
     const apiKey = modioApiKeyInput.trim();
     const token = modioTokenInput.trim();
 
@@ -134,11 +162,11 @@
 
     if (!apiKey) {
       modioError = "Please enter your mod.io API Access key.";
-      return;
+      return false;
     }
     if (!token) {
       modioError = "Please enter your mod.io personal access token.";
-      return;
+      return false;
     }
 
     savingModio = true;
@@ -146,7 +174,7 @@
       const apiOk = await validateAndSaveModioApiKey(apiKey);
       if (!apiOk) {
         modioError = "API Access key is invalid. Please check and try again.";
-        return;
+        return false;
       }
 
       const tokenOk = await validateAndSaveModioToken(token);
@@ -155,24 +183,27 @@
         tokenStore.set(false);
         modioError =
           "Personal access token is invalid or expired. Please generate a new one and try again.";
-        return;
+        return false;
       }
 
-      step = 4;
+      setSetupWizardPage(3);
+      return true;
     } catch (error) {
       modioError = `Failed to validate: ${String(error)}`;
+      return false;
     } finally {
       savingModio = false;
     }
   }
 
-  async function handleNexusNext() {
+  async function handleNexusNext(): Promise<boolean> {
     const key = nexusKeyInput.trim();
     nexusError = "";
 
+    // Empty is a skip: Nexus is optional, and the card says so.
     if (!key) {
-      nexusError = "Please enter your Nexus API key.";
-      return;
+      setSetupWizardPage(4);
+      return true;
     }
 
     savingNexus = true;
@@ -180,28 +211,30 @@
       const ok = await validateAndSaveNexusApiKey(key);
       if (!ok) {
         nexusError = "Invalid Nexus API key. Please check and try again.";
-        return;
+        return false;
       }
-      step = 5;
+      setSetupWizardPage(4);
+      return true;
     } catch (error) {
       nexusError = `Failed to validate: ${String(error)}`;
+      return false;
     } finally {
       savingNexus = false;
     }
   }
 
-  async function handleModpackFinish() {
+  async function handleModpackFinish(): Promise<boolean> {
     const url = modpackUrlInput.trim();
     modpackError = "";
 
     if (!url) {
-      await dismiss();
-      return;
+      await completeSetup();
+      return true;
     }
 
     if (!/^https?:\/\//i.test(url)) {
       modpackError = "Modpack URL should start with http:// or https://";
-      return;
+      return false;
     }
 
     savingModpack = true;
@@ -210,12 +243,14 @@
         await fetchModpackJson(url);
       } catch (error) {
         modpackError = `Could not fetch modpack from that URL: ${String(error)}`;
-        return;
+        return false;
       }
       await setModpackUrl(url);
-      await dismiss();
+      await completeSetup();
+      return true;
     } catch (error) {
       modpackError = `Failed to save: ${String(error)}`;
+      return false;
     } finally {
       savingModpack = false;
     }
@@ -244,334 +279,188 @@
       // Non-fatal
     }
   }
-
-  $: if (isVisible) {
-    step = 1;
-  }
 </script>
 
-<ModalShell
-  {isVisible}
-  title="Welcome to RoN Mod Manager"
-  width="w-[520px] max-w-[92vw]"
-  zIndex="z-[200]"
-  closeOnEscape={false}
-  on:close={dismiss}
-  panelClass="overflow-y-auto p-6 max-h-[90vh]"
->
-  <!-- Step progress indicator -->
-  <div class="flex gap-2 mb-6">
-    {#each Array(totalSteps) as _, i (i)}
-      <div
-        style="background: {step >= i + 1
-          ? 'var(--clr-primary-300)'
-          : 'var(--adw-border-color)'};"
-        class="h-2 flex-1 rounded-full transition-colors"
-      ></div>
-    {/each}
+{#if page === 1}
+  <div class="flex gap-2 mb-3">
+    <button
+      class="btn primary flex-1"
+      on:click={handleAutodetectGamePath}
+      disabled={detectingGamePath || savingGamePath}
+    >
+      {detectingGamePath ? "Detecting..." : "Auto Detect"}
+    </button>
+    <button
+      class="btn flex-1"
+      on:click={handleBrowseGamePath}
+      disabled={savingGamePath}
+    >
+      Browse...
+    </button>
   </div>
 
-  <!-- Step 1: Welcome -->
-  {#if step === 1}
-    <p class="text-sm mb-3" style="color: var(--clr-text-secondary);">
-      This wizard will set your game folder, connect your mod.io and Nexus Mods
-      accounts and optionally a modpack URL.
-    </p>
-    <div class="flex justify-end">
-      <button class="btn primary" on:click={() => (step = 2)}>
-        Get started
-      </button>
-    </div>
+  <label for="setup-game-path" class="setup-label">Game path</label>
+  <input
+    id="setup-game-path"
+    class="input w-full"
+    bind:value={gamePathInput}
+    placeholder="C:/Program Files (x86)/Steam/steamapps/common/Ready Or Not"
+    on:input={() => (gamePathError = "")}
+  />
 
-    <!-- Step 2: Game path -->
-  {:else if step === 2}
-    <p class="text-sm mb-4" style="color: var(--clr-text-secondary);">
-      Select your Ready or Not installation folder. Auto Detect usually finds it
-      via Steam.
-    </p>
-
-    <div class="flex gap-2 mb-4">
-      <button
-        class="btn primary flex-1"
-        on:click={handleAutodetectGamePath}
-        disabled={detectingGamePath || savingGamePath}
-      >
-        {detectingGamePath ? "Detecting..." : "Auto Detect"}
-      </button>
-      <button
-        class="btn flex-1"
-        on:click={handleBrowseGamePath}
-        disabled={savingGamePath}
-      >
-        Browse...
-      </button>
-    </div>
-
+  {#if gamePathError}
+    <p class="setup-error">{gamePathError}</p>
+  {/if}
+{:else if page === 2}
+  <div class="flex flex-col gap-4">
     <div>
-      <label
-        for="wizard-game-path"
-        class="block text-sm font-medium mb-1"
-        style="color: var(--clr-text);"
+      <label for="setup-modio-api-key" class="setup-label"
+        >mod.io API Access</label
       >
-        Game path
-      </label>
-      <input
-        id="wizard-game-path"
-        class="input w-full"
-        bind:value={gamePathInput}
-        placeholder="C:/Program Files (x86)/Steam/steamapps/common/Ready Or Not"
-        on:input={() => (gamePathError = "")}
-      />
-    </div>
-
-    {#if gamePathError}
-      <p class="mt-3 text-sm" style="color: var(--clr-danger-300);">
-        {gamePathError}
+      <p class="setup-hint">
+        On the mod.io access page, copy your key from the API Access section.
       </p>
-    {/if}
-
-    <div class="flex justify-between mt-6">
-      <button class="btn" on:click={() => (step = 1)} disabled={savingGamePath}>
-        Back
+      <button class="btn btn-sm w-full mb-2" on:click={openModioApiPage}>
+        Open mod.io API Access Page
       </button>
-      <div class="flex gap-2">
-        <button
-          class="btn"
-          on:click={() => (step = 3)}
-          disabled={savingGamePath}
-        >
-          Skip
-        </button>
-        <button
-          class="btn primary"
-          on:click={handleGamePathNext}
-          disabled={savingGamePath}
-        >
-          {savingGamePath ? "Saving..." : "Next"}
-        </button>
-      </div>
-    </div>
-
-    <!-- Step 3: mod.io -->
-  {:else if step === 3}
-    <p class="text-sm mb-4" style="color: var(--clr-text-secondary);">
-      Connect mod.io account to install mods from links. You need two separate
-      values: an API Access key for lookups and a personal access token for
-      downloads.
-    </p>
-
-    <div class="space-y-4">
-      <div>
-        <label
-          for="wizard-modio-api-key"
-          class="block text-sm font-medium mb-1"
-          style="color: var(--clr-text);"
-        >
-          mod.io API Access
-        </label>
-        <p class="text-xs mb-2" style="color: var(--clr-text-secondary);">
-          On the mod.io access page, copy your key from the API Access section.
-        </p>
-        <button class="btn btn-sm w-full mb-2" on:click={openModioApiPage}>
-          Open mod.io API Access Page
-        </button>
-        <div class="flex gap-2">
-          <input
-            id="wizard-modio-api-key"
-            class="input w-full"
-            bind:value={modioApiKeyInput}
-            type={showModioApiKeyText ? "text" : "password"}
-            placeholder="Paste your API Access key"
-            on:input={() => (modioError = "")}
-          />
-          <button
-            type="button"
-            class="btn btn-sm"
-            on:click={() => (showModioApiKeyText = !showModioApiKeyText)}
-            title={showModioApiKeyText ? "Hide key" : "Show key"}
-          >
-            {showModioApiKeyText ? "👁️" : "👁️‍🗨️"}
-          </button>
-        </div>
-      </div>
-
-      <div>
-        <label
-          for="wizard-modio-token"
-          class="block text-sm font-medium mb-1"
-          style="color: var(--clr-text);"
-        >
-          mod.io Personal Access Token
-        </label>
-        <p class="text-xs mb-2" style="color: var(--clr-text-secondary);">
-          Click Generate token (name it e.g. RoNModManager, enable User actions
-          under Permissions, enable Write under Scope keeping Read checked, set
-          Expiry to 1 Year). If it later expires, use Regenerate beside it in
-          the tokens table.
-        </p>
-        <button class="btn btn-sm w-full mb-2" on:click={openModioTokenPage}>
-          Open Personal Access Tokens Page
-        </button>
-        <div class="flex gap-2">
-          <input
-            id="wizard-modio-token"
-            class="input w-full"
-            bind:value={modioTokenInput}
-            type={showModioTokenText ? "text" : "password"}
-            placeholder="Paste your personal access token"
-            on:input={() => (modioError = "")}
-          />
-          <button
-            type="button"
-            class="btn btn-sm"
-            on:click={() => (showModioTokenText = !showModioTokenText)}
-            title={showModioTokenText ? "Hide token" : "Show token"}
-          >
-            {showModioTokenText ? "👁️" : "👁️‍🗨️"}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    {#if modioError}
-      <p class="mt-3 text-sm" style="color: var(--clr-danger-300);">
-        {modioError}
-      </p>
-    {/if}
-
-    <div class="flex justify-between mt-6">
-      <button class="btn" on:click={() => (step = 2)} disabled={savingModio}>
-        Back
-      </button>
-      <button
-        class="btn primary"
-        on:click={handleModioNext}
-        disabled={savingModio}
-      >
-        {savingModio ? "Validating..." : "Next"}
-      </button>
-    </div>
-
-    <!-- Step 4: Nexus Mods -->
-  {:else if step === 4}
-    <h2 class="text-xl font-semibold mb-2" style="color: var(--clr-text);">
-      Nexus Mods API Key
-    </h2>
-    <p class="text-sm mb-4" style="color: var(--clr-text-secondary);">
-      Required to fetch metadata and download mods from Nexus Mods links. You
-      can add this later in Settings.
-    </p>
-
-    <button class="btn primary w-full mb-4" on:click={openNexusPage}>
-      Open Nexus API Keys Page
-    </button>
-
-    <div
-      style="background: color-mix(in srgb, var(--clr-primary-300) 15%, transparent);
-             border-left: 3px solid var(--clr-primary-300);"
-      class="p-3 rounded mb-4"
-    >
-      <p class="text-xs font-medium" style="color: var(--clr-text);">Tip</p>
-      <p class="text-xs mt-1" style="color: var(--clr-text-secondary);">
-        On the Nexus API keys page, scroll to the bottom to find your
-        <strong>Personal API Key</strong> section.
-      </p>
-    </div>
-
-    <div>
-      <label
-        for="wizard-nexus-key"
-        class="block text-sm font-medium mb-1"
-        style="color: var(--clr-text);"
-      >
-        Nexus Mods API Key
-      </label>
       <div class="flex gap-2">
         <input
-          id="wizard-nexus-key"
+          id="setup-modio-api-key"
           class="input w-full"
-          bind:value={nexusKeyInput}
-          type={showNexusKeyText ? "text" : "password"}
-          placeholder="Paste your Nexus Personal API key"
-          on:input={() => (nexusError = "")}
+          bind:value={modioApiKeyInput}
+          type={showModioApiKeyText ? "text" : "password"}
+          placeholder="Paste your API Access key"
+          on:input={() => (modioError = "")}
         />
         <button
           type="button"
           class="btn btn-sm"
-          on:click={() => (showNexusKeyText = !showNexusKeyText)}
-          title={showNexusKeyText ? "Hide key" : "Show key"}
+          on:click={() => (showModioApiKeyText = !showModioApiKeyText)}
+          title={showModioApiKeyText ? "Hide key" : "Show key"}
         >
-          {showNexusKeyText ? "👁️" : "👁️‍🗨️"}
+          {showModioApiKeyText ? "👁️" : "👁️‍🗨️"}
         </button>
       </div>
     </div>
-
-    {#if nexusError}
-      <p class="mt-3 text-sm" style="color: var(--clr-danger-300);">
-        {nexusError}
-      </p>
-    {/if}
-
-    <div class="flex justify-between mt-6">
-      <button class="btn" on:click={() => (step = 3)} disabled={savingNexus}>
-        Back
-      </button>
-      <div class="flex gap-2">
-        <button
-          class="btn primary"
-          on:click={handleNexusNext}
-          disabled={savingNexus}
-        >
-          {savingNexus ? "Saving..." : "Next"}
-        </button>
-      </div>
-    </div>
-
-    <!-- Step 5: Modpack URL -->
-  {:else if step === 5}
-    <p class="text-sm mb-2" style="color: var(--clr-text-secondary);">
-      If your community shares a modpack.json URL, paste it here. You can add it
-      later from the Mods page via Add Modpack.
-    </p>
-    <p class="text-sm mb-4" style="color: var(--clr-text-secondary);">
-      You can leave this empty and finish.
-    </p>
 
     <div>
-      <label
-        for="wizard-modpack-url"
-        class="block text-sm font-medium mb-1"
-        style="color: var(--clr-text);"
+      <label for="setup-modio-token" class="setup-label"
+        >mod.io Personal Access Token</label
       >
-        Modpack URL
-      </label>
-      <input
-        id="wizard-modpack-url"
-        class="input w-full"
-        bind:value={modpackUrlInput}
-        type="url"
-        placeholder="https://.../modpack.json"
-        on:input={() => (modpackError = "")}
-      />
-    </div>
-
-    {#if modpackError}
-      <p class="mt-3 text-sm" style="color: var(--clr-danger-300);">
-        {modpackError}
+      <p class="setup-hint">
+        Click Generate token (name it e.g. RoNModManager, enable User actions
+        under Permissions, enable Write under Scope keeping Read checked, set
+        Expiry to 1 Year). If it later expires, use Regenerate beside it in the
+        tokens table.
       </p>
-    {/if}
-
-    <div class="flex justify-between mt-6">
-      <button class="btn" on:click={() => (step = 4)} disabled={savingModpack}>
-        Back
+      <button class="btn btn-sm w-full mb-2" on:click={openModioTokenPage}>
+        Open Personal Access Tokens Page
       </button>
-      <button
-        class="btn primary"
-        on:click={handleModpackFinish}
-        disabled={savingModpack}
-      >
-        {savingModpack ? "Saving..." : "Finish"}
-      </button>
+      <div class="flex gap-2">
+        <input
+          id="setup-modio-token"
+          class="input w-full"
+          bind:value={modioTokenInput}
+          type={showModioTokenText ? "text" : "password"}
+          placeholder="Paste your personal access token"
+          on:input={() => (modioError = "")}
+        />
+        <button
+          type="button"
+          class="btn btn-sm"
+          on:click={() => (showModioTokenText = !showModioTokenText)}
+          title={showModioTokenText ? "Hide token" : "Show token"}
+        >
+          {showModioTokenText ? "👁️" : "👁️‍🗨️"}
+        </button>
+      </div>
     </div>
+  </div>
+
+  {#if modioError}
+    <p class="setup-error">{modioError}</p>
   {/if}
-</ModalShell>
+{:else if page === 3}
+  <button class="btn primary w-full mb-3" on:click={openNexusPage}>
+    Open Nexus API Keys Page
+  </button>
+
+  <div class="setup-tip">
+    <p class="setup-tip-title">Tip</p>
+    <p class="setup-hint">
+      On the Nexus API keys page, scroll to the bottom to find your
+      <strong>Personal API Key</strong> section.
+    </p>
+  </div>
+
+  <label for="setup-nexus-key" class="setup-label">Nexus Mods API Key</label>
+  <div class="flex gap-2">
+    <input
+      id="setup-nexus-key"
+      class="input w-full"
+      bind:value={nexusKeyInput}
+      type={showNexusKeyText ? "text" : "password"}
+      placeholder="Paste your Nexus Personal API key"
+      on:input={() => (nexusError = "")}
+    />
+    <button
+      type="button"
+      class="btn btn-sm"
+      on:click={() => (showNexusKeyText = !showNexusKeyText)}
+      title={showNexusKeyText ? "Hide key" : "Show key"}
+    >
+      {showNexusKeyText ? "👁️" : "👁️‍🗨️"}
+    </button>
+  </div>
+
+  {#if nexusError}
+    <p class="setup-error">{nexusError}</p>
+  {/if}
+{:else if page === 4}
+  <label for="setup-modpack-url" class="setup-label">Modpack URL</label>
+  <input
+    id="setup-modpack-url"
+    class="input w-full"
+    bind:value={modpackUrlInput}
+    type="url"
+    placeholder="https://.../modpack.json"
+    on:input={() => (modpackError = "")}
+  />
+
+  {#if modpackError}
+    <p class="setup-error">{modpackError}</p>
+  {/if}
+{/if}
+
+<style>
+  .setup-label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    color: var(--clr-text);
+  }
+  .setup-hint {
+    font-size: 0.7rem;
+    line-height: 1.35;
+    margin-bottom: 0.4rem;
+    color: var(--clr-text-secondary);
+  }
+  .setup-error {
+    font-size: 0.75rem;
+    margin-top: 0.5rem;
+    color: var(--clr-danger-300);
+  }
+  .setup-tip {
+    background: color-mix(in srgb, var(--clr-primary-300) 15%, transparent);
+    border-left: 3px solid var(--clr-primary-300);
+    border-radius: 0.25rem;
+    padding: 0.6rem;
+    margin-bottom: 0.75rem;
+  }
+  .setup-tip-title {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--clr-text);
+  }
+</style>

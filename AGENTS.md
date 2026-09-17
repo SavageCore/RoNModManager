@@ -30,6 +30,18 @@ So: cover behaviour with unit tests, use a screenshot to confirm a static
 state, then hand the interactive pass to the user and say plainly what was
 not exercised. Do not claim a flow works end to end from a build being green.
 
+One screenshot, once, is the budget. Do not loop: capture, tweak, capture
+again, re-read each frame and re-analyse. Confirm the static state you changed,
+run the tests, and stop - the user is watching the window and will tell you
+what is wrong. Keyboard input does reach the webview (`xdotool key --window
+<id> Right` walks the guided tour), so a second capture is available when a
+flow genuinely cannot be checked otherwise; it is not a substitute for asking.
+
+Never re-point the dev config's first-run flags (`setup_wizard_complete`,
+`tutorial_complete`) or API keys to force a flow back on screen, and never
+restart the app to re-enter one. Hot reload mid-flow can flip those flags on
+its own - say so and let the user reset or test it.
+
 Leave the dev app running. `make dev` serves through vite with HMR, so source
 edits land in the open window on their own - the user watches the change there
 and tests it. Do not kill the app or the vite process after starting it, and do

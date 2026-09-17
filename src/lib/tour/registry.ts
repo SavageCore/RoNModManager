@@ -50,8 +50,10 @@ function waitForHandler(
 
 /// No-op when nothing ever registers the action: the engine navigates first and
 /// waits for the step's target selector, which is the real sync point.
-export async function callTourAction(name: TourActionName): Promise<void> {
+/// Returns whatever the handler returned, so a step can be told the action
+/// did not go through (see TourStep.nextAction).
+export async function callTourAction(name: TourActionName): Promise<unknown> {
   const handler =
     actions.get(name) ?? (await waitForHandler(name, WAIT_FOR_HANDLER_MS));
-  await handler?.();
+  return await handler?.();
 }

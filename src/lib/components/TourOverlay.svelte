@@ -1,7 +1,9 @@
 <script lang="ts">
+  import SetupWizard from "$lib/components/SetupWizard.svelte";
   import {
     closeTour,
     currentStep,
+    deferSetup,
     nextStep,
     prevStep,
     tourState,
@@ -9,6 +11,8 @@
   import { onDestroy, onMount, tick } from "svelte";
 
   const CARD_WIDTH = 380;
+  // A setup card carries a form, so it gets the room a form needs.
+  const SETUP_CARD_WIDTH = 560;
   const GAP = 14;
   const RING_PAD = 6;
   const VIEWPORT_MARGIN = 12;
@@ -19,18 +23,19 @@
   $: rect = $tourState.rect;
   $: step = $currentStep;
   $: isLastStep = $tourState.index + 1 >= $tourState.total;
+  $: cardWidth = step?.setup ? SETUP_CARD_WIDTH : CARD_WIDTH;
 
   function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), Math.max(min, max));
   }
 
-  function cardPosition(r: DOMRect | null): string {
+  function cardPosition(r: DOMRect | null, width: number): string {
     if (typeof window === "undefined") return "left: 0px; top: 0px;";
-    const maxLeft = window.innerWidth - CARD_WIDTH - VIEWPORT_MARGIN;
+    const maxLeft = window.innerWidth - width - VIEWPORT_MARGIN;
     const maxTop = window.innerHeight - cardHeight - VIEWPORT_MARGIN;
     if (!r) {
       const left = clamp(
-        (window.innerWidth - CARD_WIDTH) / 2,
+        (window.innerWidth - width) / 2,
         VIEWPORT_MARGIN,
         maxLeft,
       );
@@ -46,7 +51,7 @@
     // row) while the card talks about one control inside it.
     if (step?.placement === "left" || step?.placement === "right") {
       const rawLeft =
-        step.placement === "left" ? r.left - CARD_WIDTH - GAP : r.right + GAP;
+        step.placement === "left" ? r.left - width - GAP : r.right + GAP;
       const left = clamp(rawLeft, VIEWPORT_MARGIN, maxLeft);
       const top = clamp(
         r.top + r.height / 2 - cardHeight / 2,
@@ -57,7 +62,7 @@
     }
 
     const left = clamp(
-      r.left + r.width / 2 - CARD_WIDTH / 2,
+      r.left + r.width / 2 - width / 2,
       VIEWPORT_MARGIN,
       maxLeft,
     );
@@ -69,12 +74,18 @@
     return `left: ${left}px; top: ${top}px;`;
   }
 
+  $: cardStyle = `width: ${cardWidth}px; pointer-events: auto; ${cardPosition(
+    rect,
+    cardWidth,
+  )}`;
+
   function handleKeydown(event: KeyboardEvent) {
     if (!$tourState.running) return;
     // Holding an arrow key fires repeats, which would fly through the tour.
     // One press, one step.
     if (event.repeat) return;
-    if (event.key === "Escape") {
+    // The first-run setup cards hold the user until setup is done: no Escape.
+    if (event.key === "Escape" && !$tourState.setupPending) {
       void closeTour();
     } else if (event.key === "ArrowRight" && $tourState.ready) {
       void nextStep();
@@ -116,7 +127,7 @@
     <div
       class="tour-card"
       bind:this={cardEl}
-      style="width: {CARD_WIDTH}px; pointer-events: auto; {cardPosition(rect)}"
+      style={cardStyle}
       role="dialog"
       aria-label={step.title}
     >
@@ -134,6 +145,9 @@
             {/each}
           </ul>
         {/if}
+        {#if step.setup}
+          <div class="tour-card-setup"><SetupWizard /></div>
+        {/if}
       </div>
       {#if $tourState.waitingForTarget}
         <p class="tour-card-hint">Waiting for the app to catch up…</p>
@@ -144,11 +158,19 @@
         </p>
       {/if}
       <div class="tour-card-actions">
-        <button
-          class="tour-skip"
-          title="Close the tour and do not show it again"
-          on:click={() => void closeTour()}>Skip tour</button
-        >
+        {#if !$tourState.setupPending}
+          <button
+            class="tour-skip"
+            title="Close the tour and do not show it again"
+            on:click={() => void closeTour()}>Skip tour</button
+          >
+        {:else if step.setup}
+          <button
+            class="tour-skip"
+            title="Leave the rest of the setup for later"
+            on:click={() => void deferSetup()}>Set up later</button
+          >
+        {/if}
         <span class="tour-card-progress"
           >{$tourState.index + 1} of {$tourState.total}</span
         >
@@ -236,6 +258,10 @@
   .tour-card-scroll {
     overflow-y: auto;
     min-height: 0;
+  }
+  /* A setup card's fields sit with the copy, inside the same scroll area. */
+  .tour-card-setup {
+    margin-top: 0.85rem;
   }
   .tour-skip {
     font-size: 0.75rem;

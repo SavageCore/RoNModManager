@@ -26,6 +26,9 @@ export type TourState = {
   ready: boolean;
   readyTimedOut: boolean;
   busy: boolean;
+  /// The first-run setup cards are on screen. Skip tour and Escape are held
+  /// back until the user is past them.
+  setupPending: boolean;
 };
 
 const IDLE: TourState = {
@@ -38,16 +41,30 @@ const IDLE: TourState = {
   ready: true,
   readyTimedOut: false,
   busy: false,
+  setupPending: false,
 };
 
 export const tourState = writable<TourState>(IDLE);
 export const currentStep = writable<TourStep | null>(null);
 
+/// The steps of the run in progress. A replay drops the setup cards, which
+/// only a first launch needs.
+let steps: TourStep[] = TOUR_STEPS;
+/// Index of the last setup card in this run, or -1 when the run has none.
+let setupEndIndex = -1;
 let current: TourStep | null = null;
 let targetEl: Element | null = null;
 let rectTimer: ReturnType<typeof setInterval> | null = null;
 let stepTimer: ReturnType<typeof setTimeout> | null = null;
 let enterToken = 0;
+
+function selectSteps(setup: boolean): TourStep[] {
+  return setup ? TOUR_STEPS : TOUR_STEPS.filter((step) => !step.setup);
+}
+
+function setupPendingAt(index: number): boolean {
+  return setupEndIndex >= 0 && index <= setupEndIndex;
+}
 
 function waitFor<T>(
   predicate: () => T | null | false | undefined,
@@ -230,9 +247,18 @@ async function enter(step: TourStep, allowAutoAdvance = true): Promise<void> {
   }
 }
 
-export async function startTour(): Promise<void> {
-  tourState.set({ ...IDLE, running: true, total: TOUR_STEPS.length });
-  await enter(TOUR_STEPS[0]);
+export async function startTour(
+  options: { setup?: boolean } = {},
+): Promise<void> {
+  steps = selectSteps(options.setup === true);
+  setupEndIndex = steps.findLastIndex((step) => step.setup === true);
+  tourState.set({
+    ...IDLE,
+    running: true,
+    total: steps.length,
+    setupPending: setupPendingAt(0),
+  });
+  await enter(steps[0]);
 }
 
 async function leaveCurrent(): Promise<void> {
@@ -254,20 +280,26 @@ async function advance(runNextAction: boolean): Promise<void> {
   const action = current?.nextAction;
   if (runNextAction && action) {
     try {
-      await ctx.call(action);
+      // False means the control refused (a form that failed validation), so
+      // the card stays put with the app's own error on screen beside it.
+      if ((await ctx.call(action)) === false) return;
     } catch (error) {
       console.error(`Tour action "${action}" failed:`, error);
     }
   }
   await leaveCurrent();
   const index = state.index + 1;
-  if (index >= TOUR_STEPS.length) {
+  if (index >= steps.length) {
     // The last card navigates on entry, so finishing just closes the tour.
     await closeTour();
     return;
   }
-  tourState.update((s) => ({ ...s, index }));
-  await enter(TOUR_STEPS[index]);
+  tourState.update((s) => ({
+    ...s,
+    index,
+    setupPending: setupPendingAt(index),
+  }));
+  await enter(steps[index]);
 }
 
 export async function prevStep(): Promise<void> {
@@ -275,13 +307,50 @@ export async function prevStep(): Promise<void> {
   if (!state.running || state.busy || state.index === 0) return;
   await leaveCurrent();
   const index = state.index - 1;
-  tourState.update((s) => ({ ...s, index }));
+  tourState.update((s) => ({
+    ...s,
+    index,
+    setupPending: setupPendingAt(index),
+  }));
   // Going back means the user wants to re-read the step, so a step that
   // normally advances on its own stays put this time.
-  await enter(TOUR_STEPS[index], false);
+  await enter(steps[index], false);
+}
+
+/// Drops the setup cards from the run in progress, for a user who deferred
+/// setup: the tour carries on where those cards would have left it, and can be
+/// cancelled from there.
+export async function skipSetupSteps(): Promise<void> {
+  const state = get(tourState);
+  if (!state.running || state.busy) return;
+  if (setupEndIndex < 0 || state.index > setupEndIndex) return;
+  await leaveCurrent();
+  const index = setupEndIndex + 1;
+  if (index >= steps.length) {
+    await closeTour();
+    return;
+  }
+  tourState.update((s) => ({
+    ...s,
+    index,
+    setupPending: setupPendingAt(index),
+  }));
+  await enter(steps[index]);
+}
+
+/// The user's way out of the first-run setup: the surface that owns setup
+/// marks it settled, so the app stops asking, and the setup cards come off
+/// this run. The tour's own Skip is held back until then.
+export async function deferSetup(): Promise<void> {
+  await ctx.call("setup:defer");
+  await skipSetupSteps();
 }
 
 export async function closeTour(): Promise<void> {
+  // The first-run setup cards hold the user until setup is done or deferred:
+  // Skip tour, Escape and anything else that closes the tour land here.
+  const state = get(tourState);
+  if (state.running && state.setupPending) return;
   const step = current;
   clearStepTimer();
   if (step?.leave) await step.leave(ctx);

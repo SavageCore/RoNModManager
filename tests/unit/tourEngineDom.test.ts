@@ -22,6 +22,7 @@ type MockStep = {
   id: string;
   title: string;
   body: string;
+  setup?: boolean;
   route?: string;
   target?: string;
   targetTimeoutMs?: number;
@@ -517,5 +518,138 @@ describe("tourEngine auto advance", () => {
 
     await engine.nextStep();
     expect(get(engine.tourState).running).toBe(false);
+  });
+});
+
+describe("tourEngine first-run setup", () => {
+  const firstRunSteps = (): MockStep[] => [
+    { id: "welcome", title: "W", body: "w" },
+    {
+      id: "setup-a",
+      title: "SA",
+      body: "sa",
+      setup: true,
+      target: '[data-tour="hit"]',
+    },
+    {
+      id: "setup-b",
+      title: "SB",
+      body: "sb",
+      setup: true,
+      target: '[data-tour="hit"]',
+    },
+    { id: "app", title: "App", body: "app" },
+  ];
+
+  it("runs the setup cards on a first launch, and drops them from a replay", async () => {
+    mountTarget("hit");
+    const first = await loadEngine(firstRunSteps());
+
+    await first.startTour({ setup: true });
+
+    expect(get(first.tourState).total).toBe(4);
+    expect(get(first.tourState).setupPending).toBe(true);
+
+    const replay = await loadEngine(firstRunSteps());
+    await replay.startTour();
+
+    expect(get(replay.tourState).total).toBe(2);
+    expect(get(replay.tourState).setupPending).toBe(false);
+    expect(get(replay.currentStep)?.id).toBe("welcome");
+    await replay.closeTour();
+  });
+
+  it("holds the user on the setup cards until they are past them", async () => {
+    mountTarget("hit");
+    const engine = await loadEngine(firstRunSteps());
+    await engine.startTour({ setup: true });
+
+    expect(get(engine.tourState).setupPending).toBe(true);
+
+    // Skip tour and Escape both land here, and neither may cut setup short.
+    await engine.closeTour();
+    expect(get(engine.tourState).running).toBe(true);
+
+    await engine.nextStep();
+    await engine.closeTour();
+    expect(get(engine.tourState).running).toBe(true);
+
+    // Past the last setup card the tour is the user's to close again.
+    await engine.nextStep();
+    await engine.nextStep();
+    expect(get(engine.tourState).setupPending).toBe(false);
+
+    await engine.closeTour();
+    expect(get(engine.tourState).running).toBe(false);
+    expect(updateConfig).toHaveBeenCalledWith({ tutorial_complete: true });
+  });
+
+  it("moves past the setup cards when the user defers setup", async () => {
+    mountTarget("hit");
+    const engine = await loadEngine(firstRunSteps());
+    await engine.startTour({ setup: true });
+    await engine.nextStep();
+
+    await engine.skipSetupSteps();
+
+    // Straight to the app tour, with the tour cancellable again.
+    expect(get(engine.currentStep)?.id).toBe("app");
+    expect(get(engine.tourState).index).toBe(3);
+    expect(get(engine.tourState).setupPending).toBe(false);
+    await engine.closeTour();
+    expect(get(engine.tourState).running).toBe(false);
+  });
+
+  it("has nothing to skip when the run has no setup cards", async () => {
+    const engine = await loadEngine([
+      { id: "a", title: "A", body: "a" },
+      { id: "b", title: "B", body: "b" },
+    ]);
+    await engine.startTour();
+
+    await engine.skipSetupSteps();
+
+    expect(get(engine.tourState).index).toBe(0);
+    expect(get(engine.currentStep)?.id).toBe("a");
+    await engine.closeTour();
+  });
+
+  it("defers setup when the user picks Set up later", async () => {
+    mountTarget("hit");
+    const engine = await loadEngine(firstRunSteps());
+    await engine.startTour({ setup: true });
+    const registry = await import("../../src/lib/tour/registry");
+    const settle = vi.fn(async () => {});
+    registry.registerTourActions("setup", { defer: settle });
+
+    await engine.deferSetup();
+
+    // The surface that owns setup settles it, and the run carries on past the
+    // setup cards with the tour cancellable again.
+    expect(settle).toHaveBeenCalledTimes(1);
+    expect(get(engine.currentStep)?.id).toBe("app");
+    expect(get(engine.tourState).setupPending).toBe(false);
+    await engine.closeTour();
+    expect(get(engine.tourState).running).toBe(false);
+  });
+
+  it("stays on the card when the control refuses the action", async () => {
+    const engine = await loadEngine([
+      { id: "a", title: "A", body: "a", nextAction: "setup:save-modio" },
+      { id: "b", title: "B", body: "b" },
+    ]);
+    const registry = await import("../../src/lib/tour/registry");
+    const refused = vi.fn(async () => false);
+    registry.registerTourActions("setup", { "save-modio": refused });
+
+    await engine.startTour();
+    await engine.nextStep();
+
+    // The dialog is still on screen with its own error: moving the card on
+    // would leave the user looking at a page nobody explained.
+    expect(refused).toHaveBeenCalledTimes(1);
+    expect(get(engine.tourState).index).toBe(0);
+    expect(get(engine.currentStep)?.id).toBe("a");
+    await engine.closeTour();
   });
 });

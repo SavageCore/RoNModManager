@@ -82,9 +82,8 @@
   import AddModpackPanel from "$lib/components/AddModpackPanel.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import InfoPanel from "$lib/components/InfoPanel.svelte";
-  import SetupWizard from "$lib/components/SetupWizard.svelte";
   import TourOverlay from "$lib/components/TourOverlay.svelte";
-  import { startTour } from "$lib/tour/tourEngine";
+  import { nextStep, startTour, tourState } from "$lib/tour/tourEngine";
   import { registerTourActions } from "$lib/tour/registry";
   import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
   import { importLogStore } from "$lib/stores/importLogStore";
@@ -132,7 +131,6 @@
   let showClosePreferenceDialog = false;
   let showCloseWhileRunningDialog = false;
   let showCloseManualDownloadDialog = false;
-  let showSetupWizard = false;
   let closingFromLaunch = false;
   let forceClose = false;
   let isGameRunning = false;
@@ -383,20 +381,6 @@
     }
   }
 
-  async function handleWizardDismiss() {
-    showSetupWizard = false;
-    await refreshShellConfigState();
-    const config = await getConfig().catch(() => null);
-    if (
-      config &&
-      !config.tutorial_complete &&
-      !$screenshotMode &&
-      !$wizardScreenshotMode
-    ) {
-      void startTour();
-    }
-  }
-
   async function handleClosePreference(
     action: CloseAction,
     target: MinimizeTarget,
@@ -429,6 +413,17 @@
   onMount(() => {
     const unsubscribe = tokenStore.subscribe((val) => {
       hasSavedToken = val;
+    });
+
+    // The game path and the API keys are saved while the first-run setup cards
+    // are up, so the shell re-reads them once the user is past that setup: the
+    // missing keys banner and the Launch button both depend on that state.
+    let setupWasPending = get(tourState).setupPending;
+    const unsubscribeTour = tourState.subscribe((state) => {
+      if (setupWasPending && !state.setupPending) {
+        void refreshShellConfigState();
+      }
+      setupWasPending = state.setupPending;
     });
 
     // The import log lives in the shell, so its tour action is registered here.
@@ -806,7 +801,7 @@
 
         const isScreenshot = await screenshotModePromise;
         const isWizardScreenshot = await wizardScreenshotModePromise;
-        let wizardWillShow = false;
+        let firstRunSetup = false;
         if (!config.setup_wizard_complete && !isScreenshot) {
           const hasAnyKey =
             Boolean(config.modio_api_key?.trim()) ||
@@ -815,23 +810,25 @@
           if (hasAnyKey && hasGamePath) {
             void updateConfig({ setup_wizard_complete: true });
           } else {
-            showSetupWizard = true;
-            wizardWillShow = true;
+            // First launch: setup is the tour's opening cards rather than a
+            // second dialog asking for the same things in its own way.
+            firstRunSetup = true;
+            void startTour({ setup: true });
           }
         }
-        // WIZARD_SCREENSHOT forces the setup wizard on even in screenshot mode,
-        // so the welcome page can be captured separately from the main pages.
+        // WIZARD_SCREENSHOT forces the setup cards on in screenshot mode, so
+        // the docs can capture a setup step the way the user meets it. The step
+        // after the welcome card is the first setup page.
         if (isWizardScreenshot) {
-          showSetupWizard = true;
-          wizardWillShow = true;
+          void startTour({ setup: true }).then(() => nextStep());
         }
-        // First launch tutorial: starts once the wizard is out of the way, or
-        // on the next launch if the app was closed part way through the tour.
+        // First launch tutorial: the setup run above covers the first launch,
+        // otherwise this picks up a tour the user closed part way through.
         if (
           !config.tutorial_complete &&
           !isScreenshot &&
           !isWizardScreenshot &&
-          !wizardWillShow
+          !firstRunSetup
         ) {
           void startTour();
         }
@@ -1005,6 +1002,8 @@
 
     return () => {
       cleanup();
+      unsubscribe();
+      unsubscribeTour();
       unregisterShellTourActions?.();
       if (resizeDebounce) {
         clearTimeout(resizeDebounce);
@@ -1103,7 +1102,7 @@
     </div>
   </header>
 
-  {#if !(hasNexusKey && hasSavedToken && hasModioApiKey) && !showSetupWizard}
+  {#if !(hasNexusKey && hasSavedToken && hasModioApiKey) && !$tourState.setupPending}
     <div
       role="button"
       tabindex="0"
@@ -1172,11 +1171,7 @@
   <InfoPanel />
   <FooterStatusBar />
 
-  {#if showSetupWizard}
-    <SetupWizard isVisible={showSetupWizard} onClose={handleWizardDismiss} />
-  {/if}
-
-  {#if !$screenshotMode && !$wizardScreenshotMode}
+  {#if !$screenshotMode}
     <TourOverlay />
   {/if}
 

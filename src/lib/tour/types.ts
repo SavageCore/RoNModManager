@@ -3,6 +3,15 @@ export type TourRoute = "/mods" | "/profiles" | "/settings";
 export type TourActionName = keyof TourActions;
 
 export type TourActions = {
+  /// A handler that returns false has not done what its card promised (a form
+  /// that failed validation), so the engine keeps the user on the card.
+  "setup:save-game-path": () => unknown;
+  "setup:save-modio": () => unknown;
+  "setup:save-nexus": () => unknown;
+  "setup:finish": () => unknown;
+  /// The user is leaving the first-run setup for later: the owning surface
+  /// settles it, and the engine drops the setup cards.
+  "setup:defer": () => unknown;
   "mods:open-add-mod": () => void;
   "mods:close-add-mod": () => void;
   "mods:submit-add-mod": () => void;
@@ -22,7 +31,7 @@ export type TourActions = {
 };
 
 export type TourContext = {
-  call: (name: TourActionName) => Promise<void>;
+  call: (name: TourActionName) => Promise<unknown>;
   goto: (route: TourRoute) => Promise<void>;
   waitFor: <T>(
     predicate: () => T | null | false | undefined,
@@ -36,6 +45,10 @@ export type TourContext = {
 
 export type TourStep = {
   id: string;
+  /// A first-launch setup card: the setup fields render inside the card, the
+  /// cards are dropped from a replay, and the tour cannot be cancelled while
+  /// one is on screen.
+  setup?: boolean;
   title: string;
   body?: string;
   /// Short lines rendered as a list under the body. Keeps a step from becoming

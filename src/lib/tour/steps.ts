@@ -1,3 +1,4 @@
+import { setSetupWizardPage } from "$lib/stores/setupWizard";
 import { addModTourCommand } from "$lib/stores/tourUi";
 import type { TourContext, TourStep } from "./types";
 
@@ -44,8 +45,59 @@ export const TOUR_STEPS: TourStep[] = [
     body: "This short tour shows how to add mods, label and group them, switch profiles, and set up the options most people change.",
     bullets: [
       "Use the arrow keys as well as Back and Next.",
-      "Skip tour stops it for good. You can replay it later from Settings > Tutorial.",
+      "You can replay it later from Settings > Tutorial.",
     ],
+  },
+  /// The setup cards below are the first-launch setup: their fields render
+  /// inside the card, the surface below the card is dimmed and nothing else is
+  /// asking for the same values. The tour cannot be cancelled until the user is
+  /// past them - Next is how they get out, or Set up later.
+  {
+    id: "setup-game-path",
+    setup: true,
+    route: "/mods",
+    title: "Set up: your game folder",
+    body: "Ready or Not's installation folder. Auto Detect usually finds it through Steam, otherwise use Browse. Leave the box empty and press Next to set this later.",
+    bullets: [
+      "Skip tour comes after this setup. Set up later leaves the rest for now.",
+    ],
+    nextAction: "setup:save-game-path",
+    enter: async () => {
+      setSetupWizardPage(1);
+    },
+  },
+  {
+    id: "setup-modio",
+    setup: true,
+    route: "/mods",
+    title: "Connect mod.io",
+    body: "Most Ready or Not mods live on mod.io. Fill in these two values from your account - the buttons open the pages to copy them from, then press Next.",
+    nextAction: "setup:save-modio",
+    enter: async () => {
+      setSetupWizardPage(2);
+    },
+  },
+  {
+    id: "setup-nexus",
+    setup: true,
+    route: "/mods",
+    title: "Nexus Mods",
+    body: "Optional, and only needed for Nexus links. Paste a Personal API key to install from them too, or leave the box empty and press Next to skip this for now.",
+    nextAction: "setup:save-nexus",
+    enter: async () => {
+      setSetupWizardPage(3);
+    },
+  },
+  {
+    id: "setup-modpack",
+    setup: true,
+    route: "/mods",
+    title: "Community modpack",
+    body: "Optional. If your community shares a modpack.json, paste its link and press Next to load it, otherwise leave the box empty and press Next to finish setting up.",
+    nextAction: "setup:finish",
+    enter: async () => {
+      setSetupWizardPage(4);
+    },
   },
   {
     id: "add-mod",

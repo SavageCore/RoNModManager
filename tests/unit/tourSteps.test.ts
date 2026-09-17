@@ -155,6 +155,10 @@ describe("TOUR_STEPS", () => {
 
   it("does the highlighted control's job from Next", () => {
     const stepped = {
+      "setup-game-path": "setup:save-game-path",
+      "setup-modio": "setup:save-modio",
+      "setup-nexus": "setup:save-nexus",
+      "setup-modpack": "setup:finish",
       "add-mod": "mods:open-add-mod",
       "add-mod-submit": "mods:submit-add-mod",
       "import-log-close": "shell:close-import-log",
@@ -171,6 +175,43 @@ describe("TOUR_STEPS", () => {
       (step) => step.id,
     );
     expect(acting).toEqual(Object.keys(stepped));
+  });
+
+  it("runs the first-launch setup as the tour's opening cards", () => {
+    const ids = TOUR_STEPS.map((step) => step.id);
+    expect(ids.slice(0, 6)).toEqual([
+      "welcome",
+      "setup-game-path",
+      "setup-modio",
+      "setup-nexus",
+      "setup-modpack",
+      "add-mod",
+    ]);
+
+    // Only those four cards are setup: they are dropped from a replay, and the
+    // tour cannot be cancelled while they are on screen.
+    const setupIds = TOUR_STEPS.filter((step) => step.setup).map(
+      (step) => step.id,
+    );
+    expect(setupIds).toEqual([
+      "setup-game-path",
+      "setup-modio",
+      "setup-nexus",
+      "setup-modpack",
+    ]);
+  });
+
+  it("puts the setup fields in the tour card, not a second dialog", () => {
+    for (const step of TOUR_STEPS.filter((entry) => entry.setup)) {
+      // Nothing to ring and nothing to place beside: the card itself is the
+      // surface the fields live in.
+      expect(step.target).toBeUndefined();
+      expect(step.route).toBe("/mods");
+      expect(step.placement).toBeUndefined();
+      // A steady card: the card asks for a form to be filled in, not for one
+      // control to be pressed (the tour's own Next does that).
+      expect(step.pulseTarget).toBeUndefined();
+    }
   });
 
   it("highlights the sidebar item before navigating to another page", () => {
