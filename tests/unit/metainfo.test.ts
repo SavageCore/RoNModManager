@@ -41,7 +41,10 @@ function fixture() {
   );
   writeFileSync(
     join(directory, "src-tauri/tauri.conf.json"),
-    JSON.stringify({ version: "0.0.16" }),
+    JSON.stringify({
+      version: "0.0.16",
+      bundle: { targets: ["nsis", "deb", "appimage", "rpm"] },
+    }),
   );
   writeFileSync(
     join(directory, "src-tauri/Cargo.toml"),
@@ -104,6 +107,14 @@ describe("version hook AppStream generation", () => {
     expect(xml).toContain("Upcoming change &amp; XML escaping");
     expect(xml).toContain("<id>test</id>");
     expect(sync(directory)).toBe(xml);
+
+    const conf = join(directory, "src-tauri/tauri.conf.json");
+    expect(readFileSync(conf, "utf8")).toContain(
+      '"targets": ["nsis", "deb", "appimage", "rpm"]',
+    );
+    expect(() =>
+      run(directory, resolve("node_modules/.bin/prettier"), ["--check", conf]),
+    ).not.toThrow();
     expect(run(directory, "git", ["tag", "--list", "v0.0.17"]).trim()).toBe("");
     expect(
       readFileSync(join(directory, "src-tauri/Cargo.lock"), "utf8"),

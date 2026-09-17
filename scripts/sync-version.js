@@ -1,5 +1,6 @@
 import { execFileSync, execSync } from "child_process";
 import { readFileSync, writeFileSync } from "fs";
+import { format } from "prettier";
 
 const version = JSON.parse(readFileSync("package.json", "utf8")).version;
 const tag = `v${version}`;
@@ -26,9 +27,13 @@ if (!releasesPattern.test(metainfo) || !releasesPattern.test(releases)) {
 
 const tauriConf = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
 tauriConf.version = version;
+// A bare JSON.stringify reflows arrays that prettier keeps inline, which then
+// fails `npm run lint`, so write the file through prettier.
 writeFileSync(
   "src-tauri/tauri.conf.json",
-  JSON.stringify(tauriConf, null, 2) + "\n",
+  await format(JSON.stringify(tauriConf, null, 2), {
+    filepath: "src-tauri/tauri.conf.json",
+  }),
 );
 
 const cargo = readFileSync("src-tauri/Cargo.toml", "utf8");
