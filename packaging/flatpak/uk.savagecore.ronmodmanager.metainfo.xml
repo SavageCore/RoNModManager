@@ -19,6 +19,18 @@
   <releases>
 
 
+    <release version="0.0.17" date="2026-09-17">
+      <description>
+        <ul>
+          <li>Flatpak metainfo for 0.0.16</li>
+          <li>Sync AppStream on version bump</li>
+          <li>Enforce conventional commit subjects</li>
+          <li>Keep tauri.conf.json prettier-clean on version bump</li>
+          <li>Lint commit subjects with commitlint</li>
+        </ul>
+      </description>
+    </release>
+
     <release version="0.0.16" date="2026-09-17">
       <description>
         <ul>
