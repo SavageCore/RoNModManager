@@ -27,6 +27,11 @@ pre-commit:
       glob:
         - "src-tauri/**"
 
+commit-msg:
+  jobs:
+    - name: conventional commit subject
+      run: node scripts/check-commit-msg.js {1}
+
 pre-push:
   jobs:
     - name: cargo clippy (all targets)

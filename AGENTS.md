@@ -7,6 +7,23 @@ The lefthook pre-commit hook runs prettier, `cargo fmt --check` and
 When committing via an agent/tool, allow a long timeout (10+ minutes) - a
 killed hook aborts the commit.
 
+## Commit subjects must be conventional
+
+git-cliff's AppStream config (`packaging/flatpak/cliff-appstream.toml`) and the
+release notes config (`cliff.toml`) set `filter_unconventional = true`, so a
+subject that is not `type(scope): description` is dropped from `metainfo.xml`
+and the release notes - silently, with only a "commit(s) skipped due to parse
+error(s)" warning. The lefthook `commit-msg` hook
+(`scripts/check-commit-msg.js`) and CI's `lint-commits` job now reject them.
+
+Types: build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test.
+Merge commits, `fixup!`/`squash!`, `Revert "..."` and bare version bumps
+(`0.0.17`) are exempt. Check a range with
+`node scripts/check-commit-msg.js --range v0.0.16..HEAD`.
+
+A squash-merged PR takes its PR title as the commit subject, so keep that
+conventional too.
+
 ## Rust toolchain is pinned
 
 `rust-toolchain.toml` pins the minor track (currently 1.98). Local dev, hooks
