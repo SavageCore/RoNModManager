@@ -43,7 +43,9 @@ export const SHARED_SOURCES = [
 // Page-specific sources, in addition to SHARED_SOURCES. Paths are matched
 // by prefix against repo-relative changed files.
 export const PAGE_SOURCES = {
-  wizard: ["src/lib/components/SetupWizard.svelte"],
+  // The setup wizard is the guided tour's opening cards now, so the tour's
+  // step copy, engine and overlay all feed the wizard shot.
+  wizard: ["src/lib/components/SetupWizard.svelte", "src/lib/tour/"],
   mods: ["src/routes/mods/"],
   collections: ["src/routes/collections/"],
   profiles: ["src/routes/profiles/"],

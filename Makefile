@@ -11,7 +11,7 @@ export RUSTC_WRAPPER := ccache
 .PHONY: help install dev dev-xwayland dev-devtools build build-fast build-frontend release \
         lint format check lint-frontend lint-backend fmt-backend clippy lint-all \
         test-frontend test-backend test \
-        screenshots screenshots-build screenshots-force \
+        screenshots screenshots-build screenshots-force screenshots-wizard \
         vendor flatpak-deps update-appstream flatpak-build flatpak-build-clean flatpak-build-fast flatpak-bundle flatpak-install flatpak-install-remote flatpak-run flatpak \
         clean watch
 
@@ -108,6 +108,12 @@ screenshots: ## Take light + dark screenshots (rebuild with make screenshots-bui
 
 screenshots-force: ## Retake all screenshots, keeping everything (bypass unchanged check)
 	SCREENSHOT_FORCE=1 node scripts/take-screenshots.mjs
+
+# Only the first-run setup shot: it is the one image that is not a page, and the
+# plan cannot always see it (keep this in mind after committing a tour change).
+# Close the dev app first - it holds vite's port and the single-instance lock.
+screenshots-wizard: ## Retake just the first-run setup shot
+	WIZARD_PASS=1 SCREENSHOT_FORCE=1 node scripts/take-screenshots.mjs
 
 screenshots-build: ## Build debug binary then take screenshots (run after Rust changes)
 	cargo build --manifest-path $(CARGO_MANIFEST)

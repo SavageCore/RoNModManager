@@ -1,6 +1,8 @@
 # Screenshots
 
-## Setup Wizard
+## First-run setup
+
+The guided tour's setup cards, which is how a first launch is set up.
 
 | Light                               | Dark                              |
 | ----------------------------------- | --------------------------------- |

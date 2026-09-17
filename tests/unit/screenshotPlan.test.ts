@@ -123,6 +123,20 @@ describe("plan: generic sources", () => {
     void pages;
   });
 
+  it("tour copy change keeps the wizard shot", () => {
+    // The setup steps and the tour card are what the wizard shot shows, so a
+    // change there has to schedule it.
+    const { wizard, pages } = plan({
+      changedFiles: ["src/lib/tour/steps.ts"],
+    });
+    for (const t of THEMES) {
+      expect(wizard[t].capture).toBe(true);
+      // The tour only renders over the app: no page shot is affected.
+      expect(pages[t].mods.capture).toBe(false);
+      expect(pages[t].settings.capture).toBe(false);
+    }
+  });
+
   it("screenshot outputs never trigger themselves", () => {
     const { planned } = plan({
       changedFiles: ["docs/screenshots/light/mods.png"],

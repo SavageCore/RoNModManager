@@ -152,7 +152,11 @@ for (const theme of themes) {
   }
 }
 if (planTotal === 0) {
-  console.log("\nNothing to do - no source changes affect any screenshot.");
+  console.log(
+    "\nNothing to do - no uncommitted changes affect any screenshot.\n" +
+      "Planning reads the working tree only, so a change that is already\n" +
+      "committed needs SCREENSHOT_FORCE=1 (make screenshots-force).",
+  );
   process.exit(0);
 }
 
