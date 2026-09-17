@@ -1,5 +1,6 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::models::{AppError, Profile, Result};
 use crate::state::app_data_root;
@@ -77,12 +78,28 @@ pub fn save_profile(profile: &Profile) -> Result<()> {
     let path = get_profile_path(&profile.name)?;
     let json = serde_json::to_string_pretty(profile)
         .map_err(|e| AppError::Validation(format!("failed to serialize profile: {e}")))?;
-    let tmp_path = path.with_extension("json.tmp");
+    let tmp_path = temp_profile_path(&path);
     fs::write(&tmp_path, &json)
         .map_err(|e| AppError::Validation(format!("failed to write profile to temp file: {e}")))?;
     fs::rename(&tmp_path, &path)
         .map_err(|e| AppError::Validation(format!("failed to replace profile file: {e}")))?;
     Ok(())
+}
+
+/// A temp file name unique to this write.
+///
+/// A fixed `<name>.json.tmp` is shared by every concurrent save of the same
+/// profile, and the app does save one profile from more than one place at a time
+/// (the UI save and background tag assignment). One writer's rename then moves
+/// the temp file the other was about to rename, and the loser fails with ENOENT.
+fn temp_profile_path(path: &Path) -> PathBuf {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let suffix = format!(
+        "json.{}-{}.tmp",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    );
+    path.with_extension(suffix)
 }
 
 /// Replaces the tags a mod carries: drops it from every tag it currently has,
@@ -242,6 +259,33 @@ mod tests {
         assert_eq!(loaded.name, name);
         assert_eq!(loaded.installed_mod_names, vec!["mod-a.zip".to_string()]);
         assert_eq!(loaded.description, Some("round trip".to_string()));
+    }
+
+    /// The app saves the same profile from more than one place at a time (the
+    /// UI save and background tag assignment both write the active profile), so
+    /// concurrent writes to one name have to all succeed.
+    #[test]
+    fn concurrent_saves_of_one_profile_all_succeed() {
+        isolated_root();
+        let name = unique_name("concurrent");
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+
+        let handles: Vec<_> = (0..8)
+            .map(|i| {
+                let name = name.clone();
+                let barrier = std::sync::Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    save_profile(&Profile::new(name, vec![format!("{i}.zip")]))
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().unwrap().unwrap();
+        }
+
+        assert!(get_profile(&name).unwrap().is_some());
     }
 
     #[test]
