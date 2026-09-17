@@ -79,7 +79,11 @@ pub fn run() {
 
         #[cfg(debug_assertions)]
         {
-            if std::env::var("SCREENSHOT_MODE").is_err()
+            // WebKitGTK docks its inspector inside the app window, which squeezes
+            // the UI, so it is opt-in rather than always on. Set RUST_DEVTOOLS=1
+            // (or `make dev-devtools`) when you want it. Never during screenshots.
+            if std::env::var("RUST_DEVTOOLS").is_ok()
+                && std::env::var("SCREENSHOT_MODE").is_err()
                 && std::env::var("WIZARD_SCREENSHOT").is_err()
             {
                 let window = app.get_webview_window("main").unwrap();

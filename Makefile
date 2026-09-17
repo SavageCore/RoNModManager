@@ -8,7 +8,7 @@ CARGO_MANIFEST   := src-tauri/Cargo.toml
 # Use ccache for faster local rebuilds (set RUSTC_WRAPPER= to override)
 export RUSTC_WRAPPER := ccache
 
-.PHONY: help install dev dev-xwayland build build-fast build-frontend release \
+.PHONY: help install dev dev-xwayland dev-devtools build build-fast build-frontend release \
         lint format check lint-frontend lint-backend fmt-backend clippy lint-all \
         test-frontend test-backend test \
         screenshots screenshots-build screenshots-force \
@@ -36,6 +36,9 @@ dev: ## Run Tauri dev (Wayland-compatible, software rendering)
 
 dev-xwayland: ## Run Tauri dev via XWayland (full window state persistence)
 	GDK_BACKEND=x11 npm run tauri dev
+
+dev-devtools: ## Run Tauri dev with the web inspector open (RUST_DEVTOOLS=1)
+	RUST_DEVTOOLS=1 $(MAKE) dev
 
 watch: dev ## Watch for changes and rebuild Tauri application
 
