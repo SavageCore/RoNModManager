@@ -13,16 +13,16 @@ git-cliff's AppStream config (`packaging/flatpak/cliff-appstream.toml`) and the
 release notes config (`cliff.toml`) set `filter_unconventional = true`, so a
 subject that is not `type(scope): description` is dropped from `metainfo.xml`
 and the release notes - silently, with only a "commit(s) skipped due to parse
-error(s)" warning. The lefthook `commit-msg` hook
-(`scripts/check-commit-msg.js`) and CI's `lint-commits` job now reject them.
+error(s)" warning. The lefthook `commit-msg` hook (`npx commitlint --edit`) and
+CI's `lint-commits` job reject them, using
+`@commitlint/config-conventional` configured in `commitlint.config.js` (body
+and footer line lengths are off; everything else is stock). Check a range with
+`npx commitlint --from v0.0.16 --to HEAD`.
 
-Types: build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test.
-Merge commits, `fixup!`/`squash!`, `Revert "..."` and bare version bumps
-(`0.0.17`) are exempt. Check a range with
-`node scripts/check-commit-msg.js --range v0.0.16..HEAD`.
-
-A squash-merged PR takes its PR title as the commit subject, so keep that
-conventional too.
+Merge commits, `fixup!`/`squash!`, `Revert ...` and bare version bumps
+(`0.0.17`) are ignored by commitlint's defaults, so no extra config is needed.
+A squash-merged PR takes its PR title as the subject, so keep that conventional
+too.
 
 ## Rust toolchain is pinned
 

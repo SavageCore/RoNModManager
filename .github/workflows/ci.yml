@@ -22,11 +22,22 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+      - run: npm config set script-shell bash
+      - run: npm ci
       - name: Check commit subjects are conventional
         # git-cliff drops anything else from metainfo.xml and the release notes.
         env:
-          RANGE: ${{ github.event_name == 'pull_request' && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}..{1}', github.event.before, github.sha) }}
-        run: node scripts/check-commit-msg.js --range "$RANGE"
+          FROM: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          TO: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # A new branch reports an all-zero "before" sha; the PR run covers
+          # the earlier commits, so only the tip is checked there.
+          if [ "${FROM//0/}" = "" ]; then FROM="$TO^"; fi
+          npx commitlint --from "$FROM" --to "$TO"
 
   lint-frontend:
     runs-on: ubuntu-24.04
