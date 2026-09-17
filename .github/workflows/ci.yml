@@ -64,6 +64,23 @@ jobs:
           fail_ci_if_error: false
           verbose: true
 
+  build-userscript:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: userscript/package-lock.json
+      # userscript/ is not a root workspace, so its own install is needed.
+      # The release workflow runs this exact build; failing here is the only
+      # way to catch it before a release ships without the userscript.
+      - run: |
+          cd userscript
+          npm ci
+          npm run build
+
   lint-backend:
     runs-on: ubuntu-24.04
     steps:
