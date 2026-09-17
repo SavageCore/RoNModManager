@@ -28,6 +28,9 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run check
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff@2.13.1
       - run: npm run test:unit:coverage
       - name: Upload frontend coverage to Codecov
         uses: codecov/codecov-action@v5

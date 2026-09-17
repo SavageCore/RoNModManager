@@ -3,14 +3,12 @@ import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import type { Plugin } from "vite";
 
-// @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
 // Vitest resolves modules with node conditions, which makes `svelte` (and
 // `svelte/store`) resolve to their server builds - mounting components then
 // fails with `lifecycle_function_unavailable`. Force browser conditions for
 // test runs so @testing-library/svelte mounts client components.
-// @ts-expect-error process is a nodejs global
 const isVitest = process.env.VITEST;
 
 // When vite-plugin-svelte can't find cached CSS for a virtual style module
