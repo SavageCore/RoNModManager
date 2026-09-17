@@ -37,6 +37,7 @@ import type {
   ModpackMeta,
   Profile,
   SyncDetails,
+  UninstallOutcome,
   UpdateInfo,
   WindowState,
 } from "../types";
@@ -265,10 +266,26 @@ export const verifyModioApiKey = (apiKey: string) =>
   invoke<boolean>("verify_modio_api_key", { apiKey });
 
 export const uninstallMods = () => invoke<void>("uninstall_mods");
-export const uninstallMod = (filename: string) =>
-  invoke<void>("uninstall_mod", { filename });
-export const uninstallArchive = (archiveName: string) =>
-  invoke<void>("uninstall_archive", { archiveName });
+/// `removeFromAllProfiles` makes the uninstall final: the mod is dropped from
+/// every profile and its files are deleted. Without it the backend keeps the
+/// files when another profile still enables the mod, and says so in the result.
+export const uninstallMod = (filename: string, removeFromAllProfiles = false) =>
+  invoke<UninstallOutcome>("uninstall_mod", {
+    filename,
+    removeFromAllProfiles,
+  });
+export const uninstallArchive = (
+  archiveName: string,
+  removeFromAllProfiles = false,
+) =>
+  invoke<UninstallOutcome>("uninstall_archive", {
+    archiveName,
+    removeFromAllProfiles,
+  });
+/// Profiles that currently enable this mod, so a confirmation can say what an
+/// uninstall will do to them.
+export const modUsedByProfiles = (archiveName: string) =>
+  invoke<string[]>("mod_used_by_profiles", { archiveName });
 export const updateModDisplayName = (
   archiveName: string,
   displayName: string,

@@ -21,6 +21,7 @@
     uninstallArchive,
     uninstallMod,
     uninstallMods,
+    modUsedByProfiles,
     updateModDisplayName,
     updateModSourceUrl,
     getAddonMap,
@@ -164,14 +165,17 @@
       }
       await setAddonMap(addonMap);
       try {
-        await uninstallArchive(archiveName);
+        // Add-on removal is final too: the user removed the file on purpose.
+        await (archiveName
+          ? uninstallArchive(archiveName, true)
+          : uninstallMod(removedAddOn.name, true));
         toastStore.success(`Removed add-on: ${removedAddOn.name}`);
       } catch (e) {
         toastStore.error(`Failed to remove add-on: ${removedAddOn.name}`);
       }
     } else if (removedAddOn) {
       try {
-        await uninstallMod(removedAddOn.name);
+        await uninstallMod(removedAddOn.name, true);
         toastStore.success(`Removed add-on: ${removedAddOn.name}`);
       } catch (e) {
         toastStore.error(`Failed to remove add-on: ${removedAddOn.name}`);
@@ -215,10 +219,16 @@
   import { formatDistanceToNow } from "date-fns";
   import { isMapTag } from "$lib/utils/mapTags";
   import { formatBytes } from "$lib/utils/format";
+  import {
+    describeUninstallOutcome,
+    uninstallProfileWarning,
+    uninstallTargetFor,
+  } from "$lib/utils/uninstall";
   import type {
     InstalledModGroup,
     InstalledModFile,
     Profile,
+    UninstallOutcome,
   } from "$lib/types";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
@@ -1126,15 +1136,28 @@
     }
   }
 
+  /// Shared tail for the uninstall paths: refresh, re-sync, and report what the
+  /// backend actually did (it may have kept the files for another profile).
+  async function reportUninstallOutcome(
+    label: string,
+    outcome: UninstallOutcome,
+  ): Promise<void> {
+    const described = describeUninstallOutcome(label, outcome);
+    if (described.kind === "success") {
+      toastStore.success(described.message);
+    } else {
+      toastStore.warning(described.message);
+    }
+    await refresh();
+    if (hasGamePath && !linkOnLaunchOnly) {
+      await syncModLinks(getFullSyncList(modsForActiveProfile));
+    }
+  }
+
   async function handleUninstallMod(filename: string) {
     try {
-      await uninstallMod(filename);
-      toastStore.success(`Uninstalled: ${filename}`);
-
-      await refresh();
-      if (hasGamePath && !linkOnLaunchOnly) {
-        await syncModLinks(getFullSyncList(modsForActiveProfile));
-      }
+      const outcome = await uninstallMod(filename, true);
+      await reportUninstallOutcome(filename, outcome);
     } catch (error) {
       toastStore.error(`Failed to uninstall: ${String(error)}`);
     }
@@ -1143,31 +1166,31 @@
   async function handleUninstallArchive(group: InstalledModGroup) {
     const label = group.displayName ?? group.name;
     const isNamed = !!group.displayName;
+    const target = uninstallTargetFor(group);
+    if (!target) {
+      toastStore.error(`Nothing to remove for ${label}`);
+      return;
+    }
+    // Say up front when other profiles will lose the mod too.
+    const otherProfiles = await modUsedByProfiles(target).catch(() => []);
     confirmModal = {
       isVisible: true,
       title: "Uninstall mod?",
-      message: `Are you sure you want to uninstall <strong>${label}</strong>? This cannot be undone.`,
+      message: `Are you sure you want to uninstall <strong>${label}</strong>? This cannot be undone.${uninstallProfileWarning(
+        otherProfiles,
+      )}`,
       detail: isNamed ? group.name : "",
       confirmLabel: "Uninstall",
       onConfirm: async () => {
         try {
-          if (group.managedByManifest) {
-            await uninstallArchive(group.name);
-          } else {
-            const primaryFile = group.files[0]?.name;
-            if (primaryFile) {
-              await uninstallMod(primaryFile);
-            }
-          }
-          toastStore.success(`Uninstalled: ${group.name}`);
-          await refresh();
-          if (hasGamePath && !linkOnLaunchOnly) {
-            await syncModLinks(getFullSyncList(modsForActiveProfile));
-          }
+          // removeFromAllProfiles: the user asked for the mod to go, so the
+          // backend must not keep the files because another profile has it.
+          const outcome = group.managedByManifest
+            ? await uninstallArchive(target, true)
+            : await uninstallMod(target, true);
+          await reportUninstallOutcome(label, outcome);
         } catch (error) {
-          toastStore.error(
-            `Failed to uninstall ${group.name}: ${String(error)}`,
-          );
+          toastStore.error(`Failed to uninstall ${label}: ${String(error)}`);
         }
       },
     };
@@ -1251,21 +1274,28 @@
       detail: "",
       onConfirm: async () => {
         try {
+          let removed = 0;
+          let keptFiles = 0;
           for (const modName of selectedMods) {
             const group = modGroups.find((g) => g.name === modName);
             if (!group) continue;
-            if (group.managedByManifest) {
-              await uninstallArchive(group.name);
-            } else {
-              const primaryFile = group.files[0]?.name;
-              if (primaryFile) {
-                await uninstallMod(primaryFile);
-              }
-            }
+            const target = uninstallTargetFor(group);
+            if (!target) continue;
+            const outcome = group.managedByManifest
+              ? await uninstallArchive(target, true)
+              : await uninstallMod(target, true);
+            if (outcome.filesRemoved) removed += 1;
+            else keptFiles += 1;
           }
-          toastStore.success(
-            `Uninstalled ${count} mod${count === 1 ? "" : "s"}`,
-          );
+          if (keptFiles > 0) {
+            toastStore.warning(
+              `Removed ${removed} mod${removed === 1 ? "" : "s"}; files kept for ${keptFiles} that another profile still enables.`,
+            );
+          } else {
+            toastStore.success(
+              `Uninstalled ${count} mod${count === 1 ? "" : "s"}`,
+            );
+          }
           clearSelection();
           await refresh();
           if (hasGamePath && !linkOnLaunchOnly) {

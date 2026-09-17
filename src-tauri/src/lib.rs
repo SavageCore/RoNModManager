@@ -269,6 +269,7 @@ pub fn run() {
             mods::uninstall_mods,
             mods::uninstall_mod,
             mods::uninstall_archive,
+            mods::mod_used_by_profiles,
             mods::update_mod_display_name,
             mods::update_mod_source_url,
             mods::update_nexus_file_id,

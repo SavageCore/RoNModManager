@@ -260,14 +260,12 @@ fn sanitize_filename_for_download(name: &str) -> String {
     }
 }
 
-fn remove_mod_from_active_profile(state: &State<'_, AppState>, mod_name: &str) -> Result<()> {
-    let config = state.get_config()?;
-    let Some(active_profile_name) = config.active_profile else {
-        return Ok(());
-    };
-
-    let Some(mut profile) = profiles::get_profile(&active_profile_name)? else {
-        return Ok(());
+/// Strips a mod from one profile's enabled list, tags and collections.
+/// Returns true when the enabled list changed, so the caller knows the game
+/// folder needs re-syncing.
+fn remove_mod_from_profile(profile_name: &str, mod_name: &str) -> Result<bool> {
+    let Some(mut profile) = profiles::get_profile(profile_name)? else {
+        return Ok(false);
     };
 
     let before_installed_len = profile.installed_mod_names.len();
@@ -307,7 +305,38 @@ fn remove_mod_from_active_profile(state: &State<'_, AppState>, mod_name: &str) -
     if installed_changed || meta_changed {
         profiles::save_profile(&profile)?;
     }
-    if installed_changed {
+
+    Ok(installed_changed)
+}
+
+fn remove_mod_from_active_profile(state: &State<'_, AppState>, mod_name: &str) -> Result<()> {
+    let config = state.get_config()?;
+    let Some(active_profile_name) = config.active_profile else {
+        return Ok(());
+    };
+
+    if remove_mod_from_profile(&active_profile_name, mod_name)? {
+        sync_active_profile_links(state)?;
+    }
+
+    Ok(())
+}
+
+/// Removes a mod from every profile. Used when a mod is uninstalled for good:
+/// leaving it in another profile would keep it enabled but with no files.
+fn remove_mod_from_all_profiles(state: &State<'_, AppState>, mod_name: &str) -> Result<()> {
+    let config = state.get_config()?;
+    let active_profile = config.active_profile.clone();
+    let mut active_changed = false;
+
+    for profile in profiles::list_profiles()? {
+        let changed = remove_mod_from_profile(&profile.name, mod_name)?;
+        if changed && active_profile.as_deref() == Some(profile.name.as_str()) {
+            active_changed = true;
+        }
+    }
+
+    if active_changed {
         sync_active_profile_links(state)?;
     }
 
@@ -339,14 +368,20 @@ pub(crate) fn add_mod_to_active_profile(
     Ok(())
 }
 
-fn is_mod_used_by_any_profile(mod_name: &str) -> Result<bool> {
-    let all_profiles = profiles::list_profiles()?;
-    Ok(all_profiles.iter().any(|profile| {
-        profile
-            .installed_mod_names
-            .iter()
-            .any(|name| name == mod_name)
-    }))
+/// Names of the profiles that still enable this mod, sorted.
+fn profiles_using_mod(mod_name: &str) -> Result<Vec<String>> {
+    let mut names: Vec<String> = profiles::list_profiles()?
+        .into_iter()
+        .filter(|profile| {
+            profile
+                .installed_mod_names
+                .iter()
+                .any(|name| name == mod_name)
+        })
+        .map(|profile| profile.name)
+        .collect();
+    names.sort();
+    Ok(names)
 }
 
 fn sync_active_profile_links(state: &State<'_, AppState>) -> Result<()> {
@@ -2093,8 +2128,24 @@ pub async fn add_nexus_mod(
     })
 }
 
+/// What an uninstall actually did, so the UI can tell the user the truth
+/// instead of assuming the mod is gone.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UninstallOutcome {
+    /// Files and staging data were deleted.
+    pub files_removed: bool,
+    /// Profiles that still enable the mod, which is why the files were kept.
+    /// Empty whenever `files_removed` is true.
+    pub still_used_by: Vec<String>,
+}
+
 #[tauri::command]
-pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String) -> Result<()> {
+pub async fn uninstall_archive(
+    state: State<'_, AppState>,
+    archive_name: String,
+    remove_from_all_profiles: Option<bool>,
+) -> Result<UninstallOutcome> {
     let config = state.get_config()?;
     let game_path = config
         .game_path
@@ -2136,9 +2187,19 @@ pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String)
         let _ = addon_map::write_addon_map(&addon_map_data);
     }
 
-    remove_mod_from_active_profile(&state, &archive_name)?;
-    if is_mod_used_by_any_profile(&archive_name)? {
-        return Ok(());
+    if remove_from_all_profiles.unwrap_or(false) {
+        remove_mod_from_all_profiles(&state, &archive_name)?;
+    } else {
+        remove_mod_from_active_profile(&state, &archive_name)?;
+        // Another profile still wants this mod: keep the files, and report it
+        // rather than pretending the uninstall happened.
+        let still_used_by = profiles_using_mod(&archive_name)?;
+        if !still_used_by.is_empty() {
+            return Ok(UninstallOutcome {
+                files_removed: false,
+                still_used_by,
+            });
+        }
     }
 
     let manifest_data = manager.load_manifest(&archive_name)?.ok_or_else(|| {
@@ -2255,7 +2316,10 @@ pub async fn uninstall_archive(state: State<'_, AppState>, archive_name: String)
         let _ = fs::remove_file(archive_path);
     }
 
-    Ok(())
+    Ok(UninstallOutcome {
+        files_removed: true,
+        still_used_by: Vec::new(),
+    })
 }
 
 #[tauri::command]
@@ -2451,7 +2515,9 @@ pub async fn replace_mod_archive(
         }
     }
 
-    uninstall_archive(state, old_archive_name).await?;
+    // The old archive is being replaced, so its files go for good: the profile
+    // lists were migrated to the new name just above.
+    uninstall_archive(state, old_archive_name, Some(true)).await?;
 
     Ok(())
 }
@@ -2742,19 +2808,32 @@ pub async fn get_installed_mod_groups(
 }
 
 #[tauri::command]
-pub async fn uninstall_mod(state: State<'_, AppState>, filename: String) -> Result<()> {
+pub async fn uninstall_mod(
+    state: State<'_, AppState>,
+    filename: String,
+    remove_from_all_profiles: Option<bool>,
+) -> Result<UninstallOutcome> {
     let config = state.get_config()?;
     let game_path = config
         .game_path
         .ok_or_else(|| AppError::Validation("Game path is not configured".to_string()))?;
     let mods_path = steam::get_mods_path(&game_path);
     let staging_root = get_staging_root()?;
+    let forced = remove_from_all_profiles.unwrap_or(false);
 
     let manager = manifest::ManifestManager::new(&staging_root);
     if let Ok(Some((archive_name, manifest))) = manager.get_manifest_for_pak(&filename) {
-        remove_mod_from_active_profile(&state, &archive_name)?;
-        if is_mod_used_by_any_profile(&archive_name)? {
-            return Ok(());
+        if forced {
+            remove_mod_from_all_profiles(&state, &archive_name)?;
+        } else {
+            remove_mod_from_active_profile(&state, &archive_name)?;
+            let still_used_by = profiles_using_mod(&archive_name)?;
+            if !still_used_by.is_empty() {
+                return Ok(UninstallOutcome {
+                    files_removed: false,
+                    still_used_by,
+                });
+            }
         }
         for file_path in &manifest.installed_files {
             if file_path.exists() {
@@ -2767,12 +2846,23 @@ pub async fn uninstall_mod(state: State<'_, AppState>, filename: String) -> Resu
         }
         cleanup_mod_staging_directories(&archive_name, &staging_root);
         let _ = manager.delete_manifest(&archive_name);
-        return Ok(());
+        return Ok(UninstallOutcome {
+            files_removed: true,
+            still_used_by: Vec::new(),
+        });
     }
 
-    remove_mod_from_active_profile(&state, &filename)?;
-    if is_mod_used_by_any_profile(&filename)? {
-        return Ok(());
+    if forced {
+        remove_mod_from_all_profiles(&state, &filename)?;
+    } else {
+        remove_mod_from_active_profile(&state, &filename)?;
+        let still_used_by = profiles_using_mod(&filename)?;
+        if !still_used_by.is_empty() {
+            return Ok(UninstallOutcome {
+                files_removed: false,
+                still_used_by,
+            });
+        }
     }
     let mod_path = mods_path.join(&filename);
     if !mod_path.exists() {
@@ -2783,7 +2873,17 @@ pub async fn uninstall_mod(state: State<'_, AppState>, filename: String) -> Resu
     }
     fs::remove_file(&mod_path)?;
     cleanup_empty_install_dirs(&mod_path, &staging_root, &mods_path);
-    Ok(())
+    Ok(UninstallOutcome {
+        files_removed: true,
+        still_used_by: Vec::new(),
+    })
+}
+
+/// Which profiles currently enable this mod. The mods page asks before it
+/// uninstalls, so the confirmation can say what will happen to them.
+#[tauri::command]
+pub async fn mod_used_by_profiles(archive_name: String) -> Result<Vec<String>> {
+    profiles_using_mod(&archive_name)
 }
 
 #[derive(Debug, Serialize)]
@@ -4423,5 +4523,141 @@ mod command_tests {
 
         // A pak-only archive has no native Windows binaries to warn about.
         assert!(check_archive_blocked(path).await.unwrap().is_empty());
+    }
+
+    /// A staged mod with one real file on disk, enabled in the given profiles.
+    fn staged_mod_enabled_in(mod_name: &str, profiles_enabling: &[&str]) -> PathBuf {
+        isolated_root();
+        let staged_file = staging_root()
+            .join("mods")
+            .join(archive_install_key(mod_name))
+            .join("content.pak");
+        fs::create_dir_all(staged_file.parent().unwrap()).unwrap();
+        fs::write(&staged_file, b"pak").unwrap();
+
+        for name in profiles_enabling {
+            profiles::save_profile(&Profile::new(
+                (*name).to_string(),
+                vec![mod_name.to_string()],
+            ))
+            .unwrap();
+        }
+        save_manifest(manifest(mod_name, vec![staged_file.clone()]));
+        staged_file
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn an_uninstall_another_profile_still_wants_reports_itself() {
+        let _tree = crate::test_support::shared_tree_guard();
+        let game = game_with_mods(&[]);
+        let app = mock_app_with(AppConfig {
+            active_profile: Some("active".to_string()),
+            game_path: Some(game.path().to_path_buf()),
+            ..AppConfig::default()
+        });
+        let state = app.state::<AppState>();
+        let staged_file = staged_mod_enabled_in("shared.zip", &["active", "other"]);
+
+        let outcome = uninstall_archive(state, "shared.zip".to_string(), None)
+            .await
+            .unwrap();
+
+        // Files stay, and the caller is told which profile is holding them.
+        assert_eq!(
+            outcome,
+            UninstallOutcome {
+                files_removed: false,
+                still_used_by: vec!["other".to_string()],
+            }
+        );
+        assert!(staged_file.exists(), "kept for the other profile");
+        assert!(profiles::get_profile("active")
+            .unwrap()
+            .unwrap()
+            .installed_mod_names
+            .is_empty());
+        assert_eq!(
+            profiles::get_profile("other")
+                .unwrap()
+                .unwrap()
+                .installed_mod_names,
+            vec!["shared.zip".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn uninstalling_for_good_clears_every_profile_and_deletes_the_files() {
+        let _tree = crate::test_support::shared_tree_guard();
+        let game = game_with_mods(&[]);
+        let app = mock_app_with(AppConfig {
+            active_profile: Some("active".to_string()),
+            game_path: Some(game.path().to_path_buf()),
+            ..AppConfig::default()
+        });
+        let state = app.state::<AppState>();
+        let staged_file = staged_mod_enabled_in("gone.zip", &["active", "other"]);
+
+        let outcome = uninstall_archive(state, "gone.zip".to_string(), Some(true))
+            .await
+            .unwrap();
+
+        assert!(outcome.files_removed);
+        assert!(outcome.still_used_by.is_empty());
+        assert!(!staged_file.exists(), "files go once nothing wants them");
+        for name in ["active", "other"] {
+            assert!(
+                profiles::get_profile(name)
+                    .unwrap()
+                    .unwrap()
+                    .installed_mod_names
+                    .is_empty(),
+                "{name} should no longer enable the mod"
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn uninstall_with_no_other_profile_deletes_the_files() {
+        let _tree = crate::test_support::shared_tree_guard();
+        let game = game_with_mods(&[]);
+        let app = mock_app_with(AppConfig {
+            active_profile: Some("solo".to_string()),
+            game_path: Some(game.path().to_path_buf()),
+            ..AppConfig::default()
+        });
+        let state = app.state::<AppState>();
+        let staged_file = staged_mod_enabled_in("solo.zip", &["solo"]);
+
+        let outcome = uninstall_archive(state, "solo.zip".to_string(), None)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            outcome,
+            UninstallOutcome {
+                files_removed: true,
+                still_used_by: Vec::new(),
+            }
+        );
+        assert!(!staged_file.exists());
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn profiles_enabling_a_mod_are_listed_for_the_confirmation() {
+        let _tree = crate::test_support::shared_tree_guard();
+        let _ = staged_mod_enabled_in("ask.zip", &["zeta", "alpha"]);
+
+        assert_eq!(
+            mod_used_by_profiles("ask.zip".to_string()).await.unwrap(),
+            vec!["alpha".to_string(), "zeta".to_string()]
+        );
+        assert!(mod_used_by_profiles("nobody.zip".to_string())
+            .await
+            .unwrap()
+            .is_empty());
     }
 }

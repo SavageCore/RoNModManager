@@ -85,6 +85,13 @@ export interface InstalledModFile {
   relativePath?: string | null;
 }
 
+/// Result of an uninstall: whether the files actually went, and which profiles
+/// kept the mod alive when they did not.
+export interface UninstallOutcome {
+  filesRemoved: boolean;
+  stillUsedBy: string[];
+}
+
 export interface InstalledModGroup {
   name: string;
   displayName?: string;
