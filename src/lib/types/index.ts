@@ -85,6 +85,12 @@ export interface InstalledModFile {
   relativePath?: string | null;
 }
 
+/// Result of deleting a profile: the profile that was applied because the
+/// deleted one was the active profile.
+export interface DeleteProfileResult {
+  appliedProfile: string | null;
+}
+
 /// Result of an uninstall: whether the files actually went, and which profiles
 /// kept the mod alive when they did not.
 export interface UninstallOutcome {

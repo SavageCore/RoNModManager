@@ -76,13 +76,48 @@ pub async fn save_profile(
     Ok(profile)
 }
 
+/// Result of deleting a profile: the profile that had to be applied because the
+/// deleted one was the active profile.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteProfileResult {
+    pub applied_profile: Option<String>,
+}
+
 #[tauri::command]
-pub async fn delete_profile(name: String) -> Result<()> {
+pub async fn delete_profile(
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<DeleteProfileResult> {
+    let was_active = state.get_config()?.active_profile.as_deref() == Some(name.as_str());
+
     services::profiles::delete_profile(&name)?;
     // Best-effort: drop stale one-click shortcuts for the deleted profile.
     let _ = services::desktop_shortcut::remove_desktop_shortcut(&name);
     let _ = services::steam_shortcuts::remove_from_steam(&name);
-    Ok(())
+
+    if !was_active {
+        return Ok(DeleteProfileResult {
+            applied_profile: None,
+        });
+    }
+
+    // Deleting the applied profile would leave the app pointed at nothing while
+    // the game folder still holds its mods, so Default takes over.
+    let fallback = match services::profiles::get_profile(DEFAULT_PROFILE_NAME)? {
+        Some(profile) => profile,
+        None => {
+            let profile = Profile::new(DEFAULT_PROFILE_NAME.to_string(), Vec::new());
+            services::profiles::save_profile(&profile)?;
+            profile
+        }
+    };
+    let fallback_name = fallback.name.clone();
+    apply_profile(fallback_name.clone(), state).await?;
+
+    Ok(DeleteProfileResult {
+        applied_profile: Some(fallback_name),
+    })
 }
 
 #[tauri::command]
@@ -407,8 +442,44 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn deleting_the_active_profile_applies_default() {
+            let app = app_with_profile("doomed");
+            let state = app.state::<AppState>();
+
+            let result = delete_profile("doomed".to_string(), state.clone())
+                .await
+                .unwrap();
+
+            assert_eq!(result.applied_profile, Some("Default".to_string()));
+            assert_eq!(
+                state.get_config().unwrap().active_profile,
+                Some("Default".to_string())
+            );
+            assert!(profile_service::get_profile("Default").unwrap().is_some());
+        }
+
+        #[tokio::test]
+        async fn deleting_another_profile_leaves_the_active_one_alone() {
+            let app = app_with_profile("keeper");
+            let state = app.state::<AppState>();
+            profile_service::save_profile(&Profile::new("spare".to_string(), Vec::new())).unwrap();
+
+            let result = delete_profile("spare".to_string(), state.clone())
+                .await
+                .unwrap();
+
+            assert_eq!(result.applied_profile, None);
+            assert_eq!(
+                state.get_config().unwrap().active_profile,
+                Some("keeper".to_string())
+            );
+        }
+
+        #[tokio::test]
         async fn profiles_are_read_and_written_by_name() {
             isolated_root();
+            let app = mock_app_with(AppConfig::default());
+            let state = app.state::<AppState>();
 
             assert!(get_profile("prof-round-trip".to_string())
                 .await
@@ -430,7 +501,9 @@ mod tests {
                 .unwrap();
             assert_eq!(loaded.installed_mod_names, vec!["a.zip".to_string()]);
 
-            delete_profile("prof-round-trip".to_string()).await.unwrap();
+            delete_profile("prof-round-trip".to_string(), state.clone())
+                .await
+                .unwrap();
             assert!(get_profile("prof-round-trip".to_string())
                 .await
                 .unwrap()

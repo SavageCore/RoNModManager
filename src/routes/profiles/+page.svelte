@@ -195,12 +195,25 @@
   async function handleDelete(name: string) {
     deleteTarget = null;
     try {
-      await commands.deleteProfile(name);
+      const result = await commands.deleteProfile(name);
       delete shortcutInfo[name];
       delete steamBlocked[name];
       if (openMenu === name) openMenu = null;
       await loadProfiles();
-      toastStore.success(`Profile "${name}" deleted successfully.`);
+      if (result.appliedProfile) {
+        // The backend applied the fallback; tell the rest of the app so the
+        // mods list and header follow the new active profile.
+        window.dispatchEvent(
+          new CustomEvent("ron:profile-changed", {
+            detail: { name: result.appliedProfile },
+          }),
+        );
+        toastStore.success(
+          `Profile "${name}" deleted. Applied ${result.appliedProfile}.`,
+        );
+      } else {
+        toastStore.success(`Profile "${name}" deleted successfully.`);
+      }
     } catch (err) {
       toastStore.fromError(err);
     }

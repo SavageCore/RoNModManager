@@ -31,6 +31,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppConfig,
   Collection,
+  DeleteProfileResult,
   InstalledModGroup,
   ModInfo,
   ModPack,
@@ -324,7 +325,7 @@ export const saveProfile = (
     installedModNames,
   });
 export const deleteProfile = (name: string) =>
-  invoke<void>("delete_profile", { name });
+  invoke<DeleteProfileResult>("delete_profile", { name });
 export const renameProfile = (
   oldName: string,
   newName: string,
