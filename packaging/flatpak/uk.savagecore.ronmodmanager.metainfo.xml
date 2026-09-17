@@ -19,6 +19,24 @@
   <releases>
 
 
+    <release version="0.0.16" date="2026-09-17">
+      <description>
+        <ul>
+          <li>Pin Rust toolchain to 1.98 track</li>
+          <li>Replace Dependabot with Renovate</li>
+          <li>Regenerate flatpak changelog for 0.0.15</li>
+          <li>Migrate lucide-svelte to @lucide/svelte</li>
+          <li>Update node.js to v24.21.0</li>
+          <li>Update actions-dependencies</li>
+          <li>Update npm-dependencies</li>
+          <li>Update dependency typescript to v6</li>
+          <li>Update rust crate russh-sftp to v3</li>
+          <li>Allow lefthook and wc_toolkit to build</li>
+          <li>Update npm-dependencies</li>
+          <li>Update cargo-dependencies</li>
+        </ul>
+      </description>
+    </release>
 
     <release version="0.0.15" date="2026-09-16">
       <description>
