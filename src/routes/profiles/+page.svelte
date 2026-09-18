@@ -11,17 +11,9 @@
     DUMMY_PROFILES,
     wizardScreenshotMode,
   } from "$lib/stores/incognitoMode";
-  import {
-    Check,
-    Copy,
-    Ellipsis,
-    Gamepad2,
-    Monitor,
-    Pencil,
-    Play,
-    Power,
-    Trash2,
-  } from "@lucide/svelte";
+  import { Ellipsis, Play } from "@lucide/svelte";
+  import CustomMenu from "$lib/components/CustomMenu.svelte";
+  import type { MenuItem } from "$lib/components/CustomMenu.svelte";
 
   $: effectiveProfiles =
     $incognitoMode && !$wizardScreenshotMode ? DUMMY_PROFILES : profiles;
@@ -36,46 +28,108 @@
   let formEnabledGroups: string[] = [];
   let editingProfile: Profile | null = null;
 
-  // Overlay actions menu for one profile at a time. Rendered with
-  // position:fixed against the toggle button's viewport rect, so it escapes
-  // the card's overflow clipping and always paints on top.
-  import { tick } from "svelte";
   let openMenu: string | null = null;
-  let menuPos = { top: 0, bottom: 0, left: 0 };
-  let menuFlipUp = false;
-  let menuEl: HTMLDivElement | null = null;
+  let menuComponent: CustomMenu;
+  let menuItems: MenuItem[] = [];
 
   function toggleMenu(name: string, anchor?: HTMLElement) {
     if (openMenu === name) {
+      menuComponent?.close();
       openMenu = null;
       return;
     }
+    const menuProfile = profiles.find((p) => p.name === name);
+    if (!menuProfile || !anchor) return;
     openMenu = name;
-    menuFlipUp = false;
-    if (anchor) {
-      const r = anchor.getBoundingClientRect();
-      const width = 248;
-      menuPos = {
-        top: r.bottom + 6,
-        bottom: window.innerHeight - r.top + 6,
-        left: Math.max(
-          8,
-          Math.min(r.right - width, window.innerWidth - width - 8),
-        ),
-      };
-    }
-    // After paint, flip upward only if the menu would run off-viewport.
-    void tick().then(() => {
-      if (openMenu !== name || !menuEl) return;
-      const h = menuEl.offsetHeight;
-      if (menuPos.top + h > window.innerHeight - 8) {
-        menuFlipUp = true;
-      }
-    });
+    menuItems = buildMenuItems(menuProfile);
+    menuComponent.openMenu({ anchor });
   }
 
   function closeMenu() {
+    menuComponent?.close();
     openMenu = null;
+  }
+
+  function buildMenuItems(menuProfile: Profile): MenuItem[] {
+    const items: MenuItem[] = [
+      {
+        id: "edit",
+        label: "Edit",
+        icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
+        action: () => {
+          closeMenu();
+          openForm(menuProfile);
+        },
+      },
+      {
+        id: "duplicate",
+        label: "Duplicate",
+        icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
+        action: () => {
+          closeMenu();
+          void handleDuplicate(menuProfile.name);
+        },
+      },
+      { id: "div1", divider: true },
+      {
+        id: "desktop",
+        label: shortcutInfo[menuProfile.name]?.desktop
+          ? "Remove desktop shortcut"
+          : "Create desktop shortcut",
+        icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>',
+        disabled: shortcutBusy === menuProfile.name,
+        check: !!shortcutInfo[menuProfile.name]?.desktop,
+        action: () => {
+          const n = menuProfile.name;
+          closeMenu();
+          void refreshShortcutStatus(n);
+          void handleDesktopShortcut(n);
+        },
+      },
+      {
+        id: "steam",
+        label: shortcutInfo[menuProfile.name]?.steam
+          ? "Remove from Steam"
+          : "Add to Steam",
+        icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v0a10 10 0 0 1 10 10v0a10 10 0 0 1-10 10v0a10 10 0 0 1-10-10v0a10 10 0 0 1 10-10v0Z"/><path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0"/></svg>',
+        disabled: shortcutBusy === menuProfile.name,
+        check: !!shortcutInfo[menuProfile.name]?.steam,
+        action: () => {
+          const n = menuProfile.name;
+          closeMenu();
+          void refreshShortcutStatus(n);
+          void handleSteamShortcut(n);
+        },
+      },
+    ];
+    if (steamBlocked[menuProfile.name]) {
+      items.push({
+        id: "quit-steam",
+        label: quitBusy === menuProfile.name ? "Quitting Steam…" : "Quit Steam",
+        icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" x2="12" y1="2" y2="12"/></svg>',
+        disabled: quitBusy === menuProfile.name,
+        action: () => {
+          const n = menuProfile.name;
+          closeMenu();
+          void handleQuitSteam(n, true);
+        },
+      });
+    }
+    items.push(
+      { id: "div2", divider: true },
+      {
+        id: "delete",
+        label: "Delete",
+        icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
+        danger: true,
+        action: () => {
+          const n = menuProfile.name;
+          closeMenu();
+          askDeleteProfile(n);
+        },
+      },
+    );
+    return items;
   }
 
   onMount(() => {
@@ -98,24 +152,8 @@
         }
       },
     });
-    const dismiss = (event: Event) => {
-      if (!openMenu) return;
-      const t = event.target as HTMLElement;
-      if (
-        t.closest("[data-profile-menu-anchor]") ||
-        t.closest("[data-profile-menu]")
-      )
-        return;
-      openMenu = null;
-    };
-    document.addEventListener("mousedown", dismiss);
-    window.addEventListener("scroll", closeMenu, true);
-    window.addEventListener("resize", closeMenu);
     return () => {
       unregisterTourActions?.();
-      document.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("scroll", closeMenu, true);
-      window.removeEventListener("resize", closeMenu);
     };
   });
 
@@ -545,132 +583,19 @@
     {/if}
   </div>
 
-  {#if openMenu}
-    {@const menuProfile = profiles.find((p) => p.name === openMenu)}
-    {#if menuProfile}
-      <div
-        bind:this={menuEl}
-        data-profile-menu
-        class="profile-menu"
-        style="top: {menuFlipUp
-          ? 'auto'
-          : `${menuPos.top}px`}; bottom: {menuFlipUp
-          ? `${menuPos.bottom}px`
-          : 'auto'}; left: {menuPos.left}px;"
-        role="menu"
-        aria-label={`Actions for ${menuProfile.name}`}
-      >
-        <button
-          role="menuitem"
-          class="profile-menu-item"
-          on:click={() => {
-            closeMenu();
-            openForm(menuProfile);
-          }}
-        >
-          <Pencil size={15} />
-          <span>Edit</span>
-        </button>
-        <button
-          role="menuitem"
-          class="profile-menu-item"
-          on:click={() => {
-            closeMenu();
-            void handleDuplicate(menuProfile.name);
-          }}
-        >
-          <Copy size={15} />
-          <span>Duplicate</span>
-        </button>
-        <div class="profile-menu-divider"></div>
-        <button
-          role="menuitem"
-          class="profile-menu-item"
-          disabled={shortcutBusy === menuProfile.name}
-          title={shortcutInfo[menuProfile.name]?.desktop
-            ? "Remove desktop shortcut"
-            : "Create one-click desktop shortcut for this profile"}
-          on:click={() => {
-            const n = menuProfile.name;
-            closeMenu();
-            void refreshShortcutStatus(n);
-            void handleDesktopShortcut(n);
-          }}
-        >
-          <Monitor size={15} />
-          <span
-            >{shortcutInfo[menuProfile.name]?.desktop
-              ? "Remove desktop shortcut"
-              : "Create desktop shortcut"}</span
-          >
-          {#if shortcutInfo[menuProfile.name]?.desktop}
-            <span class="menu-check"><Check size={14} /></span>
-          {/if}
-        </button>
-        <button
-          role="menuitem"
-          class="profile-menu-item"
-          disabled={shortcutBusy === menuProfile.name}
-          title="Add as non-Steam game so it can be launched from Steam"
-          on:click={() => {
-            const n = menuProfile.name;
-            closeMenu();
-            void refreshShortcutStatus(n);
-            void handleSteamShortcut(n);
-          }}
-        >
-          <Gamepad2 size={15} />
-          <span
-            >{shortcutInfo[menuProfile.name]?.steam
-              ? "Remove from Steam"
-              : "Add to Steam"}</span
-          >
-          {#if shortcutInfo[menuProfile.name]?.steam}
-            <span class="menu-check"><Check size={14} /></span>
-          {/if}
-        </button>
-        {#if steamBlocked[menuProfile.name]}
-          <button
-            role="menuitem"
-            class="profile-menu-item"
-            disabled={quitBusy === menuProfile.name}
-            title="Ask Steam to quit, then retry automatically"
-            on:click={() => {
-              const n = menuProfile.name;
-              closeMenu();
-              void handleQuitSteam(n, true);
-            }}
-          >
-            <Power size={15} />
-            <span
-              >{quitBusy === menuProfile.name
-                ? "Quitting Steam…"
-                : "Quit Steam"}</span
-            >
-          </button>
-        {/if}
-        <div class="profile-menu-divider"></div>
-        <button
-          role="menuitem"
-          class="profile-menu-item danger"
-          on:click={() => {
-            const n = menuProfile.name;
-            closeMenu();
-            askDeleteProfile(n);
-          }}
-        >
-          <Trash2 size={15} />
-          <span>Delete</span>
-        </button>
-      </div>
-    {/if}
-  {/if}
+  <CustomMenu
+    bind:this={menuComponent}
+    items={menuItems}
+    width={248}
+    on:close={() => (openMenu = null)}
+  />
 
   <ConfirmModal
     bind:isVisible={showDeleteConfirm}
     title="Delete profile?"
     message={`Delete profile <strong>"${deleteTarget}"</strong>? Its one-click desktop shortcut and Steam entry will be removed too. Installed mods are kept.`}
     confirmLabel="Delete"
+    danger={true}
     onConfirm={() => deleteTarget && void handleDelete(deleteTarget)}
   />
 </section>
@@ -678,54 +603,9 @@
 <style>
   /* Fixed overlay: escapes the card's overflow clipping and paints on top.
      Position is set from the toggle button's viewport rect at open time. */
-  .profile-menu {
-    position: fixed;
-    z-index: 200;
-    width: 248px;
-    padding: 4px;
-    border-radius: 0;
-    background: var(--clr-surface, #fff);
-    border: 1px solid var(--adw-border-color, #ccc);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-  }
   .btn-icon {
     display: inline-flex;
     margin-right: 0.35rem;
     vertical-align: -2px;
-  }
-  .profile-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    width: 100%;
-    padding: 0.5rem 0.65rem;
-    border: none;
-    border-radius: 0;
-    background: transparent;
-    color: var(--clr-text);
-    font-size: 0.85rem;
-    cursor: pointer;
-    text-align: left;
-  }
-  .profile-menu-item:hover:not(:disabled) {
-    background: var(--clr-btn-adaptive-pressed, rgba(0, 0, 0, 0.08));
-  }
-  .profile-menu-item:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .profile-menu-item.danger {
-    color: var(--clr-danger-300, #f44336);
-  }
-  .profile-menu-divider {
-    height: 1px;
-    margin: 4px 6px;
-    background: var(--adw-border-color, #ccc);
-    opacity: 0.6;
-  }
-  .menu-check {
-    margin-left: auto;
-    display: inline-flex;
-    color: #4caf50;
   }
 </style>
