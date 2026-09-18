@@ -45,7 +45,9 @@
 </script>
 
 <div bind:this={root} class="relative inline-flex">
-  <div class="launch-root inline-flex h-9 overflow-hidden rounded-lg shadow-sm">
+  <div
+    class="launch-root inline-flex h-9 overflow-hidden rounded-none shadow-sm"
+  >
     <!-- Primary launch target -->
     <button
       type="button"
@@ -90,7 +92,7 @@
 
   {#if menuOpen}
     <div
-      class="absolute right-0 top-full z-50 mt-2 w-48 rounded-md py-1 shadow-lg"
+      class="absolute right-0 top-full z-50 mt-2 w-48 rounded-none py-1 shadow-lg"
       style="background: var(--clr-btn); border: 1px solid var(--adw-border-color);"
       role="menu"
     >

@@ -1923,10 +1923,8 @@
     </select>
     <button
       on:click={() => ($showBroken = !$showBroken)}
-      style={$showBroken
-        ? "background: color-mix(in srgb, var(--clr-danger-300) 15%, transparent); border-color: var(--clr-danger-300); color: var(--clr-danger-300);"
-        : "border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
-      class="inline-flex items-center gap-1.5 rounded border px-2 text-xs cursor-pointer"
+      class="broken-filter-btn inline-flex items-center gap-1.5 rounded-none border px-2 text-xs cursor-pointer"
+      class:active={$showBroken}
       style:height="2.5rem"
       title={$showBroken
         ? "Broken mods visible - click to hide"
@@ -1959,7 +1957,7 @@
           style={activeTagFilters.has(tagName)
             ? "background: color-mix(in srgb, var(--clr-success-300) 20%, transparent); border-color: var(--clr-success-300); color: var(--clr-success-300);"
             : "border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
-          class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs cursor-pointer"
+          class="inline-flex items-center gap-1 rounded-none border px-2 py-0.5 text-xs cursor-pointer"
         >
           <Tag size={10} />
           {formatTagName(tagName)}
@@ -2003,7 +2001,7 @@
           style={activeCollectionFilters.has(col)
             ? `background: color-mix(in srgb, ${colColor} 20%, transparent); border-color: ${colColor}; color: ${colColor};`
             : "border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
-          class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs cursor-pointer"
+          class="inline-flex items-center gap-1 rounded-none border px-2 py-0.5 text-xs cursor-pointer"
         >
           <Layers size={10} />
           {col}
@@ -2027,7 +2025,7 @@
     <div
       role="alert"
       style="background: var(--clr-surface); border-color: var(--clr-danger-300);"
-      class="border rounded-lg p-3 mb-4 flex items-start gap-3"
+      class="border rounded-none p-3 mb-4 flex items-start gap-3"
     >
       <AlertTriangle
         size={18}
@@ -2045,7 +2043,7 @@
         </div>
         <code
           style="background: var(--adw-border-color); color: var(--clr-text);"
-          class="block mt-2 rounded px-2 py-1 text-xs overflow-x-auto"
+          class="block mt-2 rounded-none px-2 py-1 text-xs overflow-x-auto"
         >
           {UE4SS_LAUNCH_OPTION}
         </code>
@@ -2078,7 +2076,7 @@
     </div>
   {/if}
 
-  <!-- Gale-style Mod List -->
+  <!-- Tactical Mod List -->
   <div
     role="region"
     aria-label="Mod list with drag and drop support"
@@ -2087,7 +2085,7 @@
       : 'var(--adw-border-color)'}; border-width: {isDraggingOver
       ? '2px'
       : '1px'};"
-    class="flex min-h-0 flex-1 flex-col border rounded-lg p-4 transition-all {isDraggingOver
+    class="flex min-h-0 flex-1 flex-col border rounded-none p-4 transition-all {isDraggingOver
       ? 'shadow-lg'
       : ''}"
   >
@@ -2111,7 +2109,7 @@
           on:click={() => {
             addModpackPanelStore.open("add");
           }}
-          class="btn btn-sm btn-primary"
+          class="btn btn-sm"
           title="Add Modpack"
         >
           <Globe size={16} class="inline mr-1" />
@@ -2128,7 +2126,7 @@
           </button>
         {/if}
         <button
-          class="btn btn-sm btn-danger"
+          class="btn btn-sm btn-primary"
           on:click={() => {
             void handleUninstallAll();
           }}
@@ -2149,7 +2147,7 @@
 
     {#if filteredModGroups.length > 0}
       <div class="flex items-center gap-2 mb-2">
-        <label class="gale-switch" title="Toggle all mods on/off">
+        <label class="ron-switch" title="Toggle all mods on/off">
           <input
             type="checkbox"
             checked={effectiveModGroups.length > 0 &&
@@ -2164,7 +2162,7 @@
               $incognitoMode ||
               $wizardScreenshotMode}
           />
-          <span class="gale-switch-track"></span>
+          <span class="ron-switch-track"></span>
         </label>
         <span style="color: var(--clr-text-secondary);" class="text-sm"
           >Toggle all - {enabledModCount}/{effectiveModGroups.length} enabled</span
@@ -2175,7 +2173,7 @@
     {#if selectedMods.size > 0}
       <div
         style="background: color-mix(in srgb, var(--clr-primary-300) 10%, var(--clr-surface-variant)); border-color: var(--clr-primary-300);"
-        class="flex items-center gap-3 px-3 py-2 rounded border mb-2 text-sm"
+        class="flex items-center gap-3 px-3 py-2 rounded-none border mb-2 text-sm"
       >
         <span style="color: var(--clr-text);" class="font-medium flex-1">
           {selectedMods.size} mod{selectedMods.size === 1 ? "" : "s"} selected
@@ -2231,7 +2229,7 @@
           {#each filteredModGroups as group (group.name)}
             <li
               style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
-              class="rounded border group/row"
+              class="rounded-none border group/row"
               data-tour="mod-row"
               on:contextmenu|preventDefault={async () => {
                 const menu = await Menu.new({
@@ -2347,7 +2345,7 @@
                           void saveEditedName(group);
                         }}
                         on:keydown={(e) => handleNameKeydown(e, group)}
-                        class="text-sm font-medium px-1 py-0.5 rounded border"
+                        class="text-sm font-medium px-1 py-0.5 rounded-none border"
                         style="color: var(--clr-text); background: var(--clr-surface); border-color: var(--clr-primary-300);"
                         use:focus
                       />
@@ -2425,7 +2423,7 @@
                             tabindex="0"
                             data-tour="mod-update-badge"
                             title={`Update available${effectiveModUpdates[group.name].latestVersion ? `: ${effectiveModUpdates[group.name].currentVersion ?? "?"} -> ${effectiveModUpdates[group.name].latestVersion}` : ""}`}
-                            class="flex items-center gap-0.5 cursor-pointer text-xs rounded px-1.5 border"
+                            class="flex items-center gap-0.5 cursor-pointer text-xs rounded-none px-1.5 border"
                             style="color: #f59e0b; border-color: #f59e0b;"
                             on:click|stopPropagation={() => {
                               autoSubmitEntries = [
@@ -2541,7 +2539,7 @@
                           style={colColor
                             ? `background: color-mix(in srgb, ${colColor} ${isColActive ? 20 : 12}%, transparent); border-color: color-mix(in srgb, ${colColor} ${isColActive ? 100 : 40}%, transparent); color: ${colColor};`
                             : "background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text-secondary);"}
-                          class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none cursor-pointer"
+                          class="inline-flex items-center gap-1 rounded-none border px-1.5 py-0.5 text-xs leading-none cursor-pointer"
                           title="Filter by collection: {col}"
                         >
                           <Layers size={10} />
@@ -2564,7 +2562,7 @@
                             : 12}%, transparent); border-color: color-mix(in srgb, var(--clr-success-300) {isTagActive
                             ? 100
                             : 40}%, transparent); color: var(--clr-success-300);"
-                          class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs leading-none cursor-pointer"
+                          class="inline-flex items-center gap-1 rounded-none border px-1.5 py-0.5 text-xs leading-none cursor-pointer"
                           title="Filter by tag: {formatTagName(tag)}"
                         >
                           <Tag size={10} />
@@ -2574,7 +2572,7 @@
                     </div>
                   {/if}
                   <label
-                    class="gale-switch"
+                    class="ron-switch"
                     data-tour="mod-row-toggle"
                     class:opacity-50={!!brokenModsMap[group.name]}
                     title={brokenModsMap[group.name] !== undefined
@@ -2590,7 +2588,7 @@
                         $incognitoMode ||
                         $wizardScreenshotMode}
                     />
-                    <span class="gale-switch-track"></span>
+                    <span class="ron-switch-track"></span>
                   </label>
 
                   <button
@@ -2624,7 +2622,7 @@
                         type="url"
                         bind:value={editUrlInputValue}
                         on:keydown={(e) => handleSourceUrlKeydown(e, group)}
-                        class="flex-1 min-w-0 text-xs px-2 py-1 rounded border"
+                        class="flex-1 min-w-0 text-xs px-2 py-1 rounded-none border"
                         style="color: var(--clr-text); background: var(--clr-surface); border-color: var(--clr-primary-300);"
                         placeholder="https://www.nexusmods.com/..."
                         use:focus
@@ -2864,7 +2862,7 @@
 
 {#if showScrollTop}
   <button
-    class="fixed right-6 z-[800] flex h-10 w-10 items-center justify-center rounded-full border shadow-lg transition-transform hover:scale-105 cursor-pointer"
+    class="fixed right-6 z-[800] flex h-10 w-10 items-center justify-center rounded-none border shadow-lg transition-transform hover:scale-105 cursor-pointer"
     style="bottom: calc(2.25rem + 1rem); background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text);"
     on:click={scrollToTop}
     aria-label="Scroll to top"

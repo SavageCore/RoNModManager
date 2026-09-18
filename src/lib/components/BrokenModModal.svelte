@@ -62,7 +62,7 @@
     placeholder="Why is this mod broken? (optional)"
     rows={3}
     style="background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text);"
-    class="w-full rounded border px-3 py-2 text-sm resize-none focus:outline-none mb-6"
+    class="w-full rounded-none border px-3 py-2 text-sm resize-none focus:outline-none mb-6"
   ></textarea>
 
   <div class="flex gap-2 justify-end">

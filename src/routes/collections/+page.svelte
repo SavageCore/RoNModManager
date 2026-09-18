@@ -333,7 +333,7 @@
               </div>
               <div class="prefs-row-suffix">
                 <label
-                  class="gale-switch"
+                  class="ron-switch"
                   title={`${(collections[name] ?? false) ? "Disable" : "Enable"} ${name}`}
                   aria-label={`${(collections[name] ?? false) ? "Disable" : "Enable"} ${name}`}
                 >
@@ -343,7 +343,7 @@
                     on:change={(e) => onToggle(name, e.currentTarget.checked)}
                     disabled={!activeProfileName}
                   />
-                  <span class="gale-switch-track"></span>
+                  <span class="ron-switch-track"></span>
                 </label>
                 <button
                   class="btn btn-sm"
@@ -362,7 +362,7 @@
                 {#each sortedMods(mods) as modName (modName)}
                   <span
                     style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
-                    class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs"
+                    class="inline-flex items-center gap-1 rounded-none border px-2 py-0.5 text-xs"
                   >
                     <span class="truncate max-w-[16rem]" title={modName}
                       >{resolveModName(modName)}</span
@@ -406,7 +406,7 @@
   .collection-pill {
     display: inline-block;
     padding: 0.125rem 0.5rem;
-    border-radius: 9999px;
+    border-radius: 0;
     border: 1px solid;
     font-size: 0.875rem;
     line-height: 1.5;
@@ -418,7 +418,7 @@
     width: 1rem;
     height: 1rem;
     border: none;
-    border-radius: 4px;
+    border-radius: 0;
     background: transparent;
     color: var(--clr-text-secondary);
     cursor: pointer;

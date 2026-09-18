@@ -46,7 +46,7 @@
   {/if}
   <div class="flex gap-3 justify-end">
     <button class="btn" on:click={handleCancel}>Cancel</button>
-    <button class="btn btn-danger" on:click={handleConfirm}>
+    <button class="btn btn-primary" on:click={handleConfirm}>
       {confirmLabel}
     </button>
   </div>

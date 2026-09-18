@@ -56,7 +56,7 @@
 >
   <svelte:fragment slot="title">
     <h2 class="text-lg font-semibold" style="color: #f3f3f3; background: none;">
-      Manage Add-ons for <span style="color: #2196f3;"
+      Manage Add-ons for <span style="color: var(--clr-primary-300);"
         >{displayName || modName}</span
       >
     </h2>
@@ -68,7 +68,7 @@
     <div class="space-y-2">
       {#each addOns as addOn, i}
         <div
-          class="flex items-center justify-between rounded p-2"
+          class="flex items-center justify-between rounded-none p-2"
           style="background: #2d323b; color: #f3f3f3;"
         >
           <span class="truncate min-w-0 flex-1 mr-2 text-sm" title={addOn.name}
@@ -86,7 +86,7 @@
     </div>
   </div>
   <div
-    class="flex items-center justify-between rounded p-3 mt-4"
+    class="flex items-center justify-between rounded-none p-3 mt-4"
     style="background: #2d323b;"
   >
     <div>
@@ -102,11 +102,11 @@
       aria-checked={noWorldGen}
       aria-label="No world generation required"
       on:click={handleToggleNoWorldGen}
-      class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200"
-      style="background: {noWorldGen ? '#2196f3' : '#555'};"
+      class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-none border-2 border-transparent transition-colors duration-200"
+      style="background: {noWorldGen ? 'var(--clr-primary-300)' : '#555'};"
     >
       <span
-        class="pointer-events-none inline-block h-4 w-4 rounded-full shadow transition-transform duration-200"
+        class="pointer-events-none inline-block h-4 w-4 rounded-none shadow transition-transform duration-200"
         style="background: #fff; transform: translateX({noWorldGen
           ? '16px'
           : '0px'});"

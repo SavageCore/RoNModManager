@@ -4,7 +4,7 @@
   import type { Profile } from "$lib/types";
   import { get } from "svelte/store";
   import { onMount } from "svelte";
-  import ModalShell from "$lib/components/ModalShell.svelte";
+  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import { registerTourActions } from "$lib/tour/registry";
   import {
     incognitoMode,
@@ -207,10 +207,12 @@
   }
 
   let deleteTarget: string | null = null;
+  let showDeleteConfirm = false;
   let unregisterTourActions: (() => void) | null = null;
 
   function askDeleteProfile(name: string) {
     deleteTarget = name;
+    showDeleteConfirm = true;
   }
 
   async function handleDelete(name: string) {
@@ -664,29 +666,13 @@
     {/if}
   {/if}
 
-  <ModalShell
-    isVisible={deleteTarget !== null}
+  <ConfirmModal
+    bind:isVisible={showDeleteConfirm}
     title="Delete profile?"
-    width="w-[28rem]"
-    on:close={() => (deleteTarget = null)}
-  >
-    <p style="color: var(--clr-text-secondary);" class="text-sm">
-      Delete profile <strong style="color: var(--clr-text);"
-        >"{deleteTarget}"</strong
-      >? Its one-click desktop shortcut and Steam entry will be removed too.
-      Installed mods are kept.
-    </p>
-    <div class="flex justify-end gap-2 mt-5">
-      <button class="btn btn-sm" on:click={() => (deleteTarget = null)}
-        >Cancel</button
-      >
-      <button
-        class="btn btn-sm danger"
-        on:click={() => deleteTarget && void handleDelete(deleteTarget)}
-        >Delete</button
-      >
-    </div>
-  </ModalShell>
+    message={`Delete profile <strong>"${deleteTarget}"</strong>? Its one-click desktop shortcut and Steam entry will be removed too. Installed mods are kept.`}
+    confirmLabel="Delete"
+    onConfirm={() => deleteTarget && void handleDelete(deleteTarget)}
+  />
 </section>
 
 <style>
@@ -697,7 +683,7 @@
     z-index: 200;
     width: 248px;
     padding: 4px;
-    border-radius: 10px;
+    border-radius: 0;
     background: var(--clr-surface, #fff);
     border: 1px solid var(--adw-border-color, #ccc);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
@@ -714,7 +700,7 @@
     width: 100%;
     padding: 0.5rem 0.65rem;
     border: none;
-    border-radius: 6px;
+    border-radius: 0;
     background: transparent;
     color: var(--clr-text);
     font-size: 0.85rem;

@@ -132,7 +132,7 @@
 
   <div
     style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
-    class="mt-2 max-h-56 overflow-y-auto rounded border"
+    class="mt-2 max-h-56 overflow-y-auto rounded-none border"
   >
     {#if filteredItems.length > 0}
       <ul>
@@ -205,7 +205,7 @@
       {#each [...new Set([...currentItems, ...pendingNewItems])] as item (item)}
         <span
           style={`background: color-mix(in srgb, var(${accentColorVar}) 12%, transparent); border-color: var(${accentColorVar}); color: var(${accentColorVar});`}
-          class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs"
+          class="inline-flex items-center gap-1 rounded-none border px-1.5 py-0.5 text-xs"
         >
           <svelte:component this={ItemIcon} size={10} />
           {item}

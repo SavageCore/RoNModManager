@@ -86,7 +86,7 @@
   class="mx-auto flex min-h-screen w-full max-w-4xl flex-col gap-6 px-6 py-10 sm:px-10"
 >
   <header
-    class="rounded-2xl border border-teal-700/15 bg-[var(--color-surface)] p-6 shadow-sm"
+    class="rounded-none border border-teal-700/15 bg-[var(--color-surface)] p-6 shadow-sm"
   >
     <p class="text-sm font-semibold uppercase tracking-[0.2em] text-teal-700">
       RoN Mod Manager
@@ -97,7 +97,7 @@
     </p>
     {#if !isConfigured && requiresManualSetup}
       <div
-        class="mt-4 flex items-center gap-3 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3"
+        class="mt-4 flex items-center gap-3 rounded-none border border-yellow-200 bg-yellow-50 px-4 py-3"
       >
         <div class="flex-1">
           <p class="text-sm font-medium text-yellow-900">
@@ -106,7 +106,7 @@
           </p>
         </div>
         <button
-          class="whitespace-nowrap rounded-lg bg-yellow-600 px-3 py-1 text-sm font-medium text-white hover:bg-yellow-700"
+          class="whitespace-nowrap rounded-none bg-yellow-600 px-3 py-1 text-sm font-medium text-white hover:bg-yellow-700"
           on:click={() => {
             window.location.href = "/settings";
           }}
@@ -120,27 +120,27 @@
   {#if isConfigured}
     <section class="grid gap-4 sm:grid-cols-2">
       <article
-        class="rounded-2xl border border-teal-700/15 bg-[var(--color-surface)] p-5"
+        class="rounded-none border border-teal-700/15 bg-[var(--color-surface)] p-5"
       >
         <h2 class="text-lg font-semibold">Game Path</h2>
         <p class="mt-2 text-sm text-[var(--color-muted)]">{gamePath}</p>
       </article>
 
       <article
-        class="rounded-2xl border border-teal-700/15 bg-[var(--color-surface)] p-5"
+        class="rounded-none border border-teal-700/15 bg-[var(--color-surface)] p-5"
       >
         <h2 class="text-lg font-semibold">Modpack</h2>
         <input
-          class="mt-3 w-full rounded-lg border border-zinc-300 px-3 py-2"
+          class="mt-3 w-full rounded-none border border-zinc-300 px-3 py-2"
           bind:value={modpackUrl}
         />
         <div class="mt-3 flex gap-2">
           <button
-            class="rounded-lg bg-zinc-900 px-3 py-2 text-sm text-white"
+            class="rounded-none bg-zinc-900 px-3 py-2 text-sm text-white"
             on:click={save}>Save URL</button
           >
           <button
-            class="rounded-lg bg-teal-700 px-3 py-2 text-sm text-white"
+            class="rounded-none bg-teal-700 px-3 py-2 text-sm text-white"
             on:click={sync}>Sync</button
           >
         </div>
@@ -148,14 +148,14 @@
     </section>
 
     <section
-      class="rounded-2xl border border-teal-700/15 bg-[var(--color-surface)] p-5"
+      class="rounded-none border border-teal-700/15 bg-[var(--color-surface)] p-5"
     >
       <h2 class="text-lg font-semibold">Installed Mods</h2>
       <p class="mt-2 text-[var(--color-muted)]">
         Detected .pak files in `~mods`: <strong>{installedCount}</strong>
       </p>
       <button
-        class="mt-3 rounded-lg bg-zinc-800 px-3 py-2 text-sm text-white"
+        class="mt-3 rounded-none bg-zinc-800 px-3 py-2 text-sm text-white"
         on:click={clearInstalled}
       >
         Uninstall All

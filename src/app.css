@@ -2,40 +2,50 @@
 @import "adwavecss/dist/styles.css";
 @import "$lib/components/toast.css";
 
-/* Tailwind v4 theme: route font-sans/font-mono utilities to Adwaita. */
+/* Tailwind v4 theme: Rajdhani display faces for headings and buttons,
+   system sans for body, system mono for code/log views. */
 @theme {
   --font-sans:
-    "Adwaita Sans", "Inter", "Cantarell", system-ui, -apple-system, sans-serif;
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --font-display: "Rajdhani", "Arial Narrow", system-ui, sans-serif;
   --font-mono:
-    "Adwaita Mono", ui-monospace, "Cascadia Mono", "JetBrains Mono", monospace;
+    ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
-/* ADWaveCSS Color Variables for GNOME/Libadwaita Theme */
+/* RoN tactical theme: near-black canvas, off-white text, red accent.
+   Matches the docs site tokens (src/styles/tokens.css there). */
 :root {
   --adw-font-family:
-    "Adwaita Sans", "Inter", "Cantarell", system-ui, -apple-system, sans-serif;
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
   --adw-font-mono:
-    "Adwaita Mono", ui-monospace, "Cascadia Mono", "JetBrains Mono", monospace;
+    ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   color-scheme: light;
 
-  /* ADWaveCSS button colors */
-  --clr-btn: #e0e0e0;
-  --clr-btn-adaptive: #f0f0f0;
-  --clr-btn-adaptive-hover: #e8e8e8;
-  --clr-btn-adaptive-pressed: #d0d0d0;
-  --clr-btn-adaptive-toggled: #c0c0c0;
+  /* Tactical button colors */
+  --clr-btn: #e6e2d6;
+  --clr-btn-hover: #d3cec0;
+  --clr-btn-pressed: #c6c0ae;
+  --clr-btn-toggled: #c6c0ae;
+  --clr-btn-adaptive: #f2f1ec;
+  --clr-btn-adaptive-hover: #e0dccd;
+  --clr-btn-adaptive-pressed: #d3cec0;
+  --clr-btn-adaptive-toggled: #c6c0ae;
 
-  /* Primary accent color (Blue for GNOME) */
-  --clr-primary-100: #a5d6ff;
-  --clr-primary-200: #6fbdff;
-  --clr-primary-300: #3584e4;
-  --clr-primary-500: #0d47a1;
+  /* Primary accent color (RoN red) */
+  --clr-primary-100: #f04452;
+  --clr-primary-200: #d9263c;
+  --clr-primary-300: #c8102e;
+  --clr-primary-500: #8f0b21;
   --clr-primary-text: #ffffff;
 
   /* Danger/destructive color (Red) */
   --clr-danger-100: #ffb3ba;
   --clr-danger-300: #ff6b6b;
+  --clr-danger-400: #c8102e;
   --clr-danger-500: #b71c1c;
+  --clr-danger-600: #8f0b21;
   --clr-danger-text: #ffffff;
 
   /* Success color (Green) */
@@ -45,15 +55,15 @@
   --clr-success-text: #1e1e1e;
 
   /* Neutral grays */
-  --clr-text: #000000;
-  --clr-text-secondary: #606366;
-  --clr-bg: #fafafa;
-  --clr-surface: #ffffff;
-  --clr-surface-variant: #f5f5f5;
+  --clr-text: #101114;
+  --clr-text-secondary: #5a5e63;
+  --clr-bg: #ece9e0;
+  --clr-surface: #f2f1ec;
+  --clr-surface-variant: #e0dccd;
 
   /* Borders */
-  --adw-border-color: #d0d0d0;
-  --border-radius: 8px;
+  --adw-border-color: #c9c5b8;
+  --border-radius: 0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -61,23 +71,28 @@
     color-scheme: dark;
 
     /* Dark mode button colors */
-    --clr-btn: #424245;
-    --clr-btn-adaptive: #3a3a3d;
-    --clr-btn-adaptive-hover: #484849;
-    --clr-btn-adaptive-pressed: #36363a;
-    --clr-btn-adaptive-toggled: #2d2d30;
+    --clr-btn: #2c2f34;
+    --clr-btn-hover: #3d4148;
+    --clr-btn-pressed: #181a1f;
+    --clr-btn-toggled: #101114;
+    --clr-btn-adaptive: #202329;
+    --clr-btn-adaptive-hover: #35393f;
+    --clr-btn-adaptive-pressed: #181a1f;
+    --clr-btn-adaptive-toggled: #101114;
 
-    /* Primary accent (Blue, lighter for dark mode) */
-    --clr-primary-100: #8ab4f8;
-    --clr-primary-200: #5b9ef5;
-    --clr-primary-300: #3d88f0;
-    --clr-primary-500: #1e63d7;
+    /* Primary accent (RoN red, brightened for dark canvas) */
+    --clr-primary-100: #f04452;
+    --clr-primary-200: #d9263c;
+    --clr-primary-300: #e0263c;
+    --clr-primary-500: #9c0c24;
     --clr-primary-text: #ffffff;
 
     /* Danger color (Red) */
     --clr-danger-100: #f28482;
     --clr-danger-300: #e74c3c;
+    --clr-danger-400: #e0263c;
     --clr-danger-500: #922b21;
+    --clr-danger-600: #9c0c24;
     --clr-danger-text: #ffffff;
 
     /* Success color (Green) */
@@ -87,71 +102,81 @@
     --clr-success-text: #1e1e1e;
 
     /* Neutral colors */
-    --clr-text: #ffffff;
-    --clr-text-secondary: #a0a1a2;
-    --clr-bg: #1e1e1e;
-    --clr-surface: #2d2d30;
-    --clr-surface-variant: #3a3a3d;
+    --clr-text: #f2f1ec;
+    --clr-text-secondary: #b9bcc2;
+    --clr-bg: #101114;
+    --clr-surface: #181a1f;
+    --clr-surface-variant: #202329;
 
     /* Borders */
-    --adw-border-color: #464649;
+    --adw-border-color: #2c2f34;
   }
 }
 
-[data-theme="wintry"] {
+[data-theme="ron-light"] {
   color-scheme: light;
-  --clr-btn: #e0e0e0;
-  --clr-btn-adaptive: #f0f0f0;
-  --clr-btn-adaptive-hover: #e8e8e8;
-  --clr-btn-adaptive-pressed: #d0d0d0;
-  --clr-btn-adaptive-toggled: #c0c0c0;
-  --clr-primary-100: #a5d6ff;
-  --clr-primary-200: #6fbdff;
-  --clr-primary-300: #3584e4;
-  --clr-primary-500: #0d47a1;
+  --clr-btn: #e6e2d6;
+  --clr-btn-hover: #d3cec0;
+  --clr-btn-pressed: #c6c0ae;
+  --clr-btn-toggled: #c6c0ae;
+  --clr-btn-adaptive: #f2f1ec;
+  --clr-btn-adaptive-hover: #e0dccd;
+  --clr-btn-adaptive-pressed: #d3cec0;
+  --clr-btn-adaptive-toggled: #c6c0ae;
+  --clr-primary-100: #f04452;
+  --clr-primary-200: #d9263c;
+  --clr-primary-300: #c8102e;
+  --clr-primary-500: #8f0b21;
   --clr-primary-text: #ffffff;
   --clr-danger-100: #ffb3ba;
   --clr-danger-300: #ff6b6b;
+  --clr-danger-400: #c8102e;
   --clr-danger-500: #b71c1c;
+  --clr-danger-600: #8f0b21;
   --clr-danger-text: #ffffff;
   --clr-success-100: #b3ffb3;
   --clr-success-300: #57e389;
   --clr-success-500: #2a8c3f;
   --clr-success-text: #1e1e1e;
-  --clr-text: #000000;
-  --clr-text-secondary: #606366;
-  --clr-bg: #fafafa;
-  --clr-surface: #ffffff;
-  --clr-surface-variant: #f5f5f5;
-  --adw-border-color: #d0d0d0;
+  --clr-text: #101114;
+  --clr-text-secondary: #5a5e63;
+  --clr-bg: #ece9e0;
+  --clr-surface: #f2f1ec;
+  --clr-surface-variant: #e0dccd;
+  --adw-border-color: #c9c5b8;
 }
 
-[data-theme="cerberus"] {
+[data-theme="ron-dark"] {
   color-scheme: dark;
-  --clr-btn: #424245;
-  --clr-btn-adaptive: #3a3a3d;
-  --clr-btn-adaptive-hover: #484849;
-  --clr-btn-adaptive-pressed: #36363a;
-  --clr-btn-adaptive-toggled: #2d2d30;
-  --clr-primary-100: #8ab4f8;
-  --clr-primary-200: #5b9ef5;
-  --clr-primary-300: #3d88f0;
-  --clr-primary-500: #1e63d7;
+  --clr-btn: #2c2f34;
+  --clr-btn-hover: #3d4148;
+  --clr-btn-pressed: #181a1f;
+  --clr-btn-toggled: #101114;
+  --clr-btn-adaptive: #202329;
+  --clr-btn-adaptive-hover: #35393f;
+  --clr-btn-adaptive-pressed: #181a1f;
+  --clr-btn-adaptive-toggled: #101114;
+  --clr-primary-100: #f04452;
+  --clr-primary-200: #d9263c;
+  --clr-primary-300: #e0263c;
+  --clr-primary-500: #9c0c24;
   --clr-primary-text: #ffffff;
   --clr-danger-100: #f28482;
   --clr-danger-300: #e74c3c;
+  --clr-danger-400: #e0263c;
   --clr-danger-500: #922b21;
+  --clr-danger-600: #9c0c24;
   --clr-danger-text: #ffffff;
   --clr-success-100: #8fce00;
   --clr-success-300: #57e389;
   --clr-success-500: #2a8c3f;
   --clr-success-text: #1e1e1e;
-  --clr-text: #ffffff;
-  --clr-text-secondary: #a0a1a2;
-  --clr-bg: #1e1e1e;
-  --clr-surface: #2d2d30;
-  --clr-surface-variant: #3a3a3d;
-  --adw-border-color: #464649;
+  --clr-text: #f2f1ec;
+  --clr-text-secondary: #b9bcc2;
+  --clr-bg: #101114;
+  --clr-surface: #181a1f;
+  --clr-surface-variant: #202329;
+  --adw-border-color: #2c2f34;
 }
 
 html,
@@ -167,6 +192,15 @@ body {
   color: var(--clr-text);
 }
 
+h1,
+h2,
+h3,
+.btn,
+button.btn,
+.launch-btn {
+  font-family: "Rajdhani", "Arial Narrow", system-ui, sans-serif;
+}
+
 code,
 pre,
 kbd,
@@ -178,11 +212,11 @@ samp {
 .card {
   background: var(--clr-surface);
   border: 1px solid var(--adw-border-color);
-  border-radius: 12px;
+  border-radius: 0;
   padding: 1rem;
 }
 
-/* Libadwaita preferences page */
+/* Tactical preferences page */
 .prefs-page {
   max-width: 720px;
   margin: 0 auto;
@@ -192,8 +226,11 @@ samp {
   margin-top: 1.5rem;
 }
 .prefs-group-title {
+  font-family: "Rajdhani", "Arial Narrow", system-ui, sans-serif;
   font-size: 0.95rem;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--clr-text);
   margin-bottom: 0.35rem;
   padding: 0 0.25rem;
@@ -207,7 +244,7 @@ samp {
 .prefs-boxed-list {
   background: var(--clr-surface);
   border: 1px solid var(--adw-border-color);
-  border-radius: 12px;
+  border-radius: 0;
   overflow: hidden;
 }
 .prefs-row {
@@ -316,16 +353,19 @@ samp {
   transition: all 120ms ease;
 }
 
+/* Docs hover: white/canvas bg with red text. */
 .btn.primary:hover:not(.toggled, .disabled),
 .btn-primary:hover:not(.toggled, .disabled) {
-  background-color: var(--clr-primary-500);
-  border-color: var(--clr-primary-500);
+  background-color: var(--clr-primary-text);
+  border-color: var(--clr-primary-300);
+  color: var(--clr-primary-300);
 }
 
 .btn.primary:active:not(.disabled),
 .btn-primary:active:not(.disabled) {
-  background-color: var(--clr-primary-100);
-  border-color: var(--clr-primary-100);
+  background-color: var(--clr-primary-text);
+  border-color: var(--clr-primary-300);
+  color: var(--clr-primary-300);
 }
 
 .btn.primary.toggled,
@@ -338,6 +378,32 @@ samp {
 .btn-primary.disabled {
   background-color: color-mix(in srgb, var(--clr-primary-300) 75%, black);
   border-color: color-mix(in srgb, var(--clr-primary-300) 75%, black);
+}
+
+/* Broken-mods filter toggle on the mods list: inactive reads as a plain
+   filter chip, active matches the solid primary buttons. */
+.broken-filter-btn {
+  background-color: transparent;
+  border-color: var(--adw-border-color);
+  color: var(--clr-text-secondary);
+  transition: all 120ms ease;
+}
+
+.broken-filter-btn:hover {
+  border-color: var(--clr-primary-300);
+  color: var(--clr-primary-300);
+}
+
+.broken-filter-btn.active {
+  background-color: var(--clr-primary-300);
+  border-color: var(--clr-primary-300);
+  color: var(--clr-primary-text);
+}
+
+.broken-filter-btn.active:hover {
+  background-color: var(--clr-primary-text);
+  border-color: var(--clr-primary-300);
+  color: var(--clr-primary-300);
 }
 
 .btn-sm {
@@ -353,7 +419,7 @@ samp {
   opacity: 0.5;
 }
 
-/* Input and select styling - libadwaita flat */
+/* Input and select styling - tactical square */
 .input,
 .textarea {
   font-family: var(--adw-font-family);
@@ -362,7 +428,7 @@ samp {
   background: var(--clr-surface);
   color: var(--clr-text);
   border: 1px solid var(--adw-border-color);
-  border-radius: 8px;
+  border-radius: 0;
   padding: 0.5rem 0.75rem;
   font-size: 0.9375rem;
   line-height: 1.25rem;
@@ -383,7 +449,7 @@ samp {
   background-position: right 0.6rem center;
   color: var(--clr-text);
   border: 1px solid var(--adw-border-color);
-  border-radius: 8px;
+  border-radius: 0;
   padding: 0.5rem 2rem 0.5rem 0.75rem;
   font-size: 0.9375rem;
   line-height: 1.25rem;
@@ -408,8 +474,8 @@ samp {
   box-shadow: none;
 }
 
-/* Gale-style switch for mod rows */
-.gale-switch {
+/* Tactical switch for mod rows: square track and thumb */
+.ron-switch {
   position: relative;
   display: inline-flex;
   width: 38px;
@@ -417,42 +483,48 @@ samp {
   cursor: pointer;
 }
 
-.gale-switch input {
+.ron-switch input {
   position: absolute;
   opacity: 0;
   width: 0;
   height: 0;
 }
 
-.gale-switch-track {
+.ron-switch-track {
   width: 100%;
   height: 100%;
-  border-radius: 999px;
-  background: var(--clr-btn-adaptive-pressed);
-  border: 1px solid var(--adw-border-color);
-  transition: background 120ms ease;
+  border-radius: 0;
+  background: var(--clr-btn);
+  border: 1px solid var(--clr-text-secondary);
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
-.gale-switch-track::after {
+.ron-switch-track::after {
   content: "";
   position: absolute;
-  top: 2px;
+  top: 50%;
   left: 2px;
   width: 16px;
   height: 16px;
-  border-radius: 999px;
-  background: var(--clr-surface);
-  transition: transform 120ms ease;
+  margin-top: -8px;
+  border-radius: 0;
+  background: var(--clr-text);
+  transition:
+    transform 120ms ease,
+    background 120ms ease;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
-.gale-switch input:checked + .gale-switch-track {
+.ron-switch input:checked + .ron-switch-track {
   background: var(--clr-primary-300);
   border-color: var(--clr-primary-300);
 }
 
-.gale-switch input:checked + .gale-switch-track::after {
+.ron-switch input:checked + .ron-switch-track::after {
   transform: translateX(16px);
+  background: #ffffff;
 }
 
 .icon-btn-danger {
@@ -461,7 +533,7 @@ samp {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: 0;
   border: 1px solid var(--clr-danger-300);
   background: var(--clr-danger-300);
   color: var(--clr-danger-text);
@@ -502,4 +574,59 @@ samp {
 }
 .group\/row:hover .mod-select-checkbox {
   opacity: 1;
+}
+
+/* Tactical hard-square overrides: flatten every adwave curve, pill and
+   circular control the app does not explicitly opt into. */
+.btn,
+.btn.circular,
+.btn.pill,
+.btn.square,
+.card,
+.dialog,
+.input,
+.select,
+.textarea,
+.alert,
+.breadcrumbs,
+.breadcrumbs .breadcrumb-item,
+.checkbox,
+.frame,
+.slider,
+.adw-calendar,
+adw-calendar .adw-calendar {
+  border-radius: 0;
+}
+
+.switch,
+.switch .switch-knob,
+.slider .slider-track,
+.slider .slider-progress,
+.slider .slider-thumb {
+  border-radius: 0;
+}
+
+/* Adwave switch knob is round by geometry; square it where used. */
+.switch .switch-knob {
+  margin: 0.15em;
+}
+
+/* Tactical focus: square red outline instead of GNOME blue ring. */
+.btn:focus-visible,
+.input:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--clr-primary-300);
+  outline-offset: 1px;
+}
+
+/* Docs secondary hover: clear bg flips to red fill with white text. Plain
+   .btn (no .primary) keeps the tactical face at rest and only flips on
+   hover, so secondary actions read as secondary until pointed at. */
+.btn:not(.primary):not(.danger):not(.success):hover:not(.toggled, .disabled) {
+  background-color: var(--clr-primary-300);
+  border-color: var(--clr-primary-300);
+  color: var(--clr-primary-text);
 }

@@ -41,7 +41,7 @@
   <svelte:fragment slot="title">
     <div class="flex items-center gap-3">
       <div
-        class="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+        class="w-8 h-8 rounded-none flex items-center justify-center shrink-0"
         style="background: color-mix(in srgb, var(--clr-primary-300) 15%, transparent);"
       >
         <svg
@@ -74,7 +74,7 @@
   <div class="flex flex-col gap-2 mb-4">
     {#each downloads as dl (dl.fileName)}
       <div
-        class="rounded px-3 py-2 text-sm font-medium"
+        class="rounded-none px-3 py-2 text-sm font-medium"
         style="background: color-mix(in srgb, var(--clr-primary-300) 12%, transparent); color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 30%, transparent);"
       >
         {dl.prettyName || dl.fileName}

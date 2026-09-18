@@ -132,7 +132,7 @@
   >
     <div
       style="background: var(--clr-surface); border-color: var(--adw-border-color);"
-      class="border rounded-lg shadow-2xl w-[32rem] max-h-[80vh] flex flex-col"
+      class="border rounded-none shadow-2xl w-[32rem] max-h-[80vh] flex flex-col"
     >
       <div
         class="flex items-center justify-between p-4 border-b"

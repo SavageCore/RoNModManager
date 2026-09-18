@@ -270,7 +270,7 @@
   {#if $manualDownloadStore.dismissed && $manualDownloadStore.pendingFiles.length > 0}
     <button
       on:click={() => manualDownloadStore.reopen()}
-      class="shrink-0 text-xs px-2 py-0.5 rounded flex items-center gap-1"
+      class="shrink-0 text-xs px-2 py-0.5 rounded-none flex items-center gap-1"
       style="color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 40%, transparent); background: color-mix(in srgb, var(--clr-primary-300) 10%, transparent); cursor: pointer;"
       title="Show manual download files"
     >
@@ -280,7 +280,7 @@
   {#if $importLogStore.mods.length > 0 || activeQueue.length > 0}
     <button
       on:click={() => importLogStore.toggle()}
-      class="shrink-0 text-xs px-2 py-0.5 rounded flex items-center gap-1"
+      class="shrink-0 text-xs px-2 py-0.5 rounded-none flex items-center gap-1"
       style="color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 40%, transparent); background: color-mix(in srgb, var(--clr-primary-300) 10%, transparent); cursor: pointer;"
       title="Toggle import log"
     >
@@ -295,7 +295,7 @@
   {#if $infoLogStore.lines.length > 0 || $infoLogStore.isBusy}
     <button
       on:click={() => infoLogStore.toggle()}
-      class="shrink-0 text-xs px-2 py-0.5 rounded flex items-center gap-1"
+      class="shrink-0 text-xs px-2 py-0.5 rounded-none flex items-center gap-1"
       style="color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 40%, transparent); background: color-mix(in srgb, var(--clr-primary-300) 10%, transparent); cursor: pointer;"
       title="Toggle metadata refresh log"
     >
@@ -310,7 +310,7 @@
   {#if $syncLogStore.log.length > 0 || $syncLogStore.isBusy}
     <button
       on:click={() => syncLogStore.toggle()}
-      class="shrink-0 text-xs px-2 py-0.5 rounded flex items-center gap-1"
+      class="shrink-0 text-xs px-2 py-0.5 rounded-none flex items-center gap-1"
       style="color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 40%, transparent); background: color-mix(in srgb, var(--clr-primary-300) 10%, transparent); cursor: pointer;"
       title="Toggle sync log"
     >
@@ -325,7 +325,7 @@
   {#if $addModpackPanelStore.hasActivity}
     <button
       on:click={() => addModpackPanelStore.toggle()}
-      class="shrink-0 text-xs px-2 py-0.5 rounded flex items-center gap-1"
+      class="shrink-0 text-xs px-2 py-0.5 rounded-none flex items-center gap-1"
       style="color: var(--clr-primary-300); border: 1px solid color-mix(in srgb, var(--clr-primary-300) 40%, transparent); background: color-mix(in srgb, var(--clr-primary-300) 10%, transparent); cursor: pointer;"
       title="Toggle modpack log"
     >
@@ -359,7 +359,7 @@
       </span>
       {#if $operationStatusStore.sticky}
         <div
-          class="progress-track ml-auto h-1.5 w-28 rounded-full overflow-hidden"
+          class="progress-track ml-auto h-1.5 w-28 rounded-none overflow-hidden"
           style="background: var(--clr-surface-variant);"
         >
           <div class="progress-overlay">
@@ -383,14 +383,14 @@
         {#if $operationStatusStore.operation === "download" && $operationStatusStore.message.includes("Waiting for")}
           <button
             on:click={() => cancelNexusDownload(waitingFile?.waitId)}
-            class="shrink-0 text-xs px-2 py-0.5 rounded"
+            class="shrink-0 text-xs px-2 py-0.5 rounded-none"
             style="color: var(--clr-text-secondary); border: 1px solid var(--adw-border-color); background: var(--clr-surface-variant);"
           >
             Cancel
           </button>
         {/if}
         <div
-          class="progress-track ml-auto h-1.5 w-28 rounded-full overflow-hidden"
+          class="progress-track ml-auto h-1.5 w-28 rounded-none overflow-hidden"
           style="background: var(--clr-surface-variant);"
         >
           {#if showIndeterminateBar}

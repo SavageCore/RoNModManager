@@ -43,7 +43,7 @@
   >
     <div
       style={panelStyle}
-      class="border rounded-lg shadow-2xl {width} {padding} {panelClass}"
+      class="border rounded-none shadow-2xl {width} {padding} {panelClass}"
       data-tour={tourId ? `${tourId}-panel` : undefined}
     >
       {#if title || $$slots.title || $$slots["header-actions"] || showClose}

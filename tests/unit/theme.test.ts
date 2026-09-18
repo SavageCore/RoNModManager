@@ -37,14 +37,16 @@ afterEach(() => {
 describe("applyThemeClass", () => {
   it("applies the light theme", () => {
     applyThemeClass("light");
-    expect(document.documentElement.getAttribute("data-theme")).toBe("wintry");
+    expect(document.documentElement.getAttribute("data-theme")).toBe(
+      "ron-light",
+    );
     expect(document.documentElement.classList.contains("dark")).toBe(false);
   });
 
   it("applies the dark theme", () => {
     applyThemeClass("dark");
     expect(document.documentElement.getAttribute("data-theme")).toBe(
-      "cerberus",
+      "ron-dark",
     );
     expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
@@ -53,7 +55,7 @@ describe("applyThemeClass", () => {
     stubMatchMedia(true);
     applyThemeClass("system");
     expect(document.documentElement.getAttribute("data-theme")).toBe(
-      "cerberus",
+      "ron-dark",
     );
     expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
@@ -61,7 +63,9 @@ describe("applyThemeClass", () => {
   it("follows the OS preference in system mode (light)", () => {
     stubMatchMedia(false);
     applyThemeClass("system");
-    expect(document.documentElement.getAttribute("data-theme")).toBe("wintry");
+    expect(document.documentElement.getAttribute("data-theme")).toBe(
+      "ron-light",
+    );
     expect(document.documentElement.classList.contains("dark")).toBe(false);
   });
 });
@@ -70,7 +74,9 @@ describe("initTheme", () => {
   it("returns a noop cleanup for a fixed mode", () => {
     stubMatchMedia(false);
     const cleanup = initTheme("light");
-    expect(document.documentElement.getAttribute("data-theme")).toBe("wintry");
+    expect(document.documentElement.getAttribute("data-theme")).toBe(
+      "ron-light",
+    );
     expect(typeof cleanup).toBe("function");
     cleanup();
   });
@@ -78,12 +84,14 @@ describe("initTheme", () => {
   it("subscribes to OS changes in system mode and cleans up", () => {
     const mql = stubMatchMedia(false);
     const cleanup = initTheme("system");
-    expect(document.documentElement.getAttribute("data-theme")).toBe("wintry");
+    expect(document.documentElement.getAttribute("data-theme")).toBe(
+      "ron-light",
+    );
 
     (mql as { matches: boolean }).matches = true;
     mql.dispatch();
     expect(document.documentElement.getAttribute("data-theme")).toBe(
-      "cerberus",
+      "ron-dark",
     );
 
     cleanup();
