@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ChevronDown } from "@lucide/svelte";
-  import { onMount } from "svelte";
+  import CustomMenu from "./CustomMenu.svelte";
+  import type { MenuItem } from "./CustomMenu.svelte";
 
   export let onLaunchModded: () => void;
   export let onLaunchVanilla: () => void;
@@ -8,12 +9,18 @@
   export let isLaunching = false;
   export let isGameRunning = false;
 
+  let menuComponent: CustomMenu;
+  let caretButton: HTMLButtonElement;
   let menuOpen = false;
-  let root: HTMLDivElement;
 
   function toggleMenu() {
-    if (!disabled) {
-      menuOpen = !menuOpen;
+    if (disabled) return;
+    if (menuOpen) {
+      menuComponent.close();
+      menuOpen = false;
+    } else {
+      menuComponent.openMenu({ anchor: caretButton });
+      menuOpen = true;
     }
   }
 
@@ -22,16 +29,9 @@
     action();
   }
 
-  onMount(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!menuOpen) return;
-      if (root && !root.contains(event.target as Node)) {
-        menuOpen = false;
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  });
+  function handleMenuClose() {
+    menuOpen = false;
+  }
 
   $: launchLabel = isLaunching
     ? "Launching..."
@@ -42,9 +42,22 @@
   $: launchTitle = isGameRunning
     ? "Game is running - links unlock when it quits"
     : "Launch Ready or Not with selected profile";
+
+  $: menuItems = [
+    {
+      id: "vanilla",
+      label: "Launch vanilla",
+      action: () => chooseLaunch(onLaunchVanilla),
+    },
+    {
+      id: "modded",
+      label: "Launch modded",
+      action: () => chooseLaunch(onLaunchModded),
+    },
+  ] satisfies MenuItem[];
 </script>
 
-<div bind:this={root} class="relative inline-flex">
+<div class="inline-flex">
   <div
     class="launch-root inline-flex h-9 overflow-hidden rounded-none shadow-sm"
   >
@@ -71,6 +84,7 @@
     <!-- Dropdown caret target -->
     <button
       type="button"
+      bind:this={caretButton}
       class="launch-btn inline-flex w-8 cursor-pointer items-center justify-center focus-visible:outline-2 focus-visible:outline-[color-mix(in_srgb,var(--clr-primary-300)_30%,transparent)] focus-visible:outline-offset-[-1px] disabled:cursor-not-allowed disabled:opacity-50"
       on:click={toggleMenu}
       {disabled}
@@ -89,34 +103,14 @@
       />
     </button>
   </div>
-
-  {#if menuOpen}
-    <div
-      class="absolute right-0 top-full z-50 mt-2 w-48 rounded-none py-1 shadow-lg"
-      style="background: var(--clr-btn); border: 1px solid var(--adw-border-color);"
-      role="menu"
-    >
-      <button
-        type="button"
-        class="w-full px-4 py-2 text-left text-sm transition-colors hover:bg-[var(--clr-btn-adaptive-pressed)]"
-        style="color: var(--clr-text);"
-        on:click={() => chooseLaunch(onLaunchVanilla)}
-        role="menuitem"
-      >
-        Launch vanilla
-      </button>
-      <button
-        type="button"
-        class="w-full px-4 py-2 text-left text-sm transition-colors hover:bg-[var(--clr-btn-adaptive-pressed)]"
-        style="color: var(--clr-text);"
-        on:click={() => chooseLaunch(onLaunchModded)}
-        role="menuitem"
-      >
-        Launch modded
-      </button>
-    </div>
-  {/if}
 </div>
+
+<CustomMenu
+  bind:this={menuComponent}
+  items={menuItems}
+  width={192}
+  on:close={handleMenuClose}
+/>
 
 <style>
   .launch-root {

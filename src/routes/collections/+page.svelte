@@ -68,6 +68,7 @@
     message: string;
     detail: string;
     confirmLabel: string;
+    danger?: boolean;
     onConfirm: () => void;
   } = {
     isVisible: false,
@@ -177,6 +178,7 @@
       message: `Are you sure you want to delete <strong>${escapeHtml(name)}</strong>? This will remove the collection grouping${modCount > 0 ? ` for ${modCount} mod${modCount === 1 ? "" : "s"}` : ""}.${modCount > 0 ? `<div style="margin-top:0.75rem;color:var(--clr-text-secondary);">${modListMarkup}</div>` : ""}`,
       detail: "",
       confirmLabel: "Delete",
+      danger: true,
       onConfirm: async () => {
         try {
           await deleteCollection(name);
@@ -250,6 +252,7 @@
   message={confirmModal.message}
   detail={confirmModal.detail}
   confirmLabel={confirmModal.confirmLabel}
+  danger={confirmModal.danger}
   onConfirm={confirmModal.onConfirm}
 />
 <EditCollectionModal

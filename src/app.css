@@ -315,22 +315,22 @@ samp {
 
 .btn.danger,
 .btn-danger {
-  background-color: var(--clr-danger-300);
-  color: var(--clr-danger-text);
-  border-color: var(--clr-danger-300);
+  background-color: var(--clr-primary-300);
+  color: var(--clr-primary-text);
+  border-color: var(--clr-primary-300);
   transition: all 120ms ease;
 }
 
 .btn.danger:hover:not(.toggled, .disabled),
 .btn-danger:hover:not(.toggled, .disabled) {
-  background-color: var(--clr-danger-500);
-  border-color: var(--clr-danger-500);
+  background-color: var(--clr-primary-500);
+  border-color: var(--clr-primary-500);
 }
 
 .btn.danger:active:not(.disabled),
 .btn-danger:active:not(.disabled) {
-  background-color: var(--clr-danger-100);
-  border-color: var(--clr-danger-100);
+  background-color: var(--clr-primary-500);
+  border-color: var(--clr-primary-500);
 }
 
 .btn.danger.toggled,
@@ -380,16 +380,35 @@ samp {
   border-color: color-mix(in srgb, var(--clr-primary-300) 75%, black);
 }
 
-/* Broken-mods filter toggle on the mods list: inactive reads as a plain
-   filter chip, active matches the solid primary buttons. */
+/* Broken-mods filter toggle on the mods list: matches the CustomSelect field
+   controls exactly (same trigger, same borders, same text). */
 .broken-filter-btn {
-  background-color: transparent;
-  border-color: var(--adw-border-color);
-  color: var(--clr-text-secondary);
-  transition: all 120ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+  text-align: left;
+  border-radius: 0;
+  border: 1px solid var(--adw-border-color);
+  background: var(--clr-surface);
+  color: var(--clr-text);
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    outline-color 120ms ease;
 }
 
-.broken-filter-btn:hover {
+.broken-filter-btn .custom-select-value {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.broken-filter-btn:hover:not(.active) {
   border-color: var(--clr-primary-300);
   color: var(--clr-primary-300);
 }
@@ -534,21 +553,21 @@ samp {
   width: 28px;
   height: 28px;
   border-radius: 0;
-  border: 1px solid var(--clr-danger-300);
-  background: var(--clr-danger-300);
-  color: var(--clr-danger-text);
+  border: 1px solid var(--clr-primary-300);
+  background: var(--clr-primary-300);
+  color: var(--clr-primary-text);
   cursor: pointer;
   transition: all 120ms ease;
 }
 
 .icon-btn-danger:hover {
-  background: var(--clr-danger-500);
-  border-color: var(--clr-danger-500);
+  background: var(--clr-primary-500);
+  border-color: var(--clr-primary-500);
 }
 
 .icon-btn-danger:active {
-  background: var(--clr-danger-100);
-  border-color: var(--clr-danger-100);
+  background: var(--clr-primary-500);
+  border-color: var(--clr-primary-500);
 }
 
 .is-spinning {

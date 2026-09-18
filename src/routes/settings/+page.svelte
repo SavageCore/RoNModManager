@@ -42,6 +42,8 @@
   } from "$lib/api/apiKeyValidation";
   import ExportModpackModal from "$lib/components/ExportModpackModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
+  import CustomSelect from "$lib/components/CustomSelect.svelte";
+  import type { DropdownOption } from "$lib/components/CustomSelect.svelte";
   import ModalShell from "$lib/components/ModalShell.svelte";
   import SyncAuthModal from "$lib/components/SyncAuthModal.svelte";
   import { syncLogStore } from "$lib/stores/syncLogStore";
@@ -1038,17 +1040,19 @@
           <div class="prefs-row-title">Theme</div>
         </div>
         <div class="prefs-row-suffix">
-          <select
-            class="select w-40"
+          <CustomSelect
             bind:value={theme}
-            on:change={() => {
+            width={160}
+            options={[
+              { value: "system", label: "System" },
+              { value: "light", label: "Light" },
+              { value: "dark", label: "Dark" },
+            ]}
+            on:select={() => {
               applyThemeClass(theme);
               void persistThemeChoice();
             }}
-            ><option value="system">System</option><option value="light"
-              >Light</option
-            ><option value="dark">Dark</option></select
-          >
+          />
         </div>
       </div>
       <div class="prefs-row" data-tour="settings-link-on-launch">
@@ -1077,15 +1081,17 @@
           <div class="prefs-row-title">When launching game</div>
         </div>
         <div class="prefs-row-suffix">
-          <select
-            class="select w-40"
+          <CustomSelect
             bind:value={onGameLaunch}
-            on:change={() =>
+            width={160}
+            options={[
+              { value: "nothing", label: "Do nothing" },
+              { value: "minimize", label: "Minimise" },
+              { value: "close", label: "Quit" },
+            ]}
+            on:select={() =>
               void updateConfig({ on_game_launch: onGameLaunch })}
-            ><option value="nothing">Do nothing</option><option value="minimize"
-              >Minimise</option
-            ><option value="close">Quit</option></select
-          >
+          />
         </div>
       </div>
       <div class="prefs-row">
@@ -1093,18 +1099,19 @@
           <div class="prefs-row-title">When closing window</div>
         </div>
         <div class="prefs-row-suffix">
-          <select
-            class="select w-40"
+          <CustomSelect
             bind:value={closeAction}
-            on:change={() =>
+            width={160}
+            options={[
+              { value: "quit", label: "Quit" },
+              { value: "minimize", label: "Minimise" },
+            ]}
+            on:select={() =>
               void updateConfig({
                 close_action: closeAction,
                 asked_close_preference: true,
               })}
-            ><option value="quit">Quit</option><option value="minimize"
-              >Minimise</option
-            ></select
-          >
+          />
         </div>
       </div>
       <div
@@ -1115,19 +1122,20 @@
           <div class="prefs-row-title">Minimise to</div>
         </div>
         <div class="prefs-row-suffix">
-          <select
-            class="select w-40"
+          <CustomSelect
             bind:value={minimizeTarget}
             disabled={onGameLaunch === "nothing" && closeAction === "quit"}
-            on:change={() =>
+            width={160}
+            options={[
+              { value: "taskbar", label: "Taskbar" },
+              { value: "tray", label: "System tray" },
+            ]}
+            on:select={() =>
               void updateConfig({
                 minimize_target: minimizeTarget,
                 asked_close_preference: true,
               })}
-            ><option value="taskbar">Taskbar</option><option value="tray"
-              >System tray</option
-            ></select
-          >
+          />
         </div>
       </div>
       <div class="prefs-row">
@@ -1143,16 +1151,18 @@
           </div>
         </div>
         <div class="prefs-row-suffix">
-          <select
-            class="select w-40"
+          <CustomSelect
             bind:value={logLevel}
-            on:change={() => void updateConfig({ log_level: logLevel })}
-            ><option value="error">Error</option><option value="warn"
-              >Warn</option
-            ><option value="info">Info</option><option value="debug"
-              >Debug</option
-            ><option value="trace">Trace</option></select
-          >
+            width={160}
+            options={[
+              { value: "error", label: "Error" },
+              { value: "warn", label: "Warn" },
+              { value: "info", label: "Info" },
+              { value: "debug", label: "Debug" },
+              { value: "trace", label: "Trace" },
+            ]}
+            on:select={() => void updateConfig({ log_level: logLevel })}
+          />
         </div>
       </div>
     </div>
@@ -1307,12 +1317,15 @@
           </div>
         </div>
         <div class="prefs-row-suffix">
-          <select class="select w-48" bind:value={selectedGpu}
-            ><option value="">Select GPU…</option
-            >{#each gpuProfiles as p}<option value={p}
-                >{p.replace(/_/g, " ").replace(/-/g, " / ")}</option
-              >{/each}</select
-          >{#if isOptRemoveVisible}<button
+          <CustomSelect
+            bind:value={selectedGpu}
+            width={192}
+            placeholder="Select GPU…"
+            options={gpuProfiles.map((p) => ({
+              value: p,
+              label: p.replace(/_/g, " ").replace(/-/g, " / "),
+            }))}
+          />{#if isOptRemoveVisible}<button
               class="btn btn-sm"
               disabled={applyingOpt}
               on:click={removeOpt}>{applyingOpt ? "…" : "Restore"}</button
@@ -1410,19 +1423,18 @@
             </div>
           </div>
           <div class="prefs-row-suffix">
-            <select
-              class="select w-48"
+            <CustomSelect
               bind:value={ue4ssGraphicsApi}
               disabled={ue4ssSaving}
-              on:change={() => {
-                void saveUe4ssSettings();
-              }}
-              ><option value="dx11">dx11</option><option value="dx12"
-                >dx12</option
-              ><option value="vulkan">vulkan</option><option value="opengl"
-                >opengl</option
-              ></select
-            >
+              width={192}
+              options={[
+                { value: "dx11", label: "dx11" },
+                { value: "dx12", label: "dx12" },
+                { value: "vulkan", label: "vulkan" },
+                { value: "opengl", label: "opengl" },
+              ]}
+              on:select={() => void saveUe4ssSettings()}
+            />
           </div>
         </div>
         <div class="prefs-row">
@@ -1457,17 +1469,17 @@
             </div>
           </div>
           <div class="prefs-row-suffix">
-            <select
-              class="select w-48"
+            <CustomSelect
               bind:value={ue4ssConsoleMode}
               disabled={ue4ssSaving}
-              on:change={() => {
-                void saveUe4ssSettings();
-              }}
-              ><option value="text">Text console</option><option value="gui"
-                >GUI console</option
-              ><option value="none">None</option></select
-            >
+              width={192}
+              options={[
+                { value: "text", label: "Text console" },
+                { value: "gui", label: "GUI console" },
+                { value: "none", label: "None" },
+              ]}
+              on:select={() => void saveUe4ssSettings()}
+            />
           </div>
         </div>
       </div>
@@ -1645,6 +1657,7 @@
     title="Remove key?"
     message={keyRemovalMessage}
     confirmLabel="Remove"
+    danger={true}
     onConfirm={() => void confirmKeyRemoval()}
     onCancel={() => (pendingKeyRemoval = null)}
   />

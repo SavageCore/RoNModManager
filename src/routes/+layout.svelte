@@ -30,6 +30,7 @@
   } from "$lib/api/commands";
   import FooterStatusBar from "$lib/components/FooterStatusBar.svelte";
   import LaunchButton from "$lib/components/LaunchButton.svelte";
+  import CustomSelect from "$lib/components/CustomSelect.svelte";
   import ImportLogPanel from "$lib/components/ImportLogPanel.svelte";
   import SyncPanel from "$lib/components/SyncPanel.svelte";
   import Toast from "$lib/components/Toast.svelte";
@@ -1064,25 +1065,22 @@
 
       <!-- Profile dropdown -->
       <div
-        style="background: var(--clr-btn); color: var(--clr-text);"
-        class="flex h-9 items-center gap-2 rounded-none px-3 text-sm"
+        class="flex h-9 items-center gap-2 text-sm"
         data-tour="header-profile"
       >
         <label
           for="header-profile-select"
           style="color: var(--clr-text-secondary);">Profile:</label
         >
-        <select
+        <CustomSelect
           id="header-profile-select"
-          class="bg-transparent border-none text-sm font-medium cursor-pointer"
+          ariaLabel="Select profile"
           bind:value={selectedProfile}
           disabled={profiles.length === 0}
-          on:change={handleProfileChange}
-        >
-          {#each profiles as profile (profile.name)}
-            <option value={profile.name}>{profile.name}</option>
-          {/each}
-        </select>
+          width={150}
+          options={profiles.map((p) => ({ value: p.name, label: p.name }))}
+          on:select={handleProfileChange}
+        />
       </div>
 
       <!-- Launch Game split-button: modded (default) + vanilla -->

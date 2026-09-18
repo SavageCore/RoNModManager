@@ -192,14 +192,10 @@
   import ItemPickerModal from "$lib/components/ItemPickerModal.svelte";
   import BrokenModModal from "$lib/components/BrokenModModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
-  import {
-    Menu,
-    MenuItem,
-    Submenu,
-    CheckMenuItem,
-    PredefinedMenuItem,
-  } from "@tauri-apps/api/menu";
   import SourceIcon from "$lib/components/SourceIcon.svelte";
+  import CustomSelect from "$lib/components/CustomSelect.svelte";
+  import CustomMenu from "$lib/components/CustomMenu.svelte";
+  import type { MenuItem } from "$lib/components/CustomMenu.svelte";
   import { importLogStore } from "$lib/stores/importLogStore";
   import { manualDownloadStore } from "$lib/stores/manualDownloadStore";
   import { modAddQueueStore } from "$lib/stores/modAddQueue";
@@ -347,6 +343,7 @@
     message: string;
     detail: string;
     confirmLabel: string;
+    danger?: boolean;
     onConfirm: () => void;
   } = {
     isVisible: false,
@@ -1183,6 +1180,7 @@
       )}`,
       detail: isNamed ? group.name : "",
       confirmLabel: "Uninstall",
+      danger: true,
       onConfirm: async () => {
         try {
           // removeFromAllProfiles: the user asked for the mod to go, so the
@@ -1206,6 +1204,7 @@
         "This will permanently remove all installed mods. This cannot be undone.",
       confirmLabel: "Uninstall All",
       detail: "",
+      danger: true,
       onConfirm: async () => {
         try {
           await uninstallMods();
@@ -1274,6 +1273,7 @@
       message: `Are you sure you want to uninstall ${count} selected mod${count === 1 ? "" : "s"}? This cannot be undone.`,
       confirmLabel: "Uninstall",
       detail: "",
+      danger: true,
       onConfirm: async () => {
         try {
           let removed = 0;
@@ -1375,6 +1375,88 @@
   function cancelEditingSourceUrl() {
     editingUrlGroup = null;
     editUrlInputValue = "";
+  }
+
+  // Right-click menu for a mod row, opened at the cursor. Tags collapse into
+  // a "Manage tags" flyout so long tag lists stay out of the top level.
+  let modContextMenu: CustomMenu;
+  let modContextMenuItems: MenuItem[] = [];
+
+  function openModContextMenu(group: InstalledModGroup, event: MouseEvent) {
+    const label = group.displayName || group.name;
+    modContextMenuItems = [
+      {
+        id: "refresh",
+        label: "Refresh metadata",
+        action: () => handleRefreshMetadataSelection(group.name),
+      },
+      {
+        id: "collections",
+        label: "Manage collections",
+        action: () => openCollectionPicker(group.name, label),
+      },
+      { id: "div-tags", divider: true },
+      {
+        id: "tags",
+        label: "Manage tags",
+        children: [
+          ...effectiveTagNames.map((tag) => ({
+            id: `tag-${tag}`,
+            label: formatTagName(tag),
+            check:
+              selectedMods.size > 0
+                ? [...selectedMods].every((m) =>
+                    (effectiveTags[tag] ?? []).includes(m),
+                  )
+                : (modToTagsMap[group.name] ?? []).includes(tag),
+            action: () =>
+              selectedMods.size > 0
+                ? toggleBulkModTag(tag)
+                : toggleModTag(group.name, tag),
+          })),
+          ...(effectiveTagNames.length
+            ? [{ id: "div-tag-new", divider: true } as MenuItem]
+            : []),
+          {
+            id: "new-tag",
+            label: "New tag…",
+            action: () =>
+              selectedMods.size > 0
+                ? (showBulkTagModal = true)
+                : openTagPicker(group.name, label),
+          },
+        ],
+      },
+      { id: "div-meta", divider: true },
+      {
+        id: "broken",
+        label:
+          brokenModsMap[group.name] !== undefined
+            ? "Edit broken note"
+            : "Mark as broken",
+        action: () => {
+          brokenModalModName = group.name;
+          brokenModalModLabel = label;
+          showBrokenModal = true;
+        },
+      },
+      {
+        id: "addons",
+        label: "Manage add-ons",
+        action: () => openAddOnsModal(group.name),
+      },
+      {
+        id: "link",
+        label: group.sourceUrl ? "Edit link" : "Add link",
+        action: () => {
+          expandedGroups[group.name] = true;
+          startEditingSourceUrl(group);
+        },
+      },
+    ];
+    modContextMenu.openMenu({
+      cursor: { x: event.clientX, y: event.clientY },
+    });
   }
 
   // Clean mod source URLs before saving: strip query string and fragment for Nexus/Mod.io
@@ -1736,7 +1818,14 @@
   message={confirmModal.message}
   detail={confirmModal.detail}
   confirmLabel={confirmModal.confirmLabel}
+  danger={confirmModal.danger}
   onConfirm={confirmModal.onConfirm}
+/>
+
+<CustomMenu
+  bind:this={modContextMenu}
+  items={modContextMenuItems}
+  width={248}
 />
 
 <ItemPickerModal
@@ -1897,41 +1986,43 @@
       bind:value={modSearch}
       style="max-width: 320px;"
     />
-    <select
-      class="input"
+    <CustomSelect
       bind:value={modSourceFilter}
-      style="width: 140px; padding-top: 0; padding-bottom: 0; height: 2.5rem;"
-      aria-label="Filter by source"
-    >
-      <option value="all">All Sources</option>
-      <option value="modio">Mod.io</option>
-      <option value="nexus">Nexus</option>
-    </select>
-    <select
-      class="input"
+      ariaLabel="Filter by source"
+      width={140}
+      options={[
+        { value: "all", label: "All Sources" },
+        { value: "modio", label: "Mod.io" },
+        { value: "nexus", label: "Nexus" },
+      ]}
+    />
+    <CustomSelect
       bind:value={$modSortOrder}
-      style="width: 150px; padding-top: 0; padding-bottom: 0; height: 2.5rem;"
-      aria-label="Sort order"
-    >
-      <option value="alpha-asc">A → Z</option>
-      <option value="alpha-desc">Z → A</option>
-      <option value="date-desc">Newest First</option>
-      <option value="date-asc">Oldest First</option>
-      <option value="files-desc">Most Files First</option>
-      <option value="files-asc">Fewest Files First</option>
-      <option value="missing-sav-first">Missing World Gen</option>
-    </select>
+      ariaLabel="Sort order"
+      width={150}
+      options={[
+        { value: "alpha-asc", label: "A → Z" },
+        { value: "alpha-desc", label: "Z → A" },
+        { value: "date-desc", label: "Newest First" },
+        { value: "date-asc", label: "Oldest First" },
+        { value: "files-desc", label: "Most Files First" },
+        { value: "files-asc", label: "Fewest Files First" },
+        { value: "missing-sav-first", label: "Missing World Gen" },
+      ]}
+    />
     <button
       on:click={() => ($showBroken = !$showBroken)}
-      class="broken-filter-btn inline-flex items-center gap-1.5 rounded-none border px-2 text-xs cursor-pointer"
+      class="broken-filter-btn"
       class:active={$showBroken}
-      style:height="2.5rem"
+      style="width: 150px;"
       title={$showBroken
         ? "Broken mods visible - click to hide"
         : "Broken mods hidden - click to show"}
     >
+      <span class="custom-select-value">
+        {$showBroken ? "Showing broken" : "Show broken"}
+      </span>
       <AlertTriangle size={13} />
-      {$showBroken ? "Showing broken" : "Show broken"}
     </button>
   </div>
 
@@ -2231,87 +2322,8 @@
               style="background: var(--clr-surface-variant); border-color: var(--adw-border-color);"
               class="rounded-none border group/row"
               data-tour="mod-row"
-              on:contextmenu|preventDefault={async () => {
-                const menu = await Menu.new({
-                  items: [
-                    await MenuItem.new({
-                      text: "Refresh metadata",
-                      action: () => handleRefreshMetadataSelection(group.name),
-                    }),
-                    await MenuItem.new({
-                      text: "Manage collections",
-                      action: () =>
-                        openCollectionPicker(
-                          group.name,
-                          group.displayName || group.name,
-                        ),
-                    }),
-                    await Submenu.new({
-                      text: "Manage tags",
-                      items: [
-                        ...(await Promise.all(
-                          effectiveTagNames.map((tag) =>
-                            CheckMenuItem.new({
-                              text: formatTagName(tag),
-                              checked:
-                                selectedMods.size > 0
-                                  ? [...selectedMods].every((m) =>
-                                      (effectiveTags[tag] ?? []).includes(m),
-                                    )
-                                  : (modToTagsMap[group.name] ?? []).includes(
-                                      tag,
-                                    ),
-                              action: () =>
-                                selectedMods.size > 0
-                                  ? toggleBulkModTag(tag)
-                                  : toggleModTag(group.name, tag),
-                            }),
-                          ),
-                        )),
-                        ...(effectiveTagNames.length
-                          ? [
-                              await PredefinedMenuItem.new({
-                                item: "Separator",
-                              }),
-                            ]
-                          : []),
-                        await MenuItem.new({
-                          text: "New tag…",
-                          action: () =>
-                            selectedMods.size > 0
-                              ? (showBulkTagModal = true)
-                              : openTagPicker(
-                                  group.name,
-                                  group.displayName || group.name,
-                                ),
-                        }),
-                      ],
-                    }),
-                    await MenuItem.new({
-                      text:
-                        brokenModsMap[group.name] !== undefined
-                          ? "Edit broken note"
-                          : "Mark as broken",
-                      action: () => {
-                        brokenModalModName = group.name;
-                        brokenModalModLabel = group.displayName || group.name;
-                        showBrokenModal = true;
-                      },
-                    }),
-                    await MenuItem.new({
-                      text: "Manage add-ons",
-                      action: () => openAddOnsModal(group.name),
-                    }),
-                    await MenuItem.new({
-                      text: group.sourceUrl ? "Edit link" : "Add link",
-                      action: () => {
-                        expandedGroups[group.name] = true;
-                        startEditingSourceUrl(group);
-                      },
-                    }),
-                  ],
-                });
-                await menu.popup();
+              on:contextmenu|preventDefault={(e) => {
+                openModContextMenu(group, e);
               }}
             >
               <div class="flex items-center justify-between px-3 py-2 gap-3">

@@ -152,10 +152,155 @@ describe("CustomMenu", () => {
     const el = container.querySelector(".custom-menu") as HTMLElement;
     expect(el.style.width).toBe("300px");
   });
+
+  it("shows the submenu title when opened with one", async () => {
+    const { component, container } = renderMenu({
+      items: [{ id: "edit", label: "Edit" }],
+    });
+    component.openMenu?.({ cursor: { x: 10, y: 10 }, title: "Fallout London" });
+    await tick();
+    await tick();
+    expect(screen.getByText("Fallout London")).not.toBeNull();
+    expect(container.querySelector(".custom-menu-title")).not.toBeNull();
+  });
+
+  it("reveals a nested submenu on parent hover", async () => {
+    const action = vi.fn();
+    const { component, container } = renderMenu({
+      items: [
+        { id: "refresh", label: "Refresh metadata" },
+        {
+          id: "tags",
+          label: "Manage tags",
+          children: [
+            { id: "tag-a", label: "Tag A", check: true, action },
+            { id: "tag-b", label: "Tag B", action },
+          ],
+        },
+      ],
+    });
+    await openMenu(component);
+    const parentRow = screen.getByText("Manage tags").closest("button");
+    if (!parentRow) throw new Error("parent row missing");
+    await fireEvent.mouseEnter(parentRow);
+    await tick();
+    await tick();
+    const flyout = container.querySelector(".custom-submenu");
+    expect(flyout).not.toBeNull();
+    expect(
+      screen
+        .getByText("Tag A")
+        .closest("button")
+        ?.querySelector(".custom-menu-item-check"),
+    ).not.toBeNull();
+  });
+
+  it("does not run the parent action when it has children", async () => {
+    const action = vi.fn();
+    const { component } = renderMenu({
+      items: [
+        {
+          id: "tags",
+          label: "Manage tags",
+          children: [{ id: "tag-a", label: "Tag A" }],
+          action,
+        },
+      ],
+    });
+    await openMenu(component);
+    await fireEvent.click(screen.getByText("Manage tags"));
+    expect(action).not.toHaveBeenCalled();
+  });
+
+  it("runs a submenu child action and closes the whole menu", async () => {
+    const action = vi.fn();
+    const { component, container } = render(CustomMenuProbe, {
+      props: {
+        items: [
+          {
+            id: "tags",
+            label: "Manage tags",
+            children: [{ id: "tag-a", label: "Tag A", action }],
+          },
+        ],
+      },
+    });
+    component.open();
+    await tick();
+    const parentRow = screen.getByText("Manage tags").closest("button");
+    if (!parentRow) throw new Error("parent row missing");
+    await fireEvent.mouseEnter(parentRow);
+    await tick();
+    await tick();
+    await fireEvent.click(screen.getByText("Tag A"));
+    await tick();
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("closed-count: 1")).not.toBeNull();
+    expect(container.querySelector(".custom-menu")).toBeNull();
+  });
+
+  it("opens the first submenu with ArrowRight and retracts with Escape", async () => {
+    const { component, container } = renderMenu({
+      items: [
+        { id: "refresh", label: "Refresh metadata" },
+        {
+          id: "tags",
+          label: "Manage tags",
+          children: [{ id: "tag-a", label: "Tag A" }],
+        },
+      ],
+    });
+    await openMenu(component);
+    await fireEvent.keyDown(document, { key: "ArrowRight" });
+    await tick();
+    expect(container.querySelector(".custom-submenu")).not.toBeNull();
+    await fireEvent.keyDown(document, { key: "Escape" });
+    await tick();
+    expect(container.querySelector(".custom-submenu")).toBeNull();
+    expect(container.querySelector(".custom-menu")).not.toBeNull();
+  });
+
+  it("marks expanded parents for assistive tech", async () => {
+    const { component } = renderMenu({
+      items: [
+        {
+          id: "tags",
+          label: "Manage tags",
+          children: [{ id: "tag-a", label: "Tag A" }],
+        },
+      ],
+    });
+    await openMenu(component);
+    const parentRow = screen.getByText("Manage tags").closest("button");
+    if (!parentRow) throw new Error("parent row missing");
+    await fireEvent.mouseEnter(parentRow);
+    await tick();
+    await tick();
+    expect(
+      screen
+        .getByText("Manage tags")
+        .closest("button")
+        ?.getAttribute("aria-haspopup"),
+    ).toBe("menu");
+    expect(
+      screen
+        .getByText("Manage tags")
+        .closest("button")
+        ?.getAttribute("aria-expanded"),
+    ).toBe("true");
+  });
 });
 
-function renderMenu(opts?: { items?: MenuItem[]; width?: number }) {
+function renderMenu(opts?: {
+  items?: MenuItem[];
+  width?: number;
+  title?: string;
+}) {
   return render(CustomMenu, {
-    props: { items: opts?.items ?? items, width: opts?.width },
+    props: {
+      items: opts?.items ?? items,
+      width: opts?.width,
+      menuTitle: opts?.title ?? null,
+    },
   });
 }
