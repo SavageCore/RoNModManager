@@ -4,7 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Runtime, State};
 
 use crate::commands::mods::archive_install_key;
 use crate::models::AppError;
@@ -472,6 +472,15 @@ pub async fn launch_game_with_groups(
     Ok(())
 }
 
+/// Restore tweaks to stock without touching intent flags: movies back in place,
+/// original Engine.ini back (or profile ini removed). Best-effort and never
+/// failing so it is safe on watcher/exit/startup paths. Used to keep the game
+/// folder stock at rest in link-on-launch-only mode.
+pub(crate) fn restore_tweaks_to_stock(game_path: &Path) {
+    let _ = crate::services::config_tweaks::undo_intro_skip(game_path);
+    let _ = crate::services::config_tweaks::restore_optimization();
+}
+
 /// Remove all managed live links and restore backed-up originals, returning the
 /// game folder to a stock state. Used for startup/exit cleanup and vanilla launch.
 #[tauri::command]
@@ -481,19 +490,30 @@ pub async fn ensure_game_stock(state: State<'_, AppState>) -> Result<(), String>
         .game_path
         .ok_or_else(|| "Game path not configured".to_string())?;
 
-    sync_mod_links_for_game_path(&game_path, Vec::new())
+    sync_mod_links_for_game_path(&game_path, Vec::new())?;
+    restore_tweaks_to_stock(&game_path);
+    Ok(())
 }
 
 /// Unlink all mods (stock folder) then launch the game vanilla.
 #[tauri::command]
-pub async fn launch_vanilla_game(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn launch_vanilla_game<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let config = state.get_config().map_err(|e: AppError| e.to_string())?;
     let game_path = config
         .game_path
         .ok_or_else(|| "Game path not configured".to_string())?;
 
     sync_mod_links_for_game_path(&game_path, Vec::new())?;
-    launch_game_internal(&game_path, config.intro_skip_enabled)
+    launch_game_internal(&game_path, config.intro_skip_enabled)?;
+    // Transient tweaks were just applied for the launch; restore them to stock
+    // once the game quits, like any other launch path.
+    if config.link_on_launch_only {
+        game_watch::spawn_game_exit_watcher(app, game_path);
+    }
+    Ok(())
 }
 
 /// True while the game process is alive. Used by the frontend to disable
@@ -603,6 +623,7 @@ pub(crate) fn cleanup_to_stock_on_exit(state: &AppState) {
     if let Err(e) = sync_mod_links_for_game_path(&game_path, Vec::new()) {
         log::warn!("exit cleanup: failed to restore stock folder: {e}");
     }
+    restore_tweaks_to_stock(&game_path);
 }
 
 #[cfg(test)]
@@ -715,6 +736,45 @@ mod tests {
         use crate::test_support::{isolated_root, mock_app_with, scratch_dir};
         use tauri::Manager;
 
+        #[test]
+        fn restore_tweaks_returns_both_tweaks_to_stock() {
+            let _guard = crate::test_support::shared_tree_guard();
+            let game = scratch_dir("game-tweaks-restore");
+            let movies = game.path().join("ReadyOrNot/Content/Movies");
+            fs::create_dir_all(&movies).unwrap();
+            fs::write(movies.join("ReadyOrNot_StartupMovie.mp4"), b"movie").unwrap();
+
+            // Simulate a live game: skip applied on disk, optimization applied
+            // over a user-authored Engine.ini.
+            crate::services::config_tweaks::apply_intro_skip(game.path()).unwrap();
+            let ini = crate::services::steam::get_config_path()
+                .unwrap()
+                .join("Engine.ini");
+            let backup = PathBuf::from(format!("{}{}", ini.display(), ".ronmm.bak"));
+            let _ = fs::remove_file(&ini);
+            let _ = fs::remove_file(&backup);
+            fs::create_dir_all(ini.parent().unwrap()).unwrap();
+            fs::write(&ini, b"[Original]\nkey=orig\n").unwrap();
+            let profile = crate::services::config_tweaks::available_gpu_profiles()
+                .first()
+                .cloned()
+                .unwrap();
+            crate::services::config_tweaks::apply_optimization(&profile).unwrap();
+            assert!(backup.exists());
+
+            restore_tweaks_to_stock(game.path());
+
+            // Stock at rest: movies back, original ini back, no leftovers.
+            // Intent flags are untouched (tested at the command layer).
+            assert!(movies.join("ReadyOrNot_StartupMovie.mp4").exists());
+            assert!(!movies.join("ReadyOrNot_StartupMovie.mp4.bak").exists());
+            assert_eq!(fs::read(&ini).unwrap(), b"[Original]\nkey=orig\n");
+            assert!(!backup.exists());
+
+            let _ = fs::remove_file(&ini);
+            let _ = fs::remove_file(&backup);
+        }
+
         /// Registers a Ready or Not install inside the isolated Steam tree and
         /// returns its library root, so `steam::detect_game_path` finds it.
         fn install_ready_or_not() -> PathBuf {
@@ -803,7 +863,9 @@ mod tests {
                 .await
                 .is_err());
             assert!(ensure_game_stock(state.clone()).await.is_err());
-            assert!(launch_vanilla_game(state).await.is_err());
+            assert!(launch_vanilla_game(app.handle().clone(), state)
+                .await
+                .is_err());
         }
 
         #[tokio::test]

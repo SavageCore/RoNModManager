@@ -5,7 +5,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::commands::game::sync_mod_links_for_game_path;
+use crate::commands::game::{restore_tweaks_to_stock, sync_mod_links_for_game_path};
 use crate::state::AppState;
 
 /// How often the watcher polls for the game process.
@@ -21,7 +21,7 @@ struct GameRunningEvent {
     running: bool,
 }
 
-fn emit_game_running(app: &AppHandle, running: bool) {
+fn emit_game_running<R: tauri::Runtime>(app: &AppHandle<R>, running: bool) {
     let _ = app.emit("game-running", &GameRunningEvent { running });
 }
 
@@ -186,7 +186,7 @@ fn is_game_running_windows() -> bool {
 /// Does nothing when the host processes are not observable (sandboxed without
 /// `flatpak-spawn`): a blind watcher would time out and unlink mods from
 /// under a live game.
-pub fn spawn_game_exit_watcher(app: AppHandle, game_path: PathBuf) {
+pub fn spawn_game_exit_watcher<R: tauri::Runtime>(app: AppHandle<R>, game_path: PathBuf) {
     if !host_process_scan_available() {
         log::warn!(
             "game watcher: host processes not visible (sandboxed without flatpak-spawn); not watching"
@@ -231,14 +231,16 @@ pub fn spawn_game_exit_watcher(app: AppHandle, game_path: PathBuf) {
         if let Err(e) = sync_mod_links_for_game_path(&game_path, Vec::new()) {
             log::warn!("game watcher: failed to restore stock folder: {e}");
         }
+        // Transient tweaks applied for the launch go back to stock as well.
+        restore_tweaks_to_stock(&game_path);
         emit_game_running(&app, false);
     });
 
-    struct WatcherGuard<'a> {
-        app: &'a AppHandle,
+    struct WatcherGuard<'a, R: tauri::Runtime> {
+        app: &'a AppHandle<R>,
     }
 
-    impl Drop for WatcherGuard<'_> {
+    impl<R: tauri::Runtime> Drop for WatcherGuard<'_, R> {
         fn drop(&mut self) {
             self.app
                 .state::<AppState>()

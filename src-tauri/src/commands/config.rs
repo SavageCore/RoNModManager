@@ -163,32 +163,47 @@ pub async fn set_theme(state: State<'_, AppState>, theme: ThemeMode) -> Result<(
     Ok(())
 }
 
+/// Enable intro skip. With link-on-launch-only the tweak is transient: only
+/// the intent flag is stored here (disk stays stock at rest, applied at launch
+/// and restored on exit). Otherwise it is applied to disk immediately.
 #[tauri::command]
 pub async fn apply_intro_skip(state: State<'_, AppState>) -> Result<()> {
     let config = state.get_config()?;
     let game_path = config.game_path.ok_or_else(|| {
         crate::models::AppError::Validation("game path not configured".to_string())
     })?;
-    crate::services::config_tweaks::apply_intro_skip(&game_path)?;
+    if !config.link_on_launch_only {
+        crate::services::config_tweaks::apply_intro_skip(&game_path)?;
+    }
     state.update_config(|c| c.intro_skip_enabled = true)?;
     Ok(())
 }
 
+/// Disable intro skip. Transient mode only clears the intent flag; otherwise
+/// the movie files are restored on disk immediately.
 #[tauri::command]
 pub async fn undo_intro_skip(state: State<'_, AppState>) -> Result<()> {
     let config = state.get_config()?;
     let game_path = config.game_path.ok_or_else(|| {
         crate::models::AppError::Validation("game path not configured".to_string())
     })?;
-    crate::services::config_tweaks::undo_intro_skip(&game_path)?;
+    if !config.link_on_launch_only {
+        crate::services::config_tweaks::undo_intro_skip(&game_path)?;
+    }
     state.update_config(|c| c.intro_skip_enabled = false)?;
     Ok(())
 }
 
+/// Live disk state: true while the movie files are actually renamed away.
+/// This is the source of truth for badges; the config flag is only intent
+/// (in transient mode the disk is stock at rest while intent stays enabled).
 #[tauri::command]
 pub async fn is_intro_skip_applied(state: State<'_, AppState>) -> Result<bool> {
     let config = state.get_config()?;
-    Ok(config.intro_skip_enabled)
+    let Some(game_path) = config.game_path else {
+        return Ok(false);
+    };
+    Ok(crate::services::config_tweaks::is_intro_skip_applied(&game_path).unwrap_or(false))
 }
 
 #[tauri::command]
@@ -201,9 +216,16 @@ pub async fn detect_gpu_profile() -> Result<Option<String>> {
     Ok(crate::services::config_tweaks::detect_gpu())
 }
 
+/// Apply an Engine.ini optimization profile. Transient mode (link-on-launch-only)
+/// only stores intent; otherwise the ini is overwritten immediately. Unknown
+/// profiles are rejected in both modes.
 #[tauri::command]
 pub async fn apply_optimization(state: State<'_, AppState>, profile: String) -> Result<()> {
-    crate::services::config_tweaks::apply_optimization(&profile)?;
+    // Validate before touching flags or disk.
+    crate::services::config_tweaks::get_profile_content(&profile)?;
+    if !state.get_config()?.link_on_launch_only {
+        crate::services::config_tweaks::apply_optimization(&profile)?;
+    }
     state.update_config(|c| {
         c.optimization_enabled = true;
         c.optimization_profile = Some(profile);
@@ -216,11 +238,17 @@ pub async fn get_applied_optimization_profile() -> Result<Option<String>> {
     Ok(crate::services::config_tweaks::detect_applied_profile())
 }
 
+/// Disable optimization. Transient mode only clears intent (disk is already
+/// stock at rest; a live game keeps its ini until the exit watcher restores
+/// it). Otherwise the original ini is restored immediately.
 #[tauri::command]
 pub async fn disable_optimization(state: State<'_, AppState>) -> Result<()> {
-    crate::services::config_tweaks::restore_optimization()?;
+    if !state.get_config()?.link_on_launch_only {
+        crate::services::config_tweaks::restore_optimization()?;
+    }
     state.update_config(|c| {
         c.optimization_enabled = false;
+        c.optimization_profile = None;
     })?;
     Ok(())
 }
@@ -446,6 +474,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn transient_intro_skip_stores_intent_and_leaves_disk_stock() {
+        let game = fake_game_dir();
+        let app = mock_app_with(AppConfig {
+            game_path: Some(game.path().to_path_buf()),
+            link_on_launch_only: true,
+            ..AppConfig::default()
+        });
+        let state = app.state::<AppState>();
+        let movies = game.path().join("ReadyOrNot/Content/Movies");
+
+        apply_intro_skip(state.clone()).await.unwrap();
+        // Intent stored, but disk stays stock at rest.
+        assert!(state.get_config().unwrap().intro_skip_enabled);
+        assert!(movies.join("ReadyOrNot_StartupMovie.mp4").exists());
+        assert!(!movies.join("ReadyOrNot_StartupMovie.mp4.bak").exists());
+        assert!(!is_intro_skip_applied(state.clone()).await.unwrap());
+
+        undo_intro_skip(state.clone()).await.unwrap();
+        assert!(!state.get_config().unwrap().intro_skip_enabled);
+        assert!(movies.join("ReadyOrNot_StartupMovie.mp4").exists());
+    }
+
+    #[tokio::test]
+    async fn intro_skip_status_reflects_disk_not_the_flag() {
+        let game = fake_game_dir();
+        let app = mock_app_with(AppConfig {
+            game_path: Some(game.path().to_path_buf()),
+            ..AppConfig::default()
+        });
+        let state = app.state::<AppState>();
+
+        // Flag off but files renamed on disk (e.g. transient apply at launch).
+        config_tweaks::apply_intro_skip(game.path()).unwrap();
+        assert!(!state.get_config().unwrap().intro_skip_enabled);
+        assert!(is_intro_skip_applied(state.clone()).await.unwrap());
+    }
+
+    #[tokio::test]
     async fn gpu_profiles_are_listed() {
         let profiles = get_gpu_profiles().await.unwrap();
         assert!(profiles.contains(&"RTX_4090".to_string()));
@@ -463,7 +529,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn apply_and_disable_optimization_round_trip_the_engine_ini() {
+        let _guard = crate::test_support::shared_tree_guard();
         let profile = config_tweaks::available_gpu_profiles()
             .first()
             .cloned()
@@ -484,6 +552,147 @@ mod tests {
         );
 
         disable_optimization(state.clone()).await.unwrap();
+        let config = state.get_config().unwrap();
+        assert!(!config.optimization_enabled);
+        // Clean at rest: no stale profile left in config.
+        assert_eq!(config.optimization_profile, None);
+        assert_eq!(get_applied_optimization_profile().await.unwrap(), None);
+
+        // Second disable is a no-op (idempotent), not an error.
+        disable_optimization(state.clone()).await.unwrap();
+        let config = state.get_config().unwrap();
+        assert!(!config.optimization_enabled);
+        assert_eq!(config.optimization_profile, None);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn disable_optimization_without_backup_preserves_user_engine_ini() {
+        // Pin HOME first: the ini path resolves under it, so it must be
+        // isolated before the path is computed, not just before first use.
+        crate::test_support::isolated_root();
+        let _guard = crate::test_support::shared_tree_guard();
+        use crate::services::steam::get_config_path;
+        let ini = get_config_path().unwrap().join("Engine.ini");
+        let backup = std::path::PathBuf::from(format!("{}{}", ini.display(), ".ronmm.bak"));
+        // Start from a clean slate: no leftover ini/bak from other tests.
+        let _ = std::fs::remove_file(&ini);
+        let _ = std::fs::remove_file(&backup);
+
+        // A user-authored ini that matches none of our bundled profiles.
+        std::fs::create_dir_all(ini.parent().unwrap()).unwrap();
+        std::fs::write(&ini, b"[Custom]\nkey=value\n").unwrap();
+
+        let app = mock_app_with(AppConfig::default());
+        let state = app.state::<AppState>();
+
+        // Spurious disable (never applied): must not delete the user's file.
+        disable_optimization(state.clone()).await.unwrap();
+        assert_eq!(std::fs::read(&ini).unwrap(), b"[Custom]\nkey=value\n");
+        assert!(!backup.exists());
+        let config = state.get_config().unwrap();
+        assert!(!config.optimization_enabled);
+        assert_eq!(config.optimization_profile, None);
+
+        // And again: still a no-op.
+        disable_optimization(state.clone()).await.unwrap();
+        assert_eq!(std::fs::read(&ini).unwrap(), b"[Custom]\nkey=value\n");
+
+        let _ = std::fs::remove_file(&ini);
+        let _ = std::fs::remove_file(&backup);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn double_restore_preserves_the_original_engine_ini() {
+        // Pin HOME first: the ini path resolves under it, so it must be
+        // isolated before the path is computed, not just before first use.
+        crate::test_support::isolated_root();
+        let _guard = crate::test_support::shared_tree_guard();
+        use crate::services::steam::get_config_path;
+        let ini = get_config_path().unwrap().join("Engine.ini");
+        let backup = std::path::PathBuf::from(format!("{}{}", ini.display(), ".ronmm.bak"));
+        let _ = std::fs::remove_file(&ini);
+        let _ = std::fs::remove_file(&backup);
+
+        std::fs::create_dir_all(ini.parent().unwrap()).unwrap();
+        std::fs::write(&ini, b"[Original]\nkey=orig\n").unwrap();
+
+        let profile = config_tweaks::available_gpu_profiles()
+            .first()
+            .cloned()
+            .unwrap();
+        let app = mock_app_with(AppConfig::default());
+        let state = app.state::<AppState>();
+
+        apply_optimization(state.clone(), profile).await.unwrap();
+        assert!(backup.exists());
+
+        disable_optimization(state.clone()).await.unwrap();
+        assert_eq!(std::fs::read(&ini).unwrap(), b"[Original]\nkey=orig\n");
+        assert!(!backup.exists());
+
+        // Second restore must not delete the original.
+        disable_optimization(state.clone()).await.unwrap();
+        assert_eq!(std::fs::read(&ini).unwrap(), b"[Original]\nkey=orig\n");
+
+        let _ = std::fs::remove_file(&ini);
+        let _ = std::fs::remove_file(&backup);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn transient_optimization_stores_intent_and_leaves_disk_stock() {
+        // Pin HOME first: the ini path resolves under it, so it must be
+        // isolated before the path is computed, not just before first use.
+        crate::test_support::isolated_root();
+        let _guard = crate::test_support::shared_tree_guard();
+        use crate::services::steam::get_config_path;
+        let ini = get_config_path().unwrap().join("Engine.ini");
+        let backup = std::path::PathBuf::from(format!("{}{}", ini.display(), ".ronmm.bak"));
+        let _ = std::fs::remove_file(&ini);
+        let _ = std::fs::remove_file(&backup);
+
+        let profile = config_tweaks::available_gpu_profiles()
+            .first()
+            .cloned()
+            .unwrap();
+        let app = mock_app_with(AppConfig {
+            link_on_launch_only: true,
+            ..AppConfig::default()
+        });
+        let state = app.state::<AppState>();
+
+        apply_optimization(state.clone(), profile.clone())
+            .await
+            .unwrap();
+        let config = state.get_config().unwrap();
+        assert!(config.optimization_enabled);
+        assert_eq!(config.optimization_profile, Some(profile));
+        // Disk untouched: stock at rest, no backup residue.
+        assert_eq!(get_applied_optimization_profile().await.unwrap(), None);
+        assert!(!backup.exists());
+
+        disable_optimization(state.clone()).await.unwrap();
+        let config = state.get_config().unwrap();
+        assert!(!config.optimization_enabled);
+        assert_eq!(config.optimization_profile, None);
+
+        let _ = std::fs::remove_file(&ini);
+        let _ = std::fs::remove_file(&backup);
+    }
+
+    #[tokio::test]
+    async fn transient_optimization_still_rejects_an_unknown_profile() {
+        let app = mock_app_with(AppConfig {
+            link_on_launch_only: true,
+            ..AppConfig::default()
+        });
+        let state = app.state::<AppState>();
+
+        assert!(apply_optimization(state.clone(), "Voodoo_3dfx".to_string())
+            .await
+            .is_err());
         assert!(!state.get_config().unwrap().optimization_enabled);
     }
 }

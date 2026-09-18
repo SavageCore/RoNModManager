@@ -118,6 +118,7 @@
   let themeDemoOriginal: "light" | "dark" | "system" = "system";
   let logLevel: "error" | "warn" | "info" | "debug" | "trace" = "info";
   let introSkipApplied = false;
+  let introSkipEnabled = false;
   let applyingIntroSkip = false;
   let undoingIntroSkip = false;
   let gpuProfiles: string[] = [];
@@ -129,6 +130,9 @@
   let applyingOpt = false;
   $: isCurrentApplied =
     !!appliedProfile && !!selectedGpu && appliedProfile === selectedGpu;
+  // Transient mode: intent alone (stock at rest) also offers removal.
+  $: isOptRemoveVisible =
+    isCurrentApplied || (linkOnLaunchOnly && optimizationEnabled);
   let runningInFlatpak = false;
   let currentVersion = "";
   let updateCheckInProgress = false;
@@ -263,6 +267,9 @@
       }
     }
 
+    introSkipEnabled = config.intro_skip_enabled ?? false;
+    // Live disk state: with link-on-launch-only the tweak is transient, so at
+    // rest the disk is stock even while intent stays enabled.
     introSkipApplied = await isIntroSkipApplied().catch(() => false);
     optimizationEnabled = config.optimization_enabled ?? false;
     optimizationProfile = config.optimization_profile ?? null;
@@ -359,6 +366,15 @@
             await syncModLinks(profile.installed_mod_names);
           }
         }
+        // Back to persistent tweaks: write the stored intent to disk so the
+        // folder matches what the switches show.
+        if (cfg.intro_skip_enabled) {
+          await applyIntroSkip();
+        }
+        if (cfg.optimization_enabled && cfg.optimization_profile) {
+          await applyOptimization(cfg.optimization_profile);
+        }
+        await refresh();
       }
       toastStore.success(
         target
@@ -606,9 +622,17 @@
   async function applyIntroSkipConfig() {
     applyingIntroSkip = true;
     try {
+      // Persistent mode rewrites game files: never do that under a running game.
+      if (!linkOnLaunchOnly && (await isGameRunning().catch(() => false))) {
+        toastStore.error("Close the game before changing intro skip.");
+        return;
+      }
       await applyIntroSkip();
-      introSkipApplied = true;
-      toastStore.success("Intro skip applied successfully!");
+      toastStore.success(
+        linkOnLaunchOnly
+          ? "Intro skip will apply on launch."
+          : "Intro skip applied successfully!",
+      );
     } catch (error) {
       toastStore.error(`Failed to apply intro skip: ${error}`);
     } finally {
@@ -620,8 +644,11 @@
   async function undoIntroSkipConfig() {
     undoingIntroSkip = true;
     try {
+      if (!linkOnLaunchOnly && (await isGameRunning().catch(() => false))) {
+        toastStore.error("Close the game before changing intro skip.");
+        return;
+      }
       await undoIntroSkip();
-      introSkipApplied = false;
       toastStore.success("Intro skip reverted.");
     } catch (error) {
       toastStore.error(`Failed to undo intro skip: ${error}`);
@@ -635,8 +662,16 @@
     if (!selectedGpu) return;
     applyingOpt = true;
     try {
+      if (!linkOnLaunchOnly && (await isGameRunning().catch(() => false))) {
+        toastStore.error("Close the game before changing optimization.");
+        return;
+      }
       await applyOptimization(selectedGpu);
-      toastStore.success(`Optimization applied: ${selectedGpu}`);
+      toastStore.success(
+        linkOnLaunchOnly
+          ? `Optimization will apply on launch: ${selectedGpu}`
+          : `Optimization applied: ${selectedGpu}`,
+      );
       await refresh();
     } catch (e) {
       toastStore.error(String(e));
@@ -647,6 +682,10 @@
   async function removeOpt() {
     applyingOpt = true;
     try {
+      if (!linkOnLaunchOnly && (await isGameRunning().catch(() => false))) {
+        toastStore.error("Close the game before changing optimization.");
+        return;
+      }
       await disableOptimization();
       toastStore.success("Optimization removed");
       await refresh();
@@ -1202,7 +1241,12 @@
       <div class="prefs-row" data-tour="settings-intro-skip">
         <div class="prefs-row-text">
           <div class="prefs-row-title">Intro Skip</div>
-          <div class="prefs-row-subtitle">Removes startup movies</div>
+          <div class="prefs-row-subtitle">
+            Removes startup movies{#if linkOnLaunchOnly}
+              - applies on launch, stock at rest{/if}{#if introSkipApplied}
+              - currently applied{:else}
+              - currently stock{/if}
+          </div>
         </div>
         <div class="prefs-row-suffix">
           <label
@@ -1210,10 +1254,10 @@
             class:opacity-50={applyingIntroSkip || undoingIntroSkip}
             ><input
               type="checkbox"
-              checked={introSkipApplied}
+              checked={introSkipEnabled}
               disabled={applyingIntroSkip || undoingIntroSkip}
               on:change={() => {
-                if (introSkipApplied) void undoIntroSkipConfig();
+                if (introSkipEnabled) void undoIntroSkipConfig();
                 else void applyIntroSkipConfig();
               }}
             /><span class="gale-switch-track"></span></label
@@ -1229,7 +1273,10 @@
               target="_blank"
               style="color:var(--clr-primary-300);text-decoration:underline;"
               >AlexRenderX</a
-            >
+            >{#if linkOnLaunchOnly}
+              - applies on launch{/if}{#if appliedProfile}
+              - currently applied{:else}
+              - currently stock{/if}
           </div>
         </div>
         <div class="prefs-row-suffix">
@@ -1238,7 +1285,7 @@
             >{#each gpuProfiles as p}<option value={p}
                 >{p.replace(/_/g, " ").replace(/-/g, " / ")}</option
               >{/each}</select
-          >{#if isCurrentApplied}<button
+          >{#if isOptRemoveVisible}<button
               class="btn btn-sm"
               disabled={applyingOpt}
               on:click={removeOpt}>{applyingOpt ? "…" : "Restore"}</button

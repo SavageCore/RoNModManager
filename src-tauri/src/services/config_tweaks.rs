@@ -35,7 +35,11 @@ pub fn apply_intro_skip(game_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Restore intro movie files from .bak backups
+/// Restore intro movie files from .bak backups. Clean at rest: after undo no
+/// `.bak` files remain, and calling undo twice is a no-op. If both the movie
+/// and its backup exist (game update restored the file while skip was active),
+/// the live file is already stock so just drop the stale backup instead of
+/// renaming over it (cross-platform deterministic).
 pub fn undo_intro_skip(game_path: &Path) -> Result<()> {
     let movies_dir = get_movies_path(game_path);
 
@@ -44,8 +48,15 @@ pub fn undo_intro_skip(game_path: &Path) -> Result<()> {
         let bak = movies_dir.join(format!("{file_name}.bak"));
 
         if bak.exists() {
-            fs::rename(&bak, &mp4)
-                .map_err(|e| AppError::Validation(format!("failed to restore {file_name}: {e}")))?;
+            if mp4.exists() {
+                fs::remove_file(&bak).map_err(|e| {
+                    AppError::Validation(format!("failed to remove {file_name}.bak: {e}"))
+                })?;
+            } else {
+                fs::rename(&bak, &mp4).map_err(|e| {
+                    AppError::Validation(format!("failed to restore {file_name}: {e}"))
+                })?;
+            }
         }
     }
 
@@ -260,12 +271,17 @@ pub fn detect_applied_profile() -> Option<String> {
     None
 }
 
+/// Restore the pre-optimization `Engine.ini`. Clean at rest: after restore no
+/// `.ronmm.bak` remains and the folder is stock (original content or no file).
+/// Idempotent: a second call is a no-op and never deletes the user's original.
+/// When no backup exists, only a file matching one of our own bundled profiles
+/// is removed (apply created it from scratch); anything else is left alone.
 pub fn restore_optimization() -> Result<()> {
     let ini = get_engine_ini_path()?;
     let backup = backup_path(&ini);
     if backup.exists() {
         fs::rename(&backup, &ini).map_err(|e| AppError::Validation(e.to_string()))?;
-    } else if ini.exists() {
+    } else if detect_applied_profile().is_some() {
         fs::remove_file(&ini).map_err(|e| AppError::Validation(e.to_string()))?;
     }
     Ok(())
@@ -392,6 +408,41 @@ mod tests {
             fs::read(movies.join("ReadyOrNot_StartupMovie.mp4.bak")).unwrap(),
             b"old"
         );
+    }
+
+    #[test]
+    fn test_undo_intro_skip_is_idempotent_and_clean_at_rest() {
+        let game = fake_game_path();
+        let movies = movies_dir(game.path());
+        fs::write(movies.join("ReadyOrNot_StartupMovie.mp4"), b"a").unwrap();
+        fs::write(movies.join("RoNLogo.mp4"), b"b").unwrap();
+
+        apply_intro_skip(game.path()).unwrap();
+        undo_intro_skip(game.path()).unwrap();
+        // Second undo is a no-op: movies stay, no .bak residue.
+        undo_intro_skip(game.path()).unwrap();
+        assert!(movies.join("ReadyOrNot_StartupMovie.mp4").exists());
+        assert!(movies.join("RoNLogo.mp4").exists());
+        assert!(!movies.join("ReadyOrNot_StartupMovie.mp4.bak").exists());
+        assert!(!movies.join("RoNLogo.mp4.bak").exists());
+        assert!(!is_intro_skip_applied(game.path()).unwrap());
+    }
+
+    #[test]
+    fn test_undo_intro_skip_drops_stale_backup_when_movie_present() {
+        let game = fake_game_path();
+        let movies = movies_dir(game.path());
+        // Game update restored the mp4 while our backup is still around;
+        // undo means "stock at rest", so keep the live file and drop the bak.
+        fs::write(movies.join("ReadyOrNot_StartupMovie.mp4"), b"new").unwrap();
+        fs::write(movies.join("ReadyOrNot_StartupMovie.mp4.bak"), b"old").unwrap();
+
+        undo_intro_skip(game.path()).unwrap();
+        assert_eq!(
+            fs::read(movies.join("ReadyOrNot_StartupMovie.mp4")).unwrap(),
+            b"new"
+        );
+        assert!(!movies.join("ReadyOrNot_StartupMovie.mp4.bak").exists());
     }
 
     #[test]
