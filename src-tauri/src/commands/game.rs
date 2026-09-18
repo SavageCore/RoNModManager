@@ -894,6 +894,11 @@ mod tests {
 
         #[tokio::test]
         async fn launch_option_status_reports_platform_support() {
+            // Pin HOME first: localconfig paths resolve under it, so without
+            // isolation this reads the developer's real Steam userdata (where
+            // the option may already be set) instead of an empty tree.
+            crate::test_support::isolated_root();
+            let _guard = crate::test_support::shared_tree_guard();
             let status = ue4ss_launch_option_status();
 
             assert_eq!(status.supported, cfg!(target_os = "linux"));
@@ -903,6 +908,10 @@ mod tests {
 
         #[tokio::test]
         async fn setting_the_launch_option_without_steam_userdata_fails() {
+            // Isolated tree has no userdata: deterministic NotFound instead of
+            // touching (or depending on) the real localconfig.vdf files.
+            crate::test_support::isolated_root();
+            let _guard = crate::test_support::shared_tree_guard();
             let result = set_ue4ss_launch_option();
             assert!(result.is_err());
         }
