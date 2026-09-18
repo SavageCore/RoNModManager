@@ -22,11 +22,29 @@
  *   collections and profiles.
  */
 import { execSync } from "child_process";
+import path from "path";
 
 export const PAGES = ["wizard", "mods", "collections", "profiles", "settings"];
 export const MAIN_PAGES = ["mods", "collections", "profiles", "settings"];
 
 export const INCOGNITO_DUMMY_FILE = "src/lib/stores/incognitoMode.ts";
+
+// Docs-site sync: `make screenshots` also refreshes the RoNModManager-site
+// checkout (a sibling directory by default, overridable via SITE_REPO_DIR).
+// Only mods-dark.png is synced - it is the one screenshot the site imports
+// (src/pages/index.astro). Per the site's ASSETS.md, site copies are the
+// 1280x840 app window, so the 40px README border is shaved off first.
+export const SITE_REPO_DIR_NAME = "RoNModManager-site";
+export const SITE_SCREENSHOT_BORDER = 40;
+export const SITE_SCREENSHOT_SYNC = [
+  { source: "dark/mods.png", dest: "src/assets/screenshots/mods-dark.png" },
+];
+
+/** Site checkout dir: SITE_REPO_DIR, or the sibling RoNModManager-site. */
+export function siteRepoDir(rootDir, env = process.env) {
+  if (env.SITE_REPO_DIR) return env.SITE_REPO_DIR;
+  return path.resolve(rootDir, "..", SITE_REPO_DIR_NAME);
+}
 
 // Source files whose uncommitted changes affect every page (shared chrome,
 // theming, global styles, layout). incognitoMode.ts is deliberately NOT

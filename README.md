@@ -159,6 +159,8 @@ The script starts the Vite dev server, launches the debug binary (which connects
 
 Before launching anything, `scripts/screenshot-plan.mjs` maps uncommitted source changes to the pages they can affect - page sources, shared chrome, and `DUMMY_*` dummy-data exports with field-level precision (e.g. an `installedAt`-only change retakes mods but skips collections and profiles, since those never render it). Screenshots with no affecting changes are skipped entirely and never taken. `make screenshots-force` retakes everything.
 
+After saving, the script syncs the dark mods shot to the docs-site checkout (`../RoNModManager-site`, or `SITE_REPO_DIR` to override), shaving the 40px README border to the 1280x840 window the site imports as `src/assets/screenshots/mods-dark.png`. The sync also runs when every capture is skipped, so a stale site copy heals itself; a missing site checkout only warns.
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action                                                                    |
