@@ -288,16 +288,26 @@
     text-align: left;
     cursor: pointer;
   }
+  /* Pointer hover and keyboard focus share one highlight. Use the hover token,
+     not the darker pressed one: in dark mode pressed equals the dropdown
+     surface, so hovering a row was invisible. */
   .custom-select-option:hover:not(:disabled),
   .custom-select-option.focused:not(:disabled) {
-    background: var(--clr-btn-adaptive-pressed, rgba(0, 0, 0, 0.08));
+    background: var(--clr-btn-adaptive-hover, rgba(0, 0, 0, 0.12));
   }
-  .custom-select-option.selected {
+  /* Selected always reads as selected. This must outrank the hover/focus rule
+     above: on open the selected row is also the focused one, and the old
+     higher-specificity focus rule masked it with the neutral color. */
+  .custom-select-option.selected,
+  .custom-select-option.selected.focused {
     background: var(--clr-primary-300);
     color: var(--clr-primary-text);
   }
+  /* Match primary/danger buttons: hovering the accent inverts to canvas with
+     red text rather than darkening to a less legible red. */
   .custom-select-option.selected:hover:not(:disabled) {
-    background: var(--clr-primary-500);
+    background: var(--clr-primary-text);
+    color: var(--clr-primary-300);
   }
   .custom-select-option.disabled {
     opacity: 0.5;
