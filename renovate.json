@@ -2,6 +2,9 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "schedule": ["every weekend"],
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
   "packageRules": [
     {
       "matchManagers": ["npm"],
@@ -13,7 +16,8 @@
     },
     {
       "matchManagers": ["github-actions"],
-      "groupName": "actions-dependencies"
+      "groupName": "actions-dependencies",
+      "semanticCommitType": "ci"
     },
     {
       "description": "svelte-check 4.x peers require typescript ^5 || ^6; TS 7 has no stable programmatic API for svelte-check yet",
