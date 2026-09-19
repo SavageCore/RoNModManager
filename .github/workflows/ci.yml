@@ -34,9 +34,13 @@ jobs:
           FROM: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           TO: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
-          # A new branch reports an all-zero "before" sha; the PR run covers
-          # the earlier commits, so only the tip is checked there.
-          if [ "${FROM//0/}" = "" ]; then FROM="$TO^"; fi
+          # A new branch reports an all-zero "before" sha, and a force-push can
+          # report a "before" that no longer exists (Renovate rebases its
+          # branches). In both cases fall back to the tip commit; the PR run
+          # still covers the whole range.
+          if [ "${FROM//0/}" = "" ] || ! git cat-file -e "${FROM}^{commit}" 2>/dev/null; then
+            FROM="$TO^"
+          fi
           npx commitlint --from "$FROM" --to "$TO"
 
   lint-frontend:
