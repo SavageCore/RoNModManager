@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   lint-commits:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -44,7 +44,7 @@ jobs:
           npx commitlint --from "$FROM" --to "$TO"
 
   lint-frontend:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -60,7 +60,7 @@ jobs:
           tool: git-cliff@2.13.1
       - run: npm run test:unit:coverage
       - name: Upload frontend coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
@@ -69,7 +69,7 @@ jobs:
           verbose: true
 
   build-userscript:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -86,7 +86,7 @@ jobs:
           npm run build
 
   lint-backend:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -114,7 +114,7 @@ jobs:
       - run: cargo test --manifest-path src-tauri/Cargo.toml
 
   coverage-backend:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -149,7 +149,7 @@ jobs:
       - name: Generate backend lcov
         run: cargo llvm-cov --manifest-path src-tauri/Cargo.toml --lib --lcov --output-path lcov-backend.info --fail-under-lines 55 --remap-path-prefix
       - name: Upload backend coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: lcov-backend.info
