@@ -9,6 +9,7 @@ CARGO_MANIFEST   := src-tauri/Cargo.toml
 export RUSTC_WRAPPER := ccache
 
 .PHONY: help install dev dev-xwayland dev-devtools build build-fast build-frontend release \
+        userscript-build userscript-upload \
         lint format check lint-frontend lint-backend fmt-backend clippy lint-all \
         test-frontend test-backend test \
         screenshots screenshots-build screenshots-force screenshots-wizard \
@@ -55,6 +56,14 @@ build-frontend: ## Build only the Svelte frontend with Vite
 
 release: ## Release build signed via dotenvx (requires .env with signing keys)
 	npm run release
+
+# ── Userscript ────────────────────────────────────────────────────────────────
+
+userscript-build: ## Build the Violentmonkey userscript into userscript/dist
+	cd userscript && npm run build
+
+userscript-upload: userscript-build ## Rebuild + upload the userscript to the latest GitHub release (requires gh auth)
+	gh release upload $$(gh release view --json tagName -q .tagName) userscript/dist/*.user.js --clobber
 
 # ── Lint & Format ─────────────────────────────────────────────────────────────
 
