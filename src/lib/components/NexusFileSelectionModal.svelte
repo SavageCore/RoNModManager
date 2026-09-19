@@ -53,7 +53,7 @@
   <div class="space-y-2 overflow-y-auto mb-5" style="max-height: 320px;">
     {#each files as file (file.fileId)}
       <label
-        class="flex items-start gap-3 p-3 rounded cursor-pointer transition-colors"
+        class="flex items-start gap-3 p-3 rounded-none cursor-pointer transition-colors"
         style="background: var(--clr-surface-alt, rgba(255,255,255,0.04)); border: 1px solid {selected.includes(
           file,
         )
@@ -77,7 +77,7 @@
             </span>
             {#if file.version}
               <span
-                class="text-xs px-1.5 py-0.5 rounded"
+                class="text-xs px-1.5 py-0.5 rounded-none"
                 style="color: var(--clr-primary-300); background: color-mix(in srgb, var(--clr-primary-300) 15%, transparent);"
               >
                 v{file.version.replace(/^v/i, "")}

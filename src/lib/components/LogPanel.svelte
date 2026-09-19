@@ -90,7 +90,7 @@
 
 {#if isVisible}
   <div
-    class="fixed right-4 z-[900] flex flex-col rounded-lg border shadow-xl"
+    class="fixed right-4 z-[900] flex flex-col rounded-none border shadow-xl"
     data-tour={tourId ? `${tourId}-panel` : undefined}
     style="bottom: calc(2.25rem + 0.5rem); width: {width}; {steady
       ? 'height'
@@ -104,7 +104,7 @@
         >{title}</span
       >
       <button
-        class="h-6 w-6 flex items-center justify-center rounded"
+        class="h-6 w-6 flex items-center justify-center rounded-none"
         style="color: var(--clr-text-secondary);"
         on:click={() => dispatch("close")}
         aria-label="Minimise"><Minus size={14} /></button
@@ -115,7 +115,7 @@
 
     <div
       use:autoScroll={steady}
-      class="overflow-y-auto flex-1 mx-3 mb-2 mt-2 p-2 rounded text-xs font-mono"
+      class="overflow-y-auto flex-1 mx-3 mb-2 mt-2 p-2 rounded-none text-xs font-mono"
       style="background: var(--clr-surface-variant, var(--adw-dark-fill-color, #1e1e1e)); color: var(--clr-text);"
     >
       <slot />

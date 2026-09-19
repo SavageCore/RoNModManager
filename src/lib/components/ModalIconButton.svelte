@@ -7,7 +7,7 @@
 
 <button
   on:click
-  class="{padding} rounded cursor-pointer transition hover:opacity-70"
+  class="{padding} rounded-none cursor-pointer transition hover:opacity-70"
   style="color: var(--clr-text-secondary);"
   aria-label={label}
   title={label}

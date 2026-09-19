@@ -27,9 +27,12 @@ import fs from "fs";
 import {
   INCOGNITO_DUMMY_FILE,
   MAIN_PAGES,
+  SITE_SCREENSHOT_BORDER,
+  SITE_SCREENSHOT_SYNC,
   getChangedFiles,
   getFileDiff,
   planScreenshots,
+  siteRepoDir,
 } from "./screenshot-plan.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -48,6 +51,33 @@ try {
   importCmd = "magick import";
   convertCmd = "magick";
 } catch {}
+
+// Sync cropped copies to the docs-site checkout. The site imports only
+// mods-dark.png; per its ASSETS.md the copies are the 1280x840 app window,
+// so the 40px README border is shaved off. Missing checkout warns and the
+// run stays green (SITE_REPO_DIR overrides the sibling default).
+function syncSiteScreenshots() {
+  const siteDir = siteRepoDir(ROOT);
+  if (!fs.existsSync(siteDir)) {
+    console.log(
+      `\nSite sync skipped: ${siteDir} not found (set SITE_REPO_DIR to override).`,
+    );
+    return;
+  }
+  console.log("\nSite sync:");
+  for (const { source, dest } of SITE_SCREENSHOT_SYNC) {
+    const src = path.join(OUT, source);
+    const dst = path.join(siteDir, dest);
+    if (!fs.existsSync(src)) {
+      console.log(`  - skipped ${dest} (source ${source} missing)`);
+      continue;
+    }
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    const b = SITE_SCREENSHOT_BORDER;
+    execSync(`${convertCmd} "${src}" -shave ${b}x${b} "${dst}"`);
+    console.log(`  ✓  ${dest}`);
+  }
+}
 
 const appBinary = path.join(
   ROOT,
@@ -157,6 +187,7 @@ if (planTotal === 0) {
       "Planning reads the working tree only, so a change that is already\n" +
       "committed needs SCREENSHOT_FORCE=1 (make screenshots-force).",
   );
+  syncSiteScreenshots();
   process.exit(0);
 }
 
@@ -394,3 +425,4 @@ if (originalConfig) {
 }
 
 console.log(`\nSaved to ${path.relative(ROOT, OUT)}/ (${takenCount} taken)`);
+syncSiteScreenshots();

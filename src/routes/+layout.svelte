@@ -30,6 +30,7 @@
   } from "$lib/api/commands";
   import FooterStatusBar from "$lib/components/FooterStatusBar.svelte";
   import LaunchButton from "$lib/components/LaunchButton.svelte";
+  import CustomSelect from "$lib/components/CustomSelect.svelte";
   import ImportLogPanel from "$lib/components/ImportLogPanel.svelte";
   import SyncPanel from "$lib/components/SyncPanel.svelte";
   import Toast from "$lib/components/Toast.svelte";
@@ -69,14 +70,11 @@
   import semver from "semver";
   import { onMount } from "svelte";
   import { get } from "svelte/store";
-  // Self-hosted Adwaita fonts (OFL-1.1, via Fontsource) - must load before app.css.
-  // Sans covers body + semibold headings; Mono covers log/code views.
-  import "@fontsource/adwaita-sans/400.css";
-  import "@fontsource/adwaita-sans/500.css";
-  import "@fontsource/adwaita-sans/600.css";
-  import "@fontsource/adwaita-sans/700.css";
-  import "@fontsource/adwaita-mono/400.css";
-  import "@fontsource/adwaita-mono/700.css";
+  // Self-hosted Rajdhani (OFL-1.1, via Fontsource) - must load before app.css.
+  // Display face for headings and buttons; body stays system sans.
+  import "@fontsource/rajdhani/500.css";
+  import "@fontsource/rajdhani/600.css";
+  import "@fontsource/rajdhani/700.css";
   import "../app.css";
 
   import AddModpackPanel from "$lib/components/AddModpackPanel.svelte";
@@ -1041,7 +1039,7 @@
       <img
         src="/icon.ico"
         alt="RoN Mod Manager"
-        class="h-8 w-8 rounded-lg flex-shrink-0"
+        class="h-8 w-8 rounded-none flex-shrink-0"
         style="background: #1e1e1e; padding: 2px;"
       />
       <h1 class="text-base font-semibold truncate">RoN Mod Manager</h1>
@@ -1067,25 +1065,22 @@
 
       <!-- Profile dropdown -->
       <div
-        style="background: var(--clr-btn); color: var(--clr-text);"
-        class="flex h-9 items-center gap-2 rounded-lg px-3 text-sm"
+        class="flex h-9 items-center gap-2 text-sm"
         data-tour="header-profile"
       >
         <label
           for="header-profile-select"
           style="color: var(--clr-text-secondary);">Profile:</label
         >
-        <select
+        <CustomSelect
           id="header-profile-select"
-          class="bg-transparent border-none text-sm font-medium cursor-pointer"
+          ariaLabel="Select profile"
           bind:value={selectedProfile}
           disabled={profiles.length === 0}
-          on:change={handleProfileChange}
-        >
-          {#each profiles as profile (profile.name)}
-            <option value={profile.name}>{profile.name}</option>
-          {/each}
-        </select>
+          width={150}
+          options={profiles.map((p) => ({ value: p.name, label: p.name }))}
+          on:select={handleProfileChange}
+        />
       </div>
 
       <!-- Launch Game split-button: modded (default) + vanilla -->
@@ -1132,7 +1127,7 @@
   {/if}
 
   <div class="flex flex-1 overflow-hidden">
-    <!-- Gale-style Sidebar -->
+    <!-- Tactical Sidebar -->
     <aside
       style="background: var(--clr-surface-variant); border-right: 1px solid var(--adw-border-color);"
       class="flex w-20 flex-col items-center p-0 flex-shrink-0"
@@ -1147,7 +1142,7 @@
             style={$page.url.pathname === item.href
               ? `background: var(--clr-primary-300); color: var(--clr-primary-text);`
               : `color: var(--clr-text);`}
-            class={`flex h-12 w-12 items-center justify-center rounded-lg transition-all hover:bg-[var(--clr-btn-adaptive-hover)] ${
+            class={`flex h-12 w-12 items-center justify-center rounded-none transition-all hover:bg-[var(--clr-btn-adaptive-hover)] ${
               $page.url.pathname === item.href ? "shadow-sm" : ""
             }`}
           >
@@ -1213,7 +1208,7 @@
     >
       <div
         style="background: var(--clr-surface); border: 1px solid var(--adw-border-color);"
-        class="rounded-lg shadow-2xl w-[420px] p-6"
+        class="rounded-none shadow-2xl w-[420px] p-6"
       >
         <h2 class="text-lg font-semibold mb-2" style="color: var(--clr-text);">
           When closing the window…

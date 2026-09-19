@@ -59,7 +59,7 @@
       data-tour="export-guide"
       on:click={() =>
         openUrl(
-          "https://github.com/SavageCore/RoNModManager/blob/main/docs/HOSTING_MODPACKS.md",
+          "https://savagecore.github.io/RoNModManager-site/docs/modpacks/hosting/",
         )}>Hosting guide</button
     >
   </svelte:fragment>

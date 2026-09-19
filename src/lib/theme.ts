@@ -1,8 +1,8 @@
 import type { ThemeMode } from "$lib/types";
 
 const DARK_QUERY = "(prefers-color-scheme: dark)";
-const SKELETON_LIGHT_THEME = "wintry";
-const SKELETON_DARK_THEME = "cerberus";
+const SKELETON_LIGHT_THEME = "ron-light";
+const SKELETON_DARK_THEME = "ron-dark";
 
 function resolveTheme(mode: ThemeMode): "light" | "dark" {
   if (mode !== "system") {

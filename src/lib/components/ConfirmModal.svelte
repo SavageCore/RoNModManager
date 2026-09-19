@@ -6,6 +6,7 @@
   export let message = "";
   export let detail = "";
   export let confirmLabel = "Confirm";
+  export let danger = false;
   export let onConfirm: () => void = () => {};
   export let onCancel: () => void = () => {};
 
@@ -18,6 +19,8 @@
     isVisible = false;
     onCancel();
   }
+
+  $: confirmClass = danger ? "btn btn-danger" : "btn btn-primary";
 </script>
 
 <ModalShell
@@ -46,7 +49,7 @@
   {/if}
   <div class="flex gap-3 justify-end">
     <button class="btn" on:click={handleCancel}>Cancel</button>
-    <button class="btn btn-danger" on:click={handleConfirm}>
+    <button class={confirmClass} on:click={handleConfirm}>
       {confirmLabel}
     </button>
   </div>

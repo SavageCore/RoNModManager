@@ -167,7 +167,7 @@
           : step === i + 1
             ? 'var(--clr-primary-300)'
             : 'var(--adw-border-color)'};"
-        class="h-2 flex-1 rounded-full transition-colors"
+        class="h-2 flex-1 rounded-none transition-colors"
       ></div>
     {/each}
   </div>
@@ -309,7 +309,7 @@
     <div
       style="background: color-mix(in srgb, var(--clr-primary-300) 15%, transparent);
              border-left: 3px solid var(--clr-primary-300);"
-      class="p-3 rounded mb-4"
+      class="p-3 rounded-none mb-4"
     >
       <p class="text-xs font-medium" style="color: var(--clr-text);">Tip</p>
       <p class="text-xs mt-1" style="color: var(--clr-text-secondary);">

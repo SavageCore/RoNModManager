@@ -216,10 +216,15 @@ export const DUMMY_COLLECTION_COLORS: Record<string, string> = {
 };
 
 export const DUMMY_TAGS: Record<string, string[]> = {
-  audio: ["Radio_Comms_Rework", "Urban_Warfare_Bundle"],
+  audio: ["Urban_Warfare_Bundle"],
   equipment: ["Realistic_SWAT_Equipment", "Modular_Gear_Pack"],
-  map: ["Breach_And_Clear_Maps", "Mission_Pack_Vol1"],
+  map: ["Breach_And_Clear_Maps", "Mission_Pack_Vol1", "Radio_Comms_Rework"],
   visual: ["NightVision_Overhaul", "Tactical_HUD"],
+};
+
+/// Mods flagged as broken, so the screenshots can show the broken indicator.
+export const DUMMY_BROKEN_MODS: Record<string, string> = {
+  Tactical_HUD: "HUD elements overlap on ultrawide since the 1.0 update",
 };
 
 export const DUMMY_PROFILES: Profile[] = [

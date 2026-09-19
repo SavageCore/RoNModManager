@@ -44,7 +44,7 @@
 
     <div
       style="background: color-mix(in srgb, var(--clr-danger-300) 12%, transparent); border-color: var(--clr-danger-300);"
-      class="rounded-lg border p-3"
+      class="rounded-none border p-3"
     >
       <p
         style="color: var(--clr-danger-300);"

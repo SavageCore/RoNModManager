@@ -1076,7 +1076,7 @@
         {/if}
 
         {#if $alertStore.message}
-          <p style={alertStyle} class="text-sm p-2 rounded">
+          <p style={alertStyle} class="text-sm p-2 rounded-none">
             {$alertStore.message}
           </p>
         {/if}
@@ -1104,7 +1104,7 @@
             : 'var(--adw-border-color)'}; background: {isDraggingOver
             ? 'color-mix(in srgb, var(--clr-primary-300) 10%, transparent)'
             : 'transparent'};"
-          class="w-full rounded-lg border-2 border-dashed p-8 flex flex-col items-center gap-2 cursor-pointer transition-colors"
+          class="w-full rounded-none border-2 border-dashed p-8 flex flex-col items-center gap-2 cursor-pointer transition-colors"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -1131,7 +1131,7 @@
         </button>
 
         {#if $alertStore.message}
-          <p style={alertStyle} class="text-sm p-2 rounded">
+          <p style={alertStyle} class="text-sm p-2 rounded-none">
             {$alertStore.message}
           </p>
         {/if}

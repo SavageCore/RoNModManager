@@ -9,7 +9,7 @@
     alt="Nexus Mods"
     title="Nexus Mods"
     class="inline-block shrink-0 object-contain"
-    style="width: {size}px; height: {size}px; border-radius: 3px;"
+    style="width: {size}px; height: {size}px;"
   />
 {:else if source === "modio"}
   <img
@@ -17,6 +17,6 @@
     alt="Mod.io"
     title="Mod.io"
     class="inline-block shrink-0 object-contain"
-    style="width: {size}px; height: {size}px; border-radius: 3px;"
+    style="width: {size}px; height: {size}px;"
   />
 {/if}

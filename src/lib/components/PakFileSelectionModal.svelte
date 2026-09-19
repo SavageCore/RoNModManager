@@ -88,7 +88,7 @@
   <div class="space-y-2 overflow-y-auto mb-5" style="max-height: 280px;">
     {#each paks as pak (pak.path)}
       <label
-        class="flex items-center gap-3 p-3 rounded cursor-pointer transition-colors"
+        class="flex items-center gap-3 p-3 rounded-none cursor-pointer transition-colors"
         style="background: var(--clr-surface-alt, rgba(255,255,255,0.04)); border: 1px solid var(--adw-border-color);"
       >
         <input

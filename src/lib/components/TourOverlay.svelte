@@ -202,10 +202,10 @@
   }
   .tour-ring {
     position: absolute;
-    border-radius: 10px;
+    border-radius: 0;
     border: 2px solid var(--clr-primary-300);
     /* Outline, not box-shadow: the shadow is the scrim cut-out. */
-    outline: 4px solid rgba(53, 132, 228, 0);
+    outline: 4px solid rgba(224, 38, 60, 0);
     outline-offset: 2px;
     box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
     transition:
@@ -223,16 +223,16 @@
   @keyframes ring-pulse {
     0%,
     100% {
-      outline-color: rgba(53, 132, 228, 0);
+      outline-color: rgba(224, 38, 60, 0);
     }
     50% {
-      outline-color: rgba(53, 132, 228, 0.95);
+      outline-color: rgba(224, 38, 60, 0.95);
     }
   }
   @media (prefers-reduced-motion: reduce) {
     .tour-ring.is-pulsing {
       animation: none;
-      outline-color: rgba(53, 132, 228, 0.95);
+      outline-color: rgba(224, 38, 60, 0.95);
     }
   }
   .tour-ring.no-ring {
@@ -248,7 +248,7 @@
     display: flex;
     flex-direction: column;
     max-height: calc(100vh - 24px);
-    border-radius: 10px;
+    border-radius: 0;
     padding: 0.9rem 1rem;
     background: var(--clr-surface);
     border: 1px solid var(--adw-border-color);
@@ -282,10 +282,10 @@
   @keyframes tour-pulse {
     0%,
     100% {
-      box-shadow: 0 0 0 0 rgba(53, 132, 228, 0);
+      box-shadow: 0 0 0 0 rgba(224, 38, 60, 0);
     }
     50% {
-      box-shadow: 0 0 0 4px rgba(53, 132, 228, 0.45);
+      box-shadow: 0 0 0 4px rgba(224, 38, 60, 0.45);
     }
   }
   @media (prefers-reduced-motion: reduce) {

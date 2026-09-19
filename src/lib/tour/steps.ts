@@ -424,7 +424,7 @@ export const TOUR_STEPS: TourStep[] = [
     title: "Export dialog",
     body: "Fill in the details and Export writes modpack.json plus the mods folder into your Downloads.",
     bullets: [
-      "Hosting guide opens the README notes on self-hosting and the ronmm:// one-click link.",
+      "Hosting guide opens the docs-site notes on self-hosting and the ronmm:// one-click link.",
       "Press Next to close the dialog for now - nothing is exported until you press Export.",
     ],
     enter: async (ctx) => {

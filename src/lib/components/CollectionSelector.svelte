@@ -38,7 +38,7 @@
   <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
     <div
       style="background: var(--clr-surface); border-color: var(--adw-border-color);"
-      class="border rounded-lg shadow-2xl w-96 max-h-96 overflow-auto p-6"
+      class="border rounded-none shadow-2xl w-96 max-h-96 overflow-auto p-6"
     >
       <h2 style="color: var(--clr-text);" class="text-2xl font-bold mb-4">
         Select Collections
@@ -63,7 +63,7 @@
                 type="checkbox"
                 checked={localSelected.includes(name)}
                 on:change={() => toggle(name)}
-                class="rounded"
+                class="rounded-none"
               />
               <div class="flex-1">
                 <div class="font-medium text-sm">{name}</div>

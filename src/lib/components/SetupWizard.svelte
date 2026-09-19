@@ -454,7 +454,7 @@
   .setup-tip {
     background: color-mix(in srgb, var(--clr-primary-300) 15%, transparent);
     border-left: 3px solid var(--clr-primary-300);
-    border-radius: 0.25rem;
+    border-radius: 0;
     padding: 0.6rem;
     margin-bottom: 0.75rem;
   }

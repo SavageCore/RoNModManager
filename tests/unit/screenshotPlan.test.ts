@@ -2,12 +2,16 @@
 import { describe, expect, it } from "vitest";
 import {
   INCOGNITO_DUMMY_FILE,
+  SITE_REPO_DIR_NAME,
+  SITE_SCREENSHOT_BORDER,
+  SITE_SCREENSHOT_SYNC,
   analyseModGroupsDiff,
   displayNameChangedGroups,
   parseChangedFiles,
   parseCollectionMembers,
   parseDummyDiff,
   planScreenshots,
+  siteRepoDir,
 } from "../../scripts/screenshot-plan.mjs";
 
 const NO_DUMMY = { diffText: "", content: "", isNew: false };
@@ -277,5 +281,24 @@ describe("helpers", () => {
       "export const X = 1;",
     ].join("\n");
     expect(parseCollectionMembers(content).sort()).toEqual(["A", "B", "C"]);
+  });
+});
+
+describe("site sync", () => {
+  it("syncs only the dark mods shot, shaving the 40px README border", () => {
+    expect(SITE_SCREENSHOT_SYNC).toEqual([
+      { source: "dark/mods.png", dest: "src/assets/screenshots/mods-dark.png" },
+    ]);
+    expect(SITE_SCREENSHOT_BORDER).toBe(40);
+  });
+
+  it("resolves the sibling checkout by default, SITE_REPO_DIR on override", () => {
+    expect(siteRepoDir("/repo/RoNModManager", {})).toBe(
+      "/repo/RoNModManager-site",
+    );
+    expect(
+      siteRepoDir("/repo/RoNModManager", { SITE_REPO_DIR: "/custom/site" }),
+    ).toBe("/custom/site");
+    expect(SITE_REPO_DIR_NAME).toBe("RoNModManager-site");
   });
 });

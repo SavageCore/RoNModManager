@@ -41,6 +41,9 @@
     validateAndSaveNexusApiKey,
   } from "$lib/api/apiKeyValidation";
   import ExportModpackModal from "$lib/components/ExportModpackModal.svelte";
+  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
+  import CustomSelect from "$lib/components/CustomSelect.svelte";
+  import type { DropdownOption } from "$lib/components/CustomSelect.svelte";
   import ModalShell from "$lib/components/ModalShell.svelte";
   import SyncAuthModal from "$lib/components/SyncAuthModal.svelte";
   import { syncLogStore } from "$lib/stores/syncLogStore";
@@ -64,11 +67,13 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { downloadDir } from "@tauri-apps/api/path";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { ArrowUp, ArrowUpCircle } from "@lucide/svelte";
+  import { ArrowUp, ArrowUpCircle, Trash2 } from "@lucide/svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { onDestroy, onMount } from "svelte";
   // Persist modpack export metadata per-profile (backend), not localStorage
   let showExportModal = false;
+  /// Pending API-key removal awaiting ConfirmModal approval.
+  let pendingKeyRemoval: "nexus" | "modio-token" | "modio-key" | null = null;
   let exportMeta = {
     name: "",
     version: "",
@@ -552,6 +557,27 @@
     await refresh();
   }
 
+  /// Runs the key removal approved in the ConfirmModal.
+  async function confirmKeyRemoval() {
+    if (pendingKeyRemoval === "nexus") {
+      nexusKeyInput = "";
+      await saveNexusKey();
+    } else if (pendingKeyRemoval === "modio-token") {
+      await disconnect();
+    } else if (pendingKeyRemoval === "modio-key") {
+      modioApiKeyInput = "";
+      await saveModioApiKey();
+    }
+    pendingKeyRemoval = null;
+  }
+
+  $: keyRemovalMessage =
+    pendingKeyRemoval === "nexus"
+      ? "Remove the Nexus API key? Premium downloads will need it again."
+      : pendingKeyRemoval === "modio-token"
+        ? "Remove the mod.io token? Mod downloads will need it again."
+        : "Remove the mod.io API key? Token validation will need it again.";
+
   function openNexusKeyModal() {
     nexusKeyInput = nexusApiKey;
     showNexusKeyModal = true;
@@ -1014,17 +1040,19 @@
           <div class="prefs-row-title">Theme</div>
         </div>
         <div class="prefs-row-suffix">
-          <select
-            class="select w-40"
+          <CustomSelect
             bind:value={theme}
-            on:change={() => {
+            width={160}
+            options={[
+              { value: "system", label: "System" },
+              { value: "light", label: "Light" },
+              { value: "dark", label: "Dark" },
+            ]}
+            on:select={() => {
               applyThemeClass(theme);
               void persistThemeChoice();
             }}
-            ><option value="system">System</option><option value="light"
-              >Light</option
-            ><option value="dark">Dark</option></select
-          >
+          />
         </div>
       </div>
       <div class="prefs-row" data-tour="settings-link-on-launch">
@@ -1038,13 +1066,13 @@
           </div>
         </div>
         <div class="prefs-row-suffix">
-          <label class="gale-switch">
+          <label class="ron-switch">
             <input
               type="checkbox"
               checked={linkOnLaunchOnly}
               on:change={handleLinkOnLaunchChange}
             />
-            <span class="gale-switch-track"></span>
+            <span class="ron-switch-track"></span>
           </label>
         </div>
       </div>
@@ -1053,15 +1081,17 @@
           <div class="prefs-row-title">When launching game</div>
         </div>
         <div class="prefs-row-suffix">
-          <select
-            class="select w-40"
+          <CustomSelect
             bind:value={onGameLaunch}
-            on:change={() =>
+            width={160}
+            options={[
+              { value: "nothing", label: "Do nothing" },
+              { value: "minimize", label: "Minimise" },
+              { value: "close", label: "Quit" },
+            ]}
+            on:select={() =>
               void updateConfig({ on_game_launch: onGameLaunch })}
-            ><option value="nothing">Do nothing</option><option value="minimize"
-              >Minimise</option
-            ><option value="close">Quit</option></select
-          >
+          />
         </div>
       </div>
       <div class="prefs-row">
@@ -1069,18 +1099,19 @@
           <div class="prefs-row-title">When closing window</div>
         </div>
         <div class="prefs-row-suffix">
-          <select
-            class="select w-40"
+          <CustomSelect
             bind:value={closeAction}
-            on:change={() =>
+            width={160}
+            options={[
+              { value: "quit", label: "Quit" },
+              { value: "minimize", label: "Minimise" },
+            ]}
+            on:select={() =>
               void updateConfig({
                 close_action: closeAction,
                 asked_close_preference: true,
               })}
-            ><option value="quit">Quit</option><option value="minimize"
-              >Minimise</option
-            ></select
-          >
+          />
         </div>
       </div>
       <div
@@ -1091,19 +1122,20 @@
           <div class="prefs-row-title">Minimise to</div>
         </div>
         <div class="prefs-row-suffix">
-          <select
-            class="select w-40"
+          <CustomSelect
             bind:value={minimizeTarget}
             disabled={onGameLaunch === "nothing" && closeAction === "quit"}
-            on:change={() =>
+            width={160}
+            options={[
+              { value: "taskbar", label: "Taskbar" },
+              { value: "tray", label: "System tray" },
+            ]}
+            on:select={() =>
               void updateConfig({
                 minimize_target: minimizeTarget,
                 asked_close_preference: true,
               })}
-            ><option value="taskbar">Taskbar</option><option value="tray"
-              >System tray</option
-            ></select
-          >
+          />
         </div>
       </div>
       <div class="prefs-row">
@@ -1119,16 +1151,18 @@
           </div>
         </div>
         <div class="prefs-row-suffix">
-          <select
-            class="select w-40"
+          <CustomSelect
             bind:value={logLevel}
-            on:change={() => void updateConfig({ log_level: logLevel })}
-            ><option value="error">Error</option><option value="warn"
-              >Warn</option
-            ><option value="info">Info</option><option value="debug"
-              >Debug</option
-            ><option value="trace">Trace</option></select
-          >
+            width={160}
+            options={[
+              { value: "error", label: "Error" },
+              { value: "warn", label: "Warn" },
+              { value: "info", label: "Info" },
+              { value: "debug", label: "Debug" },
+              { value: "trace", label: "Trace" },
+            ]}
+            on:select={() => void updateConfig({ log_level: logLevel })}
+          />
         </div>
       </div>
     </div>
@@ -1168,11 +1202,11 @@
           <button class="btn btn-sm primary" on:click={openNexusKeyModal}
             >{hasNexusKey ? "Update" : "Set"}</button
           >{#if hasNexusKey}<button
-              class="btn btn-sm danger"
-              on:click={async () => {
-                nexusKeyInput = "";
-                await saveNexusKey();
-              }}>Remove</button
+              class="btn btn-sm"
+              title="Remove Nexus API key"
+              aria-label="Remove Nexus API key"
+              on:click={() => (pendingKeyRemoval = "nexus")}
+              ><Trash2 size={14} /></button
             >{/if}
         </div>
       </div>
@@ -1202,8 +1236,11 @@
           <button class="btn btn-sm primary" on:click={openTokenSetupModal}
             >{hasSavedToken ? "Update" : "Set"}</button
           >{#if hasSavedToken}<button
-              class="btn btn-sm danger"
-              on:click={disconnect}>Remove</button
+              class="btn btn-sm"
+              title="Remove mod.io token"
+              aria-label="Remove mod.io token"
+              on:click={() => (pendingKeyRemoval = "modio-token")}
+              ><Trash2 size={14} /></button
             >{/if}
         </div>
       </div>
@@ -1223,11 +1260,11 @@
           <button class="btn btn-sm primary" on:click={openModioApiKeyModal}
             >{hasModioApiKey ? "Update" : "Set"}</button
           >{#if hasModioApiKey}<button
-              class="btn btn-sm danger"
-              on:click={async () => {
-                modioApiKeyInput = "";
-                await saveModioApiKey();
-              }}>Remove</button
+              class="btn btn-sm"
+              title="Remove mod.io API key"
+              aria-label="Remove mod.io API key"
+              on:click={() => (pendingKeyRemoval = "modio-key")}
+              ><Trash2 size={14} /></button
             >{/if}
         </div>
       </div>
@@ -1250,7 +1287,7 @@
         </div>
         <div class="prefs-row-suffix">
           <label
-            class="gale-switch"
+            class="ron-switch"
             class:opacity-50={applyingIntroSkip || undoingIntroSkip}
             ><input
               type="checkbox"
@@ -1260,7 +1297,7 @@
                 if (introSkipEnabled) void undoIntroSkipConfig();
                 else void applyIntroSkipConfig();
               }}
-            /><span class="gale-switch-track"></span></label
+            /><span class="ron-switch-track"></span></label
           >
         </div>
       </div>
@@ -1280,12 +1317,15 @@
           </div>
         </div>
         <div class="prefs-row-suffix">
-          <select class="select w-48" bind:value={selectedGpu}
-            ><option value="">Select GPU…</option
-            >{#each gpuProfiles as p}<option value={p}
-                >{p.replace(/_/g, " ").replace(/-/g, " / ")}</option
-              >{/each}</select
-          >{#if isOptRemoveVisible}<button
+          <CustomSelect
+            bind:value={selectedGpu}
+            width={192}
+            placeholder="Select GPU…"
+            options={gpuProfiles.map((p) => ({
+              value: p,
+              label: p.replace(/_/g, " ").replace(/-/g, " / "),
+            }))}
+          />{#if isOptRemoveVisible}<button
               class="btn btn-sm"
               disabled={applyingOpt}
               on:click={removeOpt}>{applyingOpt ? "…" : "Restore"}</button
@@ -1323,7 +1363,7 @@
             </div>
           </div>
           <div class="prefs-row-suffix">
-            <label class="gale-switch" class:opacity-50={ue4ssSaving}
+            <label class="ron-switch" class:opacity-50={ue4ssSaving}
               ><input
                 type="checkbox"
                 checked={ue4ssUseObjectArrayCache}
@@ -1336,7 +1376,7 @@
                   ue4ssUseObjectArrayCache = target;
                   void saveUe4ssSettings();
                 }}
-              /><span class="gale-switch-track"></span></label
+              /><span class="ron-switch-track"></span></label
             >
           </div>
         </div>
@@ -1383,19 +1423,18 @@
             </div>
           </div>
           <div class="prefs-row-suffix">
-            <select
-              class="select w-48"
+            <CustomSelect
               bind:value={ue4ssGraphicsApi}
               disabled={ue4ssSaving}
-              on:change={() => {
-                void saveUe4ssSettings();
-              }}
-              ><option value="dx11">dx11</option><option value="dx12"
-                >dx12</option
-              ><option value="vulkan">vulkan</option><option value="opengl"
-                >opengl</option
-              ></select
-            >
+              width={192}
+              options={[
+                { value: "dx11", label: "dx11" },
+                { value: "dx12", label: "dx12" },
+                { value: "vulkan", label: "vulkan" },
+                { value: "opengl", label: "opengl" },
+              ]}
+              on:select={() => void saveUe4ssSettings()}
+            />
           </div>
         </div>
         <div class="prefs-row">
@@ -1406,7 +1445,7 @@
             </div>
           </div>
           <div class="prefs-row-suffix">
-            <label class="gale-switch" class:opacity-50={ue4ssSaving}
+            <label class="ron-switch" class:opacity-50={ue4ssSaving}
               ><input
                 type="checkbox"
                 checked={ue4ssHookBeginPlay}
@@ -1417,7 +1456,7 @@
                   ue4ssHookBeginPlay = target;
                   void saveUe4ssSettings();
                 }}
-              /><span class="gale-switch-track"></span></label
+              /><span class="ron-switch-track"></span></label
             >
           </div>
         </div>
@@ -1430,17 +1469,17 @@
             </div>
           </div>
           <div class="prefs-row-suffix">
-            <select
-              class="select w-48"
+            <CustomSelect
               bind:value={ue4ssConsoleMode}
               disabled={ue4ssSaving}
-              on:change={() => {
-                void saveUe4ssSettings();
-              }}
-              ><option value="text">Text console</option><option value="gui"
-                >GUI console</option
-              ><option value="none">None</option></select
-            >
+              width={192}
+              options={[
+                { value: "text", label: "Text console" },
+                { value: "gui", label: "GUI console" },
+                { value: "none", label: "None" },
+              ]}
+              on:select={() => void saveUe4ssSettings()}
+            />
           </div>
         </div>
       </div>
@@ -1509,9 +1548,9 @@
           <label
             class="flex items-center gap-2 text-sm cursor-pointer"
             style="color:var(--clr-text-secondary);"
-            ><span class="gale-switch"
+            ><span class="ron-switch"
               ><input type="checkbox" bind:checked={syncVerbose} /><span
-                class="gale-switch-track"
+                class="ron-switch-track"
               ></span></span
             >Verbose log</label
           >
@@ -1613,10 +1652,19 @@
     on:close={() => (showSyncAuthModal = false)}
     on:submit={(e) => handleSyncAuthSubmit(e.detail)}
   />
+  <ConfirmModal
+    isVisible={pendingKeyRemoval !== null}
+    title="Remove key?"
+    message={keyRemovalMessage}
+    confirmLabel="Remove"
+    danger={true}
+    onConfirm={() => void confirmKeyRemoval()}
+    onCancel={() => (pendingKeyRemoval = null)}
+  />
 </section>
 {#if showScrollTop}
   <button
-    class="fixed right-6 z-[800] flex h-10 w-10 items-center justify-center rounded-full border shadow-lg hover:scale-105 cursor-pointer"
+    class="fixed right-6 z-[800] flex h-10 w-10 items-center justify-center rounded-none border shadow-lg hover:scale-105 cursor-pointer"
     style="bottom: calc(2.25rem + 1rem); background: var(--clr-surface); border-color: var(--adw-border-color); color: var(--clr-text);"
     on:click={scrollToTop}
     aria-label="Scroll to top"
@@ -1717,7 +1765,7 @@
 
     <div
       style="background: color-mix(in srgb, var(--clr-primary-300) 15%, transparent); border-left: 3px solid var(--clr-primary-300);"
-      class="mt-3 p-3 rounded"
+      class="mt-3 p-3 rounded-none"
     >
       <p style="color: var(--clr-text-secondary);" class="text-xs">
         On the Nexus API keys page, <strong
