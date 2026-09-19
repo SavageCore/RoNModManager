@@ -8,12 +8,12 @@ const mocks = vi.hoisted(() => ({
   setGamePath: vi.fn(async () => undefined),
   setModpackUrl: vi.fn(async () => undefined),
   fetchModpackJson: vi.fn(async () => ({ version: "1.0.0" })),
-  detectGamePath: vi.fn(async () => null),
+  detectGamePath: vi.fn(async (): Promise<string | null> => null),
   logout: vi.fn(async () => undefined),
   validateAndSaveModioApiKey: vi.fn(async () => true),
   validateAndSaveModioToken: vi.fn(async () => true),
   validateAndSaveNexusApiKey: vi.fn(async () => true),
-  openDialog: vi.fn(async () => null),
+  openDialog: vi.fn(async (): Promise<string | null> => null),
   openUrl: vi.fn(async () => undefined),
   toastSuccess: vi.fn(),
   tokenSet: vi.fn(),
@@ -199,5 +199,340 @@ describe("SetupWizard", () => {
     await vi.waitFor(() => {
       expect(field.value).toBe("/games/Ready Or Not");
     });
+  });
+
+  it("auto-detects the game path on mount", async () => {
+    mocks.detectGamePath.mockResolvedValueOnce("/auto/game");
+    render(SetupWizard);
+
+    const field = screen.getByLabelText("Game path") as HTMLInputElement;
+    await vi.waitFor(() => {
+      expect(field.value).toBe("/auto/game");
+    });
+  });
+
+  it("tolerates a failed config read and failed detection on mount", async () => {
+    mocks.getConfig.mockRejectedValueOnce(new Error("config down"));
+    mocks.detectGamePath.mockRejectedValueOnce(new Error("detect down"));
+    render(SetupWizard);
+
+    await vi.waitFor(() => {
+      expect(mocks.detectGamePath).toHaveBeenCalled();
+    });
+    expect((screen.getByLabelText("Game path") as HTMLInputElement).value).toBe(
+      "",
+    );
+  });
+
+  it("fills the path from the Auto Detect button", async () => {
+    render(SetupWizard);
+    await vi.waitFor(() => {
+      expect(mocks.detectGamePath).toHaveBeenCalled();
+    });
+    mocks.detectGamePath.mockResolvedValueOnce("/detected/game");
+
+    await fireEvent.click(screen.getByText("Auto Detect"));
+
+    const field = screen.getByLabelText("Game path") as HTMLInputElement;
+    await vi.waitFor(() => {
+      expect(field.value).toBe("/detected/game");
+    });
+  });
+
+  it("reports when auto-detect finds nothing", async () => {
+    render(SetupWizard);
+    await vi.waitFor(() => {
+      expect(mocks.detectGamePath).toHaveBeenCalled();
+    });
+
+    await fireEvent.click(screen.getByText("Auto Detect"));
+
+    expect(
+      await screen.findByText(/Could not auto-detect game path/),
+    ).not.toBeNull();
+  });
+
+  it("reports when auto-detect throws", async () => {
+    render(SetupWizard);
+    await vi.waitFor(() => {
+      expect(mocks.detectGamePath).toHaveBeenCalled();
+    });
+    mocks.detectGamePath.mockRejectedValueOnce(new Error("no steam"));
+
+    await fireEvent.click(screen.getByText("Auto Detect"));
+
+    expect(await screen.findByText(/Auto-detect failed/)).not.toBeNull();
+  });
+
+  it("fills the path from the browse dialog", async () => {
+    mocks.openDialog.mockResolvedValueOnce("/picked/game");
+    render(SetupWizard);
+
+    await fireEvent.click(screen.getByText("Browse..."));
+
+    const field = screen.getByLabelText("Game path") as HTMLInputElement;
+    await vi.waitFor(() => {
+      expect(field.value).toBe("/picked/game");
+    });
+    expect(mocks.openDialog).toHaveBeenCalledWith(
+      expect.objectContaining({ directory: true, defaultPath: undefined }),
+    );
+  });
+
+  it("passes the current path to the browse dialog", async () => {
+    render(SetupWizard);
+    await fireEvent.input(screen.getByLabelText("Game path"), {
+      target: { value: "/games/Ready Or Not" },
+    });
+    mocks.openDialog.mockResolvedValueOnce(null);
+
+    await fireEvent.click(screen.getByText("Browse..."));
+
+    expect(mocks.openDialog).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultPath: "/games/Ready Or Not" }),
+    );
+    expect((screen.getByLabelText("Game path") as HTMLInputElement).value).toBe(
+      "/games/Ready Or Not",
+    );
+  });
+
+  it("reports when browsing for a path fails", async () => {
+    mocks.openDialog.mockRejectedValueOnce(new Error("dialog broke"));
+    render(SetupWizard);
+
+    await fireEvent.click(screen.getByText("Browse..."));
+
+    expect(await screen.findByText(/Browse failed/)).not.toBeNull();
+  });
+
+  it("reports when saving the game path fails", async () => {
+    mocks.setGamePath.mockRejectedValueOnce(new Error("denied"));
+    render(SetupWizard);
+    await fireEvent.input(screen.getByLabelText("Game path"), {
+      target: { value: "/games/Ready Or Not" },
+    });
+
+    await expect(callTourAction("setup:save-game-path")).resolves.toBe(false);
+
+    expect(await screen.findByText(/denied/)).not.toBeNull();
+    expect(get(setupWizardPage)).toBe(1);
+  });
+
+  it("requires the mod.io API key", async () => {
+    setSetupWizardPage(2);
+    render(SetupWizard);
+
+    await expect(callTourAction("setup:save-modio")).resolves.toBe(false);
+
+    expect(
+      await screen.findByText(/Please enter your mod.io API Access key/),
+    ).not.toBeNull();
+  });
+
+  it("requires the mod.io token", async () => {
+    setSetupWizardPage(2);
+    render(SetupWizard);
+    await fireEvent.input(screen.getByLabelText("mod.io API Access"), {
+      target: { value: "key" },
+    });
+
+    await expect(callTourAction("setup:save-modio")).resolves.toBe(false);
+
+    expect(
+      await screen.findByText(/Please enter your mod.io personal access token/),
+    ).not.toBeNull();
+  });
+
+  it("logs out when the mod.io token is refused", async () => {
+    mocks.validateAndSaveModioToken.mockResolvedValueOnce(false);
+    setSetupWizardPage(2);
+    render(SetupWizard);
+    await fireEvent.input(screen.getByLabelText("mod.io API Access"), {
+      target: { value: "key" },
+    });
+    await fireEvent.input(
+      screen.getByLabelText("mod.io Personal Access Token"),
+      { target: { value: "token" } },
+    );
+
+    await expect(callTourAction("setup:save-modio")).resolves.toBe(false);
+
+    expect(mocks.logout).toHaveBeenCalledTimes(1);
+    expect(mocks.tokenSet).toHaveBeenCalledWith(false);
+    expect(
+      await screen.findByText(/Personal access token is invalid/),
+    ).not.toBeNull();
+  });
+
+  it("reports when mod.io validation throws", async () => {
+    mocks.validateAndSaveModioApiKey.mockRejectedValueOnce(new Error("down"));
+    setSetupWizardPage(2);
+    render(SetupWizard);
+    await fireEvent.input(screen.getByLabelText("mod.io API Access"), {
+      target: { value: "key" },
+    });
+    await fireEvent.input(
+      screen.getByLabelText("mod.io Personal Access Token"),
+      { target: { value: "token" } },
+    );
+
+    await expect(callTourAction("setup:save-modio")).resolves.toBe(false);
+
+    expect(await screen.findByText(/Failed to validate/)).not.toBeNull();
+  });
+
+  it("clears a mod.io error once the user types again", async () => {
+    setSetupWizardPage(2);
+    render(SetupWizard);
+    await callTourAction("setup:save-modio");
+    expect(await screen.findByText(/Please enter your/)).not.toBeNull();
+
+    await fireEvent.input(screen.getByLabelText("mod.io API Access"), {
+      target: { value: "k" },
+    });
+
+    expect(screen.queryByText(/Please enter your/)).toBeNull();
+  });
+
+  it("reports an invalid Nexus key", async () => {
+    mocks.validateAndSaveNexusApiKey.mockResolvedValueOnce(false);
+    setSetupWizardPage(3);
+    render(SetupWizard);
+    await fireEvent.input(screen.getByLabelText("Nexus Mods API Key"), {
+      target: { value: "bad" },
+    });
+
+    await expect(callTourAction("setup:save-nexus")).resolves.toBe(false);
+
+    expect(await screen.findByText(/Invalid Nexus API key/)).not.toBeNull();
+  });
+
+  it("reports when Nexus validation throws", async () => {
+    mocks.validateAndSaveNexusApiKey.mockRejectedValueOnce(new Error("down"));
+    setSetupWizardPage(3);
+    render(SetupWizard);
+    await fireEvent.input(screen.getByLabelText("Nexus Mods API Key"), {
+      target: { value: "key" },
+    });
+
+    await expect(callTourAction("setup:save-nexus")).resolves.toBe(false);
+
+    expect(await screen.findByText(/Failed to validate/)).not.toBeNull();
+  });
+
+  it("finishes setup when the modpack URL is empty", async () => {
+    setSetupWizardPage(4);
+    render(SetupWizard);
+
+    await expect(callTourAction("setup:finish")).resolves.toBe(true);
+
+    expect(mocks.fetchModpackJson).not.toHaveBeenCalled();
+    expect(mocks.updateConfig).toHaveBeenCalledWith({
+      setup_wizard_complete: true,
+    });
+  });
+
+  it("rejects a modpack URL without a scheme", async () => {
+    setSetupWizardPage(4);
+    render(SetupWizard);
+    await fireEvent.input(screen.getByLabelText("Modpack URL"), {
+      target: { value: "example.com/modpack.json" },
+    });
+
+    await expect(callTourAction("setup:finish")).resolves.toBe(false);
+
+    expect(await screen.findByText(/should start with http/)).not.toBeNull();
+  });
+
+  it("reports when saving the modpack URL fails", async () => {
+    mocks.setModpackUrl.mockRejectedValueOnce(new Error("disk full"));
+    setSetupWizardPage(4);
+    render(SetupWizard);
+    await fireEvent.input(screen.getByLabelText("Modpack URL"), {
+      target: { value: "https://example.com/modpack.json" },
+    });
+
+    await expect(callTourAction("setup:finish")).resolves.toBe(false);
+
+    expect(await screen.findByText(/Failed to save/)).not.toBeNull();
+  });
+
+  it("opens the mod.io pages without failing when the opener is broken", async () => {
+    setSetupWizardPage(2);
+    render(SetupWizard);
+    mocks.openUrl.mockRejectedValueOnce(new Error("no browser"));
+
+    await fireEvent.click(screen.getByText("Open mod.io API Access Page"));
+    await fireEvent.click(screen.getByText("Open Personal Access Tokens Page"));
+
+    await vi.waitFor(() => {
+      expect(mocks.openUrl).toHaveBeenCalledWith("https://mod.io/me/access");
+    });
+    expect(mocks.openUrl).toHaveBeenCalledWith(
+      "https://mod.io/me/access#tokens",
+    );
+  });
+
+  it("opens the Nexus page", async () => {
+    setSetupWizardPage(3);
+    render(SetupWizard);
+
+    await fireEvent.click(screen.getByText("Open Nexus API Keys Page"));
+
+    await vi.waitFor(() => {
+      expect(mocks.openUrl).toHaveBeenCalledWith(
+        "https://www.nexusmods.com/settings/api-keys",
+      );
+    });
+  });
+
+  it("toggles the mod.io secrets between hidden and visible", async () => {
+    setSetupWizardPage(2);
+    render(SetupWizard);
+
+    const key = screen.getByLabelText("mod.io API Access") as HTMLInputElement;
+    const token = screen.getByLabelText(
+      "mod.io Personal Access Token",
+    ) as HTMLInputElement;
+    expect(key.type).toBe("password");
+    expect(token.type).toBe("password");
+
+    await fireEvent.click(screen.getByTitle("Show key"));
+    await fireEvent.click(screen.getByTitle("Show token"));
+
+    expect(key.type).toBe("text");
+    expect(token.type).toBe("text");
+
+    await fireEvent.click(screen.getByTitle("Hide key"));
+    await fireEvent.click(screen.getByTitle("Hide token"));
+
+    expect(key.type).toBe("password");
+    expect(token.type).toBe("password");
+  });
+
+  it("toggles the Nexus secret between hidden and visible", async () => {
+    setSetupWizardPage(3);
+    render(SetupWizard);
+
+    const key = screen.getByLabelText("Nexus Mods API Key") as HTMLInputElement;
+    expect(key.type).toBe("password");
+
+    await fireEvent.click(screen.getByTitle("Show key"));
+    expect(key.type).toBe("text");
+
+    await fireEvent.click(screen.getByTitle("Hide key"));
+    expect(key.type).toBe("password");
+  });
+
+  it("clears the game path error once the user types again", async () => {
+    render(SetupWizard);
+    await fireEvent.click(screen.getByText("Auto Detect"));
+    expect(await screen.findByText(/Could not auto-detect/)).not.toBeNull();
+
+    await fireEvent.input(screen.getByLabelText("Game path"), {
+      target: { value: "x" },
+    });
+
+    expect(screen.queryByText(/Could not auto-detect/)).toBeNull();
   });
 });

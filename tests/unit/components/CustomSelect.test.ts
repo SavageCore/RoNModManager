@@ -40,4 +40,73 @@ describe("CustomSelect", () => {
 
     expect(screen.getByText("selected:")).not.toBeNull();
   });
+
+  it("opens from the keyboard and closes on Tab", async () => {
+    render(CustomSelectProbe, { props: { options: OPTIONS } });
+    const trigger = screen.getByRole("button");
+
+    await fireEvent.keyDown(trigger, { key: " " });
+    await tick();
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+
+    await fireEvent.keyDown(trigger, { key: "Tab" });
+    await tick();
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
+  });
+
+  it("moves the focused option with the arrow keys and selects with Enter", async () => {
+    render(CustomSelectProbe, { props: { options: OPTIONS } });
+    const trigger = screen.getByRole("button");
+
+    await fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    await tick();
+    await fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    await fireEvent.keyDown(trigger, { key: "ArrowUp" });
+    await fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    await fireEvent.keyDown(trigger, { key: "Enter" });
+    await tick();
+
+    expect(screen.getByText("selected: light")).not.toBeNull();
+  });
+
+  it("closes on Escape and returns focus to the trigger", async () => {
+    render(CustomSelectProbe, { props: { options: OPTIONS } });
+    const trigger = screen.getByRole("button");
+
+    await fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    await tick();
+    await fireEvent.keyDown(trigger, { key: "Escape" });
+    await tick();
+
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("ignores a disabled option chosen with the keyboard", async () => {
+    const options = [
+      { value: "system", label: "System" },
+      { value: "dark", label: "Dark", disabled: true },
+    ];
+    render(CustomSelectProbe, { props: { options } });
+    const trigger = screen.getByRole("button");
+
+    await fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    await tick();
+    await fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    await fireEvent.keyDown(trigger, { key: "Enter" });
+    await tick();
+
+    expect(screen.getByText("selected:")).not.toBeNull();
+    expect(screen.getAllByRole("option")).toHaveLength(2);
+  });
+
+  it("closes when clicking outside the dropdown", async () => {
+    render(CustomSelectProbe, { props: { options: OPTIONS } });
+
+    await open();
+    await fireEvent.mouseDown(document.body);
+    await tick();
+
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
+  });
 });

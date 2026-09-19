@@ -7,3 +7,9 @@ import { cleanup } from "@testing-library/svelte";
 afterEach(() => {
   cleanup();
 });
+
+// jsdom does not implement scrollIntoView, which CustomSelect calls when the
+// keyboard moves the focused option.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
