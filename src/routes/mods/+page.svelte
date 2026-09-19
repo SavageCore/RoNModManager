@@ -211,6 +211,7 @@
     DUMMY_COLLECTION_COLORS,
     DUMMY_TAGS,
     DUMMY_MOD_UPDATES,
+    DUMMY_BROKEN_MODS,
   } from "$lib/stores/incognitoMode";
   import { formatDistanceToNow } from "date-fns";
   import { isMapTag } from "$lib/utils/mapTags";
@@ -235,6 +236,7 @@
     Copy,
     ExternalLink,
     Globe,
+    GlobeOff,
     Layers,
     Library,
     Link as LinkIcon,
@@ -244,6 +246,7 @@
     Tag,
     Terminal,
     Trash2,
+    WrenchOff,
     X,
   } from "@lucide/svelte";
   import { onMount } from "svelte";
@@ -498,6 +501,13 @@
     $incognitoMode && !$wizardScreenshotMode
       ? DUMMY_COLLECTION_COLORS
       : activeProfileCollectionColors;
+  $: effectiveBrokenMods =
+    $incognitoMode && !$wizardScreenshotMode
+      ? DUMMY_BROKEN_MODS
+      : brokenModsMap;
+  // Screenshots should show the broken indicator, so the filter reads as on
+  // there instead of hiding the dummy broken mod.
+  $: showBrokenEffective = $incognitoMode ? true : $showBroken;
 
   $: filteredModGroups = effectiveModGroups
     .filter((group) => {
@@ -517,8 +527,8 @@
         (modToCollectionsMap[group.name] ?? []).some((c) =>
           activeCollectionFilters.has(c),
         );
-      const isBroken = brokenModsMap[group.name] !== undefined;
-      const matchesBroken = $showBroken || !isBroken;
+      const isBroken = effectiveBrokenMods[group.name] !== undefined;
+      const matchesBroken = showBrokenEffective || !isBroken;
       return (
         matchesSearch &&
         matchesSource &&
@@ -1431,7 +1441,7 @@
       {
         id: "broken",
         label:
-          brokenModsMap[group.name] !== undefined
+          effectiveBrokenMods[group.name] !== undefined
             ? "Edit broken note"
             : "Mark as broken",
         action: () => {
@@ -2013,16 +2023,15 @@
     <button
       on:click={() => ($showBroken = !$showBroken)}
       class="broken-filter-btn"
-      class:active={$showBroken}
-      style="width: 150px;"
-      title={$showBroken
+      class:active={showBrokenEffective}
+      title={showBrokenEffective
         ? "Broken mods visible - click to hide"
         : "Broken mods hidden - click to show"}
     >
       <span class="custom-select-value">
-        {$showBroken ? "Showing broken" : "Show broken"}
+        {showBrokenEffective ? "Showing broken" : "Show broken"}
       </span>
-      <AlertTriangle size={13} />
+      <WrenchOff size={13} />
     </button>
   </div>
 
@@ -2381,7 +2390,7 @@
                             class="ml-1 flex items-center"
                             title="Open mod page in browser"
                             tabindex="-1"
-                            style="color: var(--clr-primary-300);"
+                            style="color: var(--clr-link);"
                           >
                             <Globe size={15} />
                           </a>
@@ -2391,20 +2400,20 @@
                             title="No world generation data"
                             class="flex items-center"
                           >
-                            <AlertTriangle
+                            <GlobeOff
                               size={14}
-                              style="color: #f59e0b; flex-shrink: 0;"
+                              style="color: var(--clr-danger-300); flex-shrink: 0;"
                             />
                           </span>
                         {/if}
-                        {#if brokenModsMap[group.name] !== undefined}
+                        {#if effectiveBrokenMods[group.name] !== undefined}
                           <span
-                            title={brokenModsMap[group.name] ||
+                            title={effectiveBrokenMods[group.name] ||
                               "Marked as broken"}
                             class="flex items-center"
                             style="color: var(--clr-danger-300);"
                           >
-                            <AlertTriangle size={14} style="flex-shrink: 0;" />
+                            <WrenchOff size={14} style="flex-shrink: 0;" />
                           </span>
                         {/if}
                         {#if group.hasOverrideFiles && !group.isUe4ssMod}
@@ -2586,9 +2595,9 @@
                   <label
                     class="ron-switch"
                     data-tour="mod-row-toggle"
-                    class:opacity-50={!!brokenModsMap[group.name]}
-                    title={brokenModsMap[group.name] !== undefined
-                      ? `Broken: ${brokenModsMap[group.name] || "no note"}`
+                    class:opacity-50={!!effectiveBrokenMods[group.name]}
+                    title={effectiveBrokenMods[group.name] !== undefined
+                      ? `Broken: ${effectiveBrokenMods[group.name] || "no note"}`
                       : `${effectiveProfileMods.includes(group.name) ? "Disable" : "Enable"} ${group.displayName ?? group.name}`}
                   >
                     <input
@@ -2596,7 +2605,7 @@
                       checked={effectiveProfileMods.includes(group.name)}
                       on:change={() => toggleGroupState(group.name)}
                       disabled={!activeProfileName ||
-                        !!brokenModsMap[group.name] ||
+                        !!effectiveBrokenMods[group.name] ||
                         $incognitoMode ||
                         $wizardScreenshotMode}
                     />
@@ -2847,8 +2856,8 @@
     <BrokenModModal
       isVisible={showBrokenModal}
       modLabel={brokenModalModLabel}
-      existingNote={brokenModsMap[brokenModalModName] ?? ""}
-      isAlreadyBroken={brokenModsMap[brokenModalModName] !== undefined}
+      existingNote={effectiveBrokenMods[brokenModalModName] ?? ""}
+      isAlreadyBroken={effectiveBrokenMods[brokenModalModName] !== undefined}
       on:close={() => (showBrokenModal = false)}
       on:save={async (e) => {
         try {

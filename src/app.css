@@ -39,6 +39,7 @@
   --clr-primary-300: #e0263c;
   --clr-primary-500: #9c0c24;
   --clr-primary-text: #ffffff;
+  --clr-link: #1c71d8;
 
   /* Danger/destructive color (Red) */
   --clr-danger-100: #ffb3ba;
@@ -88,6 +89,7 @@
     --clr-primary-300: #e0263c;
     --clr-primary-500: #9c0c24;
     --clr-primary-text: #ffffff;
+    --clr-link: #62a0ea;
 
     /* Danger color (Red) */
     --clr-danger-100: #f28482;
@@ -131,6 +133,7 @@
   --clr-primary-300: #e0263c;
   --clr-primary-500: #9c0c24;
   --clr-primary-text: #ffffff;
+  --clr-link: #1c71d8;
   --clr-danger-100: #ffb3ba;
   --clr-danger-300: #c8102e;
   --clr-danger-400: #c8102e;
@@ -165,6 +168,7 @@
   --clr-primary-300: #e0263c;
   --clr-primary-500: #9c0c24;
   --clr-primary-text: #ffffff;
+  --clr-link: #62a0ea;
   --clr-danger-100: #f28482;
   --clr-danger-300: #e74c3c;
   --clr-danger-400: #e0263c;
@@ -385,16 +389,20 @@ samp {
   border-color: color-mix(in srgb, var(--clr-primary-300) 75%, black);
 }
 
-/* Broken-mods filter toggle on the mods list: matches the CustomSelect field
-   controls exactly (same trigger, same borders, same text). */
+/* Broken-mods filter toggle on the mods list: shares the CustomSelect field
+   look, but has an icon instead of a dropdown arrow, so it sizes to its
+   content rather than reserving arrow space. */
 .broken-filter-btn {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  flex-shrink: 0;
+  width: 9.75rem;
+  padding: 0.5rem 0.75rem;
   font-size: 0.9375rem;
   line-height: 1.25rem;
+  white-space: nowrap;
   text-align: left;
   border-radius: 0;
   border: 1px solid var(--adw-border-color);
@@ -407,9 +415,9 @@ samp {
 }
 
 .broken-filter-btn .custom-select-value {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
