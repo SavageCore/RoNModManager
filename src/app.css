@@ -330,16 +330,20 @@ samp {
   transition: all 120ms ease;
 }
 
+/* Same inverted hover as .primary: white fill with red text, so destructive
+   buttons give the same clear feedback rather than just darkening. */
 .btn.danger:hover:not(.toggled, .disabled),
 .btn-danger:hover:not(.toggled, .disabled) {
-  background-color: var(--clr-primary-500);
-  border-color: var(--clr-primary-500);
+  background-color: var(--clr-primary-text);
+  border-color: var(--clr-primary-300);
+  color: var(--clr-primary-300);
 }
 
 .btn.danger:active:not(.disabled),
 .btn-danger:active:not(.disabled) {
-  background-color: var(--clr-primary-500);
-  border-color: var(--clr-primary-500);
+  background-color: var(--clr-primary-text);
+  border-color: var(--clr-primary-300);
+  color: var(--clr-primary-300);
 }
 
 .btn.danger.toggled,
@@ -656,8 +660,11 @@ a:focus-visible {
 
 /* Docs secondary hover: clear bg flips to red fill with white text. Plain
    .btn (no .primary) keeps the tactical face at rest and only flips on
-   hover, so secondary actions read as secondary until pointed at. */
-.btn:not(.primary):not(.danger):not(.success):hover:not(.toggled, .disabled) {
+   hover, so secondary actions read as secondary until pointed at. The
+   hyphen aliases need excluding too, or their own hover is outranked. */
+.btn:not(.primary):not(.danger):not(.success):not(.btn-primary):not(
+    .btn-danger
+  ):not(.btn-success):hover:not(.toggled, .disabled) {
   background-color: var(--clr-primary-300);
   border-color: var(--clr-primary-300);
   color: var(--clr-primary-text);
