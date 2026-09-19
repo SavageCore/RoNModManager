@@ -35,7 +35,7 @@ tokio = { version = "1", features = ["fs", "io-util", "time", "rt", "sync"] }
 futures-util = "0.3"
 zip = "8"
 unrar = "0.5"
-sevenz-rust2 = "0.22"
+sevenz-rust2 = "0.23"
 xz2 = "0.1"
 semver = "1"
 dirs = "7"
