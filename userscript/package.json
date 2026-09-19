@@ -1,7 +1,7 @@
 {
   "name": "ron-mod-manager-userscript",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Companion userscript for Ready or Not Mod Manager (Nexus Mods and mod.io integration)",
   "type": "module",
   "scripts": {

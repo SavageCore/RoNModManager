@@ -92,9 +92,9 @@ afterEach(() => {
 });
 
 /** Advance to the next poll tick and return the injected action-bar button. */
-function injectButton(): HTMLButtonElement | null {
+function injectButton(): HTMLAnchorElement | null {
   vi.advanceTimersByTime(1000);
-  return document.querySelector<HTMLButtonElement>("#action-ronmm button");
+  return document.querySelector<HTMLAnchorElement>("#action-ronmm a");
 }
 
 function iframeSrcs(): string[] {
@@ -152,6 +152,9 @@ describe("Nexus action bar injection", () => {
     expect(btn).not.toBeNull();
     expect(btn?.textContent).toContain("Mod Manager");
     expect(btn?.className).toContain("download-open-tab");
+    // The `.btn` border sets the row height - an inline border override
+    // shrinks this button next to its Track/Endorse/Vote siblings.
+    expect(btn?.getAttribute("style") ?? "").not.toContain("border");
     expect(
       Array.from(document.querySelectorAll("ul.modactions > li")).map(
         (li) => li.id,

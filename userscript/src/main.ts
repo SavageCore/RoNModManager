@@ -487,10 +487,15 @@ function injectNexusMods() {
     const li = document.createElement("li");
     li.id = "action-ronmm";
 
-    const btn = document.createElement("button");
+    const btn = document.createElement("a");
     btn.className = "btn inline-flex download-open-tab";
+    // No inline border: Nexus's `.btn` border contributes to the button
+    // height, and overriding it (even with `border: none`, which serializes
+    // as `border: medium`) leaves this button a couple of px shorter than
+    // its Track/Endorse/Vote siblings.
     btn.style.cssText =
-      "background-color: var(--theme-primary); border: none; cursor: pointer;";
+      "background-color: var(--theme-primary); cursor: pointer;";
+    btn.href = `ronmm://install/nexus/${modId}`;
     btn.tabIndex = 0;
     btn.innerHTML = `<span class="flex-label">&#x2B07; Mod Manager</span>`;
     btn.addEventListener("click", (e) => {
