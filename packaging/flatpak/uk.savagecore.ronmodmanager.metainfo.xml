@@ -19,6 +19,35 @@
   <releases>
 
 
+    <release version="0.0.18" date="2026-09-19">
+      <description>
+        <ul>
+          <li>Set moduleResolution to bundler for TS 6</li>
+          <li>Pin typescript to ~6.0.3</li>
+          <li>Build userscript in CI</li>
+          <li>Make intro skip and optimization transient under link-on-launch-only</li>
+          <li>Isolate Steam userdata lookups in launch option tests</li>
+          <li>Tactical RoN red theme with square controls</li>
+          <li>Restore 3-dot menu on shared CustomMenu component</li>
+          <li>Unify menus and selects on shared custom components</li>
+          <li>Sync mods screenshot to the promo/docs site</li>
+          <li>Emit select events from CustomSelect</li>
+          <li>Restore neutral light palette with red accent</li>
+          <li>Distinguish broken and missing-worldgen badges</li>
+          <li>Restore hover on hyphen button aliases</li>
+          <li>Make dropdown selected item and hover states legible</li>
+          <li>Repurpose Radio Comms Rework as missing-worldgen example</li>
+          <li>Point hosting guide link at docs site</li>
+          <li>Enable semantic commits</li>
+          <li>Cover setup wizard and custom select interactions</li>
+          <li>Tolerate force-pushed before sha in commit lint</li>
+          <li>Update npm-dependencies</li>
+          <li>Update cargo-dependencies</li>
+          <li>Update actions-dependencies</li>
+        </ul>
+      </description>
+    </release>
+
     <release version="0.0.17" date="2026-09-17">
       <description>
         <ul>
