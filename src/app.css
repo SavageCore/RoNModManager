@@ -24,45 +24,47 @@
   color-scheme: light;
 
   /* Tactical button colors */
-  --clr-btn: #e6e2d6;
-  --clr-btn-hover: #d3cec0;
-  --clr-btn-pressed: #c6c0ae;
-  --clr-btn-toggled: #c6c0ae;
-  --clr-btn-adaptive: #f2f1ec;
-  --clr-btn-adaptive-hover: #e0dccd;
-  --clr-btn-adaptive-pressed: #d3cec0;
-  --clr-btn-adaptive-toggled: #c6c0ae;
+  --clr-btn: #e0e0e0;
+  --clr-btn-hover: #d0d0d0;
+  --clr-btn-pressed: #c0c0c0;
+  --clr-btn-toggled: #c0c0c0;
+  --clr-btn-adaptive: #f0f0f0;
+  --clr-btn-adaptive-hover: #e8e8e8;
+  --clr-btn-adaptive-pressed: #d0d0d0;
+  --clr-btn-adaptive-toggled: #c0c0c0;
 
-  /* Primary accent color (RoN red) */
+  /* Primary accent color (RoN red, matches dark mode) */
   --clr-primary-100: #f04452;
   --clr-primary-200: #d9263c;
-  --clr-primary-300: #c8102e;
-  --clr-primary-500: #8f0b21;
+  --clr-primary-300: #e0263c;
+  --clr-primary-500: #9c0c24;
   --clr-primary-text: #ffffff;
 
   /* Danger/destructive color (Red) */
   --clr-danger-100: #ffb3ba;
-  --clr-danger-300: #ff6b6b;
+  --clr-danger-300: #c8102e;
   --clr-danger-400: #c8102e;
   --clr-danger-500: #b71c1c;
   --clr-danger-600: #8f0b21;
   --clr-danger-text: #ffffff;
 
-  /* Success color (Green) */
+  /* Success color (Green). -300 is the readable foreground; -base is the
+     light fill used by the solid success button with dark text. */
   --clr-success-100: #b3ffb3;
-  --clr-success-300: #57e389;
+  --clr-success-300: #146c2e;
   --clr-success-500: #2a8c3f;
+  --clr-success-base: #57e389;
   --clr-success-text: #1e1e1e;
 
   /* Neutral grays */
-  --clr-text: #101114;
-  --clr-text-secondary: #5a5e63;
-  --clr-bg: #ece9e0;
-  --clr-surface: #f2f1ec;
-  --clr-surface-variant: #e0dccd;
+  --clr-text: #000000;
+  --clr-text-secondary: #606366;
+  --clr-bg: #fafafa;
+  --clr-surface: #ffffff;
+  --clr-surface-variant: #f5f5f5;
 
   /* Borders */
-  --adw-border-color: #c9c5b8;
+  --adw-border-color: #d0d0d0;
   --border-radius: 0;
 }
 
@@ -99,6 +101,7 @@
     --clr-success-100: #8fce00;
     --clr-success-300: #57e389;
     --clr-success-500: #2a8c3f;
+    --clr-success-base: #57e389;
     --clr-success-text: #1e1e1e;
 
     /* Neutral colors */
@@ -115,35 +118,36 @@
 
 [data-theme="ron-light"] {
   color-scheme: light;
-  --clr-btn: #e6e2d6;
-  --clr-btn-hover: #d3cec0;
-  --clr-btn-pressed: #c6c0ae;
-  --clr-btn-toggled: #c6c0ae;
-  --clr-btn-adaptive: #f2f1ec;
-  --clr-btn-adaptive-hover: #e0dccd;
-  --clr-btn-adaptive-pressed: #d3cec0;
-  --clr-btn-adaptive-toggled: #c6c0ae;
+  --clr-btn: #e0e0e0;
+  --clr-btn-hover: #d0d0d0;
+  --clr-btn-pressed: #c0c0c0;
+  --clr-btn-toggled: #c0c0c0;
+  --clr-btn-adaptive: #f0f0f0;
+  --clr-btn-adaptive-hover: #e8e8e8;
+  --clr-btn-adaptive-pressed: #d0d0d0;
+  --clr-btn-adaptive-toggled: #c0c0c0;
   --clr-primary-100: #f04452;
   --clr-primary-200: #d9263c;
-  --clr-primary-300: #c8102e;
-  --clr-primary-500: #8f0b21;
+  --clr-primary-300: #e0263c;
+  --clr-primary-500: #9c0c24;
   --clr-primary-text: #ffffff;
   --clr-danger-100: #ffb3ba;
-  --clr-danger-300: #ff6b6b;
+  --clr-danger-300: #c8102e;
   --clr-danger-400: #c8102e;
   --clr-danger-500: #b71c1c;
   --clr-danger-600: #8f0b21;
   --clr-danger-text: #ffffff;
   --clr-success-100: #b3ffb3;
-  --clr-success-300: #57e389;
+  --clr-success-300: #146c2e;
   --clr-success-500: #2a8c3f;
+  --clr-success-base: #57e389;
   --clr-success-text: #1e1e1e;
-  --clr-text: #101114;
-  --clr-text-secondary: #5a5e63;
-  --clr-bg: #ece9e0;
-  --clr-surface: #f2f1ec;
-  --clr-surface-variant: #e0dccd;
-  --adw-border-color: #c9c5b8;
+  --clr-text: #000000;
+  --clr-text-secondary: #606366;
+  --clr-bg: #fafafa;
+  --clr-surface: #ffffff;
+  --clr-surface-variant: #f5f5f5;
+  --adw-border-color: #d0d0d0;
 }
 
 [data-theme="ron-dark"] {
@@ -170,6 +174,7 @@
   --clr-success-100: #8fce00;
   --clr-success-300: #57e389;
   --clr-success-500: #2a8c3f;
+  --clr-success-base: #57e389;
   --clr-success-text: #1e1e1e;
   --clr-text: #f2f1ec;
   --clr-text-secondary: #b9bcc2;
@@ -283,9 +288,9 @@ samp {
 
 .btn.success,
 .btn-success {
-  background-color: var(--clr-success-300);
+  background-color: var(--clr-success-base);
   color: var(--clr-success-text);
-  border-color: var(--clr-success-300);
+  border-color: var(--clr-success-base);
   transition: all 120ms ease;
 }
 
@@ -303,14 +308,14 @@ samp {
 
 .btn.success.toggled,
 .btn-success.toggled {
-  background-color: color-mix(in srgb, var(--clr-success-300) 50%, white);
-  border-color: color-mix(in srgb, var(--clr-success-300) 50%, white);
+  background-color: color-mix(in srgb, var(--clr-success-base) 50%, white);
+  border-color: color-mix(in srgb, var(--clr-success-base) 50%, white);
 }
 
 .btn.success.disabled,
 .btn-success.disabled {
-  background-color: color-mix(in srgb, var(--clr-success-300) 75%, black);
-  border-color: color-mix(in srgb, var(--clr-success-300) 75%, black);
+  background-color: color-mix(in srgb, var(--clr-success-base) 60%, white);
+  border-color: color-mix(in srgb, var(--clr-success-base) 60%, white);
 }
 
 .btn.danger,

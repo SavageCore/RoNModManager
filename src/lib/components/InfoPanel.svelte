@@ -18,7 +18,7 @@
     $infoLogStore.tone === "error"
       ? "var(--clr-danger-300)"
       : $infoLogStore.tone === "success"
-        ? "var(--clr-success)"
+        ? "var(--clr-success-300)"
         : "var(--clr-text)";
 
   $: detailText = buildMetadataRefreshDetailText(
