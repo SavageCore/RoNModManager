@@ -7,7 +7,9 @@
 </script>
 
 <script lang="ts">
-  import { tick, onMount, onDestroy } from "svelte";
+  import { tick, onMount, onDestroy, createEventDispatcher } from "svelte";
+
+  const dispatch = createEventDispatcher<{ select: DropdownOption }>();
 
   export let value: string = "";
   export let options: DropdownOption[] = [];
@@ -72,8 +74,7 @@
   }
 
   function dispatchSelect(option: DropdownOption) {
-    const event = new CustomEvent("select", { detail: option });
-    triggerEl?.dispatchEvent(event);
+    dispatch("select", option);
   }
 
   function handleKeydown(event: KeyboardEvent) {
