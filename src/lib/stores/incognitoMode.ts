@@ -59,23 +59,6 @@ export const DUMMY_MOD_GROUPS: InstalledModGroup[] = [
     ],
   },
   {
-    name: "Downtown_Map_Pack",
-    displayName: "Downtown Map Pack",
-    sourceUrl: "https://www.nexusmods.com/readyornot/mods/2712",
-    managedByManifest: true,
-    installedAt: daysAgo(55),
-    installedVersion: "1.2",
-    totalSize: 178257920,
-    files: [
-      {
-        name: "Downtown_Map_Pack_P.pak",
-        path: "/mods/Downtown_Map_Pack_P.pak",
-        exists: true,
-        size: 178257920,
-      },
-    ],
-  },
-  {
     name: "Urban_Warfare_Bundle",
     displayName: "Urban Warfare Bundle",
     sourceUrl: "https://www.nexusmods.com/readyornot/mods/2187",
@@ -233,9 +216,9 @@ export const DUMMY_COLLECTION_COLORS: Record<string, string> = {
 };
 
 export const DUMMY_TAGS: Record<string, string[]> = {
-  audio: ["Radio_Comms_Rework", "Urban_Warfare_Bundle"],
+  audio: ["Urban_Warfare_Bundle"],
   equipment: ["Realistic_SWAT_Equipment", "Modular_Gear_Pack"],
-  map: ["Breach_And_Clear_Maps", "Downtown_Map_Pack", "Mission_Pack_Vol1"],
+  map: ["Breach_And_Clear_Maps", "Mission_Pack_Vol1", "Radio_Comms_Rework"],
   visual: ["NightVision_Overhaul", "Tactical_HUD"],
 };
 
