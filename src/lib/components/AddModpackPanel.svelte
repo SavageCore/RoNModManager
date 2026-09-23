@@ -73,7 +73,7 @@
     // Serialises concurrent callers so modal-based interaction (Nexus file
     // selection / manual download waits) never overlaps itself.
     let interactionChain: Promise<void> = Promise.resolve();
-    const withInteractionLock = <T,>(fn: () => Promise<T>): Promise<T> => {
+    const withInteractionLock = <T>(fn: () => Promise<T>): Promise<T> => {
       const run = interactionChain.then(() => fn());
       interactionChain = run.then(
         () => undefined,

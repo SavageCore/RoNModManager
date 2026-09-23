@@ -18,7 +18,8 @@ const CHECKED_ITEMS: MenuItem[] = [
 ];
 
 type OpenOptions =
-  { anchor?: HTMLElement; cursor?: { x: number; y: number } } | undefined;
+  | { anchor?: HTMLElement; cursor?: { x: number; y: number } }
+  | undefined;
 
 async function openMenu(
   component: { openMenu?: (opts?: OpenOptions) => void },

@@ -58,6 +58,8 @@ describe("downloadTextFile", () => {
     });
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click");
     let clicked: HTMLAnchorElement | null = null;
+    // Capturing `this` is the point: the mock needs the receiver the
+    // production code calls it with (see .oxlintrc.json override).
     click.mockImplementation(function (this: HTMLAnchorElement) {
       clicked = this;
     });

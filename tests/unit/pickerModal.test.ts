@@ -114,7 +114,8 @@ describe("showFilePickerModal", () => {
     const addonCb = Array.from(
       modal().querySelectorAll('input[type="checkbox"]'),
     ).find((cb) => cb.closest("label")?.textContent?.includes("add-on")) as
-      HTMLInputElement | undefined;
+      | HTMLInputElement
+      | undefined;
     expect(addonCb).toBeDefined();
     setChecked(addonCb!, false);
     clickButton("Download");

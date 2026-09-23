@@ -67,16 +67,16 @@ userscript-upload: userscript-build ## Rebuild + upload the userscript to the la
 
 # ── Lint & Format ─────────────────────────────────────────────────────────────
 
-lint: ## Check formatting with Prettier (frontend)
+lint: ## Check formatting with Oxfmt and lint with Oxlint (frontend)
 	npm run lint
 
-format: ## Auto-format all files with Prettier
+format: ## Auto-format all files with Oxfmt
 	npm run format
 
 check: ## Run svelte-check for TypeScript/Svelte type checking
 	npm run check
 
-lint-frontend: lint check ## Run all frontend lint checks (Prettier + svelte-check)
+lint-frontend: lint check ## Run all frontend lint checks (Oxfmt + Oxlint + svelte-check)
 
 lint-backend: ## Run cargo fmt check + clippy on the Rust backend
 	cargo fmt --manifest-path $(CARGO_MANIFEST) -- --check

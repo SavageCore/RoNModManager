@@ -121,7 +121,7 @@ function createImportLogStore() {
     }
     // Clean up items no longer tracked by the queue
     const ids = new Set(state.items.map((i) => i.id));
-    for (const id of [...prevStatuses.keys()]) {
+    for (const id of prevStatuses.keys()) {
       if (!ids.has(id)) prevStatuses.delete(id);
     }
     // Names can be resolved after an item is queued (upfront lookup or the

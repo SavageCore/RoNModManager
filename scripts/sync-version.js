@@ -1,6 +1,7 @@
 import { execFileSync, execSync } from "child_process";
 import { readFileSync, writeFileSync } from "fs";
-import { format } from "prettier";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
 
 const version = JSON.parse(readFileSync("package.json", "utf8")).version;
 const tag = `v${version}`;
@@ -27,13 +28,23 @@ if (!releasesPattern.test(metainfo) || !releasesPattern.test(releases)) {
 
 const tauriConf = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
 tauriConf.version = version;
-// A bare JSON.stringify reflows arrays that prettier keeps inline, which then
-// fails `npm run lint`, so write the file through prettier.
 writeFileSync(
   "src-tauri/tauri.conf.json",
-  await format(JSON.stringify(tauriConf, null, 2), {
-    filepath: "src-tauri/tauri.conf.json",
-  }),
+  `${JSON.stringify(tauriConf, null, 2)}\n`,
+);
+// A bare JSON.stringify reflows arrays that the formatter keeps inline, which
+// then fails `npm run lint`, so write the file through oxfmt. Resolve repo
+// paths from the script location so this also works when cwd is a scratch
+// directory (as in tests/unit/metainfo.test.ts).
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+execFileSync(
+  resolve(root, "node_modules/.bin/oxfmt"),
+  [
+    "--config",
+    resolve(root, ".oxfmtrc.json"),
+    resolve("src-tauri/tauri.conf.json"),
+  ],
+  { stdio: "ignore" },
 );
 
 const cargo = readFileSync("src-tauri/Cargo.toml", "utf8");

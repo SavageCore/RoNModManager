@@ -4,11 +4,17 @@
 pre-commit:
   parallel: true
   jobs:
-    - name: prettier
-      run: npx prettier --write {staged_files}
+    - name: oxfmt
+      run: npx oxfmt {staged_files}
       glob:
         - "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts,svelte}"
         - "*.{css,json,md,yml,yaml}"
+      stage_fixed: true
+
+    - name: oxlint
+      run: npx oxlint --fix {staged_files}
+      glob:
+        - "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts,svelte}"
       stage_fixed: true
 
     - name: eslint package.json

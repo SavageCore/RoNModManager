@@ -113,7 +113,12 @@ describe("version hook AppStream generation", () => {
       '"targets": ["nsis", "deb", "appimage", "rpm"]',
     );
     expect(() =>
-      run(directory, resolve("node_modules/.bin/prettier"), ["--check", conf]),
+      run(directory, resolve("node_modules/.bin/oxfmt"), [
+        "--config",
+        resolve(".oxfmtrc.json"),
+        "--check",
+        conf,
+      ]),
     ).not.toThrow();
     expect(run(directory, "git", ["tag", "--list", "v0.0.17"]).trim()).toBe("");
     expect(
