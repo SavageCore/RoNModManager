@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "vitest"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {},
+  // `x = x` is Svelte's reactivity-trigger idiom, not a mistake.
+  // `this`-capture in the downloadText mock is how it observes the receiver.
+  "overrides": [
+    {
+      "files": ["**/*.svelte"],
+      "rules": {
+        "no-self-assign": "off"
+      }
+    },
+    {
+      "files": ["tests/unit/downloadText.test.ts"],
+      "rules": {
+        "no-this-alias": "off"
+      }
+    }
+  ],
+  "env": {
+    "builtin": true
+  },
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/coverage/**",
+    "**/build/**",
+    "**/build-dir/**",
+    "**/dist/**",
+    "**/.svelte-kit/**",
+    "**/src-tauri/target/**",
+    "**/src-tauri/vendor/**",
+    "**/src-tauri/.cargo/**",
+    "**/.flatpak-builder/**",
+    "**/flatpak-repo/**",
+    "**/.opencode/**",
+    "**/.makefaster/**",
+    "userscript/dist/**"
+  ]
+}

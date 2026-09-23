@@ -41,11 +41,13 @@ describe("downloadTextFile", () => {
   });
 
   it("triggers a blob download and revokes the object URL", () => {
-    const createObjectURL = vi.fn((blob: Blob): string => {
-      void blob;
-      return "blob:fake";
-    });
-    const revokeObjectURL = vi.fn();
+    const createObjectURL = vi.fn<(blob: Blob) => string>(
+      (blob: Blob): string => {
+        void blob;
+        return "blob:fake";
+      },
+    );
+    const revokeObjectURL = vi.fn<(url: string) => void>();
     Object.defineProperty(URL, "createObjectURL", {
       value: createObjectURL,
       configurable: true,
@@ -58,6 +60,8 @@ describe("downloadTextFile", () => {
     });
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click");
     let clicked: HTMLAnchorElement | null = null;
+    // Capturing `this` is the point: the mock needs the receiver the
+    // production code calls it with (see .oxlintrc.json override).
     click.mockImplementation(function (this: HTMLAnchorElement) {
       clicked = this;
     });

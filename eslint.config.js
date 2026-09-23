@@ -15,7 +15,6 @@ export default defineConfig([
       "**/.flatpak-builder/**",
       "**/flatpak-repo/**",
       "**/.opencode/**",
-      "**/.commandcode/**",
     ],
   },
   {

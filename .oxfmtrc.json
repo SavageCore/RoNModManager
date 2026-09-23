@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "sortPackageJson": false,
+  "svelte": {},
+  "ignorePatterns": [
+    "node_modules",
+    "build",
+    "build-dir",
+    "dist",
+    "coverage",
+    ".svelte-kit",
+    "package",
+    "src-tauri/target",
+    ".flatpak-builder",
+    "src-tauri/gen/schemas",
+    "src-tauri/vendor",
+    "flatpak-repo",
+    "*.flatpak"
+  ]
+}

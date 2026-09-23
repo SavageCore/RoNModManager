@@ -5,23 +5,27 @@ function stubMatchMedia(matches: boolean) {
   const listeners = new Map<string, Set<() => void>>();
   const mql = {
     matches,
-    addEventListener: vi.fn((event: string, cb: () => void) => {
-      let set = listeners.get(event);
-      if (!set) {
-        set = new Set();
-        listeners.set(event, set);
-      }
-      set.add(cb);
-    }),
-    removeEventListener: vi.fn((event: string, cb: () => void) => {
-      listeners.get(event)?.delete(cb);
-    }),
+    addEventListener: vi.fn<(event: string, cb: () => void) => void>(
+      (event: string, cb: () => void) => {
+        let set = listeners.get(event);
+        if (!set) {
+          set = new Set();
+          listeners.set(event, set);
+        }
+        set.add(cb);
+      },
+    ),
+    removeEventListener: vi.fn<(event: string, cb: () => void) => void>(
+      (event: string, cb: () => void) => {
+        listeners.get(event)?.delete(cb);
+      },
+    ),
     dispatch: () => {
       listeners.get("change")?.forEach((cb) => cb());
     },
   };
   Object.defineProperty(window, "matchMedia", {
-    value: vi.fn(() => mql),
+    value: vi.fn<() => unknown>(() => mql),
     configurable: true,
     writable: true,
   });

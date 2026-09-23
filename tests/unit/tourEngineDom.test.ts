@@ -2,8 +2,10 @@ import { get } from "svelte/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { updateConfig, goto, currentPath } = vi.hoisted(() => ({
-  updateConfig: vi.fn(async () => undefined),
-  goto: vi.fn(async () => undefined),
+  updateConfig: vi.fn<(patch: Record<string, unknown>) => Promise<void>>(
+    async () => undefined,
+  ),
+  goto: vi.fn<(url: string) => Promise<void>>(async () => undefined),
   currentPath: { value: "/mods" },
 }));
 
@@ -278,7 +280,7 @@ describe("tourEngine next action", () => {
     ]);
     // After loadEngine, so the registry instance is the engine's.
     const registry = await import("../../src/lib/tour/registry");
-    const openAddMod = vi.fn();
+    const openAddMod = vi.fn<() => unknown>();
     registry.registerTourActions("mods", { "open-add-mod": openAddMod });
 
     await engine.startTour();
@@ -304,7 +306,7 @@ describe("tourEngine next action", () => {
       { id: "b", title: "B", body: "b" },
     ]);
     const registry = await import("../../src/lib/tour/registry");
-    const submit = vi.fn();
+    const submit = vi.fn<() => unknown>();
     registry.registerTourActions("mods", { "submit-add-mod": submit });
 
     await engine.startTour();
@@ -619,7 +621,7 @@ describe("tourEngine first-run setup", () => {
     const engine = await loadEngine(firstRunSteps());
     await engine.startTour({ setup: true });
     const registry = await import("../../src/lib/tour/registry");
-    const settle = vi.fn(async () => {});
+    const settle = vi.fn<() => Promise<void>>(async () => {});
     registry.registerTourActions("setup", { defer: settle });
 
     await engine.deferSetup();
@@ -639,7 +641,7 @@ describe("tourEngine first-run setup", () => {
       { id: "b", title: "B", body: "b" },
     ]);
     const registry = await import("../../src/lib/tour/registry");
-    const refused = vi.fn(async () => false);
+    const refused = vi.fn<() => Promise<boolean>>(async () => false);
     registry.registerTourActions("setup", { "save-modio": refused });
 
     await engine.startTour();

@@ -1,19 +1,32 @@
 import { get } from "svelte/store";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import { TOUR_STEPS } from "../../src/lib/tour/steps";
 import { setupWizardPage } from "../../src/lib/stores/setupWizard";
 import { addModTourCommand } from "../../src/lib/stores/tourUi";
-import type { TourContext } from "../../src/lib/tour/types";
+import type {
+  TourActionName,
+  TourContext,
+  TourRoute,
+} from "../../src/lib/tour/types";
+
+type WaitFor = <T>(
+  predicate: () => T | null | false | undefined,
+  timeoutMs: number,
+) => Promise<T | null>;
 
 function fakeCtx() {
   return {
-    call: vi.fn(async () => {}),
-    goto: vi.fn(async () => {}),
-    waitFor: vi.fn(async () => null),
-    waitForSelector: vi.fn(async () => null),
+    call: vi.fn<(name: TourActionName) => Promise<unknown>>(async () => {}),
+    goto: vi.fn<(route: TourRoute) => Promise<void>>(async () => {}),
+    waitFor: vi.fn<WaitFor>(async () => null),
+    waitForSelector: vi.fn<
+      (selector: string, timeoutMs?: number) => Promise<Element | null>
+    >(async () => null),
   } as unknown as TourContext & {
-    call: ReturnType<typeof vi.fn>;
-    waitForSelector: ReturnType<typeof vi.fn>;
+    call: Mock<(name: TourActionName) => Promise<unknown>>;
+    waitForSelector: Mock<
+      (selector: string, timeoutMs?: number) => Promise<Element | null>
+    >;
   };
 }
 
@@ -28,9 +41,9 @@ describe("tour step hooks", () => {
     for (const step of TOUR_STEPS) {
       const ctx = fakeCtx();
       await step.enter?.(ctx);
-      if (step.ready) {
-        await expect(step.ready(ctx)).resolves.toBe(false);
-      }
+      // Steps without a ready hook are always ready: assert the resolved
+      // value unconditionally rather than branching around the expect.
+      expect((await step.ready?.(ctx)) ?? false).toBe(false);
       await step.leave?.(ctx);
     }
   });

@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mocks } = vi.hoisted(() => ({
   mocks: {
-    saveToken: vi.fn(),
-    updateConfig: vi.fn(),
-    validateToken: vi.fn(),
-    verifyModioApiKey: vi.fn(),
-    verifyNexusApiKey: vi.fn(),
+    saveToken: vi.fn<(token: string) => Promise<void>>(),
+    updateConfig: vi.fn<(patch: Record<string, unknown>) => Promise<void>>(),
+    validateToken: vi.fn<(token: string) => Promise<boolean>>(),
+    verifyModioApiKey: vi.fn<(key: string) => Promise<boolean>>(),
+    verifyNexusApiKey: vi.fn<(key: string) => Promise<boolean>>(),
   },
 }));
 

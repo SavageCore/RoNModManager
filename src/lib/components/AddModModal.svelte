@@ -366,7 +366,8 @@
     try {
       type Download = {
         promise?:
-          ReturnType<typeof addNexusMod> | ReturnType<typeof addModIoMod>;
+          | ReturnType<typeof addNexusMod>
+          | ReturnType<typeof addModIoMod>;
         result?:
           | Awaited<ReturnType<typeof addNexusMod>>
           | Awaited<ReturnType<typeof addModIoMod>>;
@@ -421,7 +422,7 @@
 
       // Phase 1 serialisation: Nexus file-variant prompts must not overlap.
       let interactionChain: Promise<void> = Promise.resolve();
-      const withInteractionLock = <T,>(fn: () => Promise<T>): Promise<T> => {
+      const withInteractionLock = <T>(fn: () => Promise<T>): Promise<T> => {
         const run = interactionChain.then(fn, fn);
         interactionChain = run.then(
           () => undefined,

@@ -14,8 +14,9 @@ describe("TOUR_STEPS", () => {
   });
 
   it("targets only data-tour anchors", () => {
-    for (const step of TOUR_STEPS) {
-      if (step.target) expect(step.target).toMatch(/^\[data-tour="/);
+    const targeted = TOUR_STEPS.filter((step) => step.target);
+    for (const step of targeted) {
+      expect(step.target).toMatch(/^\[data-tour="/);
     }
   });
 

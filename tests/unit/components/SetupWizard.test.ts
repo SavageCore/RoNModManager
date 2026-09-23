@@ -3,20 +3,36 @@ import { get } from "svelte/store";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  updateConfig: vi.fn(async () => undefined),
-  getConfig: vi.fn(async () => ({ game_path: "", modpack_url: "" })),
-  setGamePath: vi.fn(async () => undefined),
-  setModpackUrl: vi.fn(async () => undefined),
-  fetchModpackJson: vi.fn(async () => ({ version: "1.0.0" })),
-  detectGamePath: vi.fn(async (): Promise<string | null> => null),
-  logout: vi.fn(async () => undefined),
-  validateAndSaveModioApiKey: vi.fn(async () => true),
-  validateAndSaveModioToken: vi.fn(async () => true),
-  validateAndSaveNexusApiKey: vi.fn(async () => true),
-  openDialog: vi.fn(async (): Promise<string | null> => null),
-  openUrl: vi.fn(async () => undefined),
-  toastSuccess: vi.fn(),
-  tokenSet: vi.fn(),
+  updateConfig: vi.fn<(patch: Record<string, unknown>) => Promise<void>>(
+    async () => undefined,
+  ),
+  getConfig: vi.fn<() => Promise<{ game_path: string; modpack_url: string }>>(
+    async () => ({ game_path: "", modpack_url: "" }),
+  ),
+  setGamePath: vi.fn<(path: string) => Promise<void>>(async () => undefined),
+  setModpackUrl: vi.fn<(url: string) => Promise<void>>(async () => undefined),
+  fetchModpackJson: vi.fn<(url: string) => Promise<{ version: string }>>(
+    async () => ({ version: "1.0.0" }),
+  ),
+  detectGamePath: vi.fn<() => Promise<string | null>>(
+    async (): Promise<string | null> => null,
+  ),
+  logout: vi.fn<() => Promise<void>>(async () => undefined),
+  validateAndSaveModioApiKey: vi.fn<(value: string) => Promise<boolean>>(
+    async () => true,
+  ),
+  validateAndSaveModioToken: vi.fn<(value: string) => Promise<boolean>>(
+    async () => true,
+  ),
+  validateAndSaveNexusApiKey: vi.fn<(value: string) => Promise<boolean>>(
+    async () => true,
+  ),
+  openDialog: vi.fn<(options?: unknown) => Promise<string | null>>(
+    async (): Promise<string | null> => null,
+  ),
+  openUrl: vi.fn<(url: string) => Promise<void>>(async () => undefined),
+  toastSuccess: vi.fn<(message: string) => void>(),
+  tokenSet: vi.fn<(value: boolean) => void>(),
 }));
 
 vi.mock("../../../src/lib/api/commands", () => ({
@@ -36,7 +52,10 @@ vi.mock("../../../src/lib/api/apiKeyValidation", () => ({
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: mocks.openDialog }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: mocks.openUrl }));
 vi.mock("../../../src/lib/stores/toast", () => ({
-  toastStore: { success: mocks.toastSuccess, error: vi.fn() },
+  toastStore: {
+    success: mocks.toastSuccess,
+    error: vi.fn<(message: string) => void>(),
+  },
 }));
 vi.mock("../../../src/lib/stores/token", () => ({
   tokenStore: { set: mocks.tokenSet },

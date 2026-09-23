@@ -1,3 +1,7 @@
+// oxlint typescript(triple-slash-reference): gm-types.d.ts declares globals
+// with no runtime module to import (an `import` would break the vite build),
+// so the triple-slash reference stays.
+// eslint-disable-next-line typescript/triple-slash-reference
 /// <reference path="./gm-types.d.ts" />
 import { isNexusPremium, setupPremiumMenu } from "./premiumToggle";
 import {
@@ -64,7 +68,8 @@ function gmRequest(opts: {
     // project; reached via globalThis so the app typecheck, which lacks those
     // types, does not need a bare `GM` global).
     const gm4 = (globalThis as { GM?: unknown }).GM as
-      { xmlHttpRequest?: unknown } | undefined;
+      | { xmlHttpRequest?: unknown }
+      | undefined;
     if (typeof gm4?.xmlHttpRequest === "function") {
       (gm4.xmlHttpRequest as (opts: unknown) => void)(xhrOpts);
     } else {

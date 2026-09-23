@@ -55,7 +55,7 @@ describe("CollectionSelector", () => {
   });
 
   it("confirms the toggled selection", async () => {
-    const onConfirm = vi.fn();
+    const onConfirm = vi.fn<(selected: string[]) => void>();
     render(CollectionSelector, {
       props: {
         isVisible: true,
@@ -72,7 +72,7 @@ describe("CollectionSelector", () => {
   });
 
   it("cancelling hides the dialog without confirming", async () => {
-    const onConfirm = vi.fn();
+    const onConfirm = vi.fn<(selected: string[]) => void>();
     render(CollectionSelector, {
       props: {
         isVisible: true,

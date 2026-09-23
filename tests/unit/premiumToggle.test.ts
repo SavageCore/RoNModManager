@@ -5,9 +5,9 @@ import {
 } from "../../userscript/src/premiumToggle";
 
 const gm = vi.hoisted(() => ({
-  getValue: vi.fn(),
-  setValue: vi.fn(),
-  registerMenuCommand: vi.fn(),
+  getValue: vi.fn<(key: string, def?: unknown) => unknown>(),
+  setValue: vi.fn<(key: string, value: unknown) => void>(),
+  registerMenuCommand: vi.fn<(name: string, fn: () => void) => void>(),
 }));
 
 vi.stubGlobal("GM_getValue", gm.getValue);
@@ -33,10 +33,7 @@ describe("setupPremiumMenu", () => {
     gm.getValue.mockReturnValue(false);
     setupPremiumMenu();
     expect(gm.registerMenuCommand).toHaveBeenCalledTimes(1);
-    const [label, callback] = gm.registerMenuCommand.mock.calls[0] as [
-      string,
-      () => void,
-    ];
+    const [label, callback] = gm.registerMenuCommand.mock.calls[0];
     expect(label).toContain("OFF");
 
     gm.getValue.mockReturnValue(false);
@@ -49,7 +46,7 @@ describe("setupPremiumMenu", () => {
   it("shows ON when premium is enabled", () => {
     gm.getValue.mockReturnValue(true);
     setupPremiumMenu();
-    const [label] = gm.registerMenuCommand.mock.calls[0] as [string];
+    const [label] = gm.registerMenuCommand.mock.calls[0];
     expect(label).toContain("ON");
   });
 });

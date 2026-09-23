@@ -18,7 +18,8 @@ const CHECKED_ITEMS: MenuItem[] = [
 ];
 
 type OpenOptions =
-  { anchor?: HTMLElement; cursor?: { x: number; y: number } } | undefined;
+  | { anchor?: HTMLElement; cursor?: { x: number; y: number } }
+  | undefined;
 
 async function openMenu(
   component: { openMenu?: (opts?: OpenOptions) => void },
@@ -65,7 +66,7 @@ describe("CustomMenu", () => {
   });
 
   it("runs the item action, closes and notifies the parent on click", async () => {
-    const action = vi.fn();
+    const action = vi.fn<() => void>();
     const { component, container } = render(CustomMenuProbe, {
       props: { items: [{ id: "go", label: "Go", action }] },
     });
@@ -79,7 +80,7 @@ describe("CustomMenu", () => {
   });
 
   it("does not run disabled item actions", async () => {
-    const action = vi.fn();
+    const action = vi.fn<() => void>();
     const { component } = render(CustomMenu, {
       props: { items: [{ id: "busy", label: "Busy", disabled: true, action }] },
     });
@@ -165,7 +166,7 @@ describe("CustomMenu", () => {
   });
 
   it("reveals a nested submenu on parent hover", async () => {
-    const action = vi.fn();
+    const action = vi.fn<() => void>();
     const { component, container } = renderMenu({
       items: [
         { id: "refresh", label: "Refresh metadata" },
@@ -196,7 +197,7 @@ describe("CustomMenu", () => {
   });
 
   it("does not run the parent action when it has children", async () => {
-    const action = vi.fn();
+    const action = vi.fn<() => void>();
     const { component } = renderMenu({
       items: [
         {
@@ -213,7 +214,7 @@ describe("CustomMenu", () => {
   });
 
   it("runs a submenu child action and closes the whole menu", async () => {
-    const action = vi.fn();
+    const action = vi.fn<() => void>();
     const { component, container } = render(CustomMenuProbe, {
       props: {
         items: [
