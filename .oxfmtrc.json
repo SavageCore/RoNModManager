@@ -16,7 +16,6 @@
     "src-tauri/gen/schemas",
     "src-tauri/vendor",
     "flatpak-repo",
-    "*.flatpak",
-    ".hermes"
+    "*.flatpak"
   ]
 }

@@ -37,8 +37,6 @@
     "**/.flatpak-builder/**",
     "**/flatpak-repo/**",
     "**/.opencode/**",
-    "**/.commandcode/**",
-    "**/.hermes/**",
     "**/.makefaster/**",
     "userscript/dist/**"
   ]
