@@ -10,6 +10,7 @@ use crate::commands::mods::archive_install_key;
 use crate::models::AppError;
 use crate::services::addon_map;
 use crate::services::game_watch;
+use crate::services::installer;
 use crate::services::manifest;
 use crate::services::steam;
 use crate::services::steam_launch;
@@ -278,7 +279,34 @@ pub(crate) fn sync_mod_links_for_game_path(
     let enabled: HashSet<String> = enabled_groups.into_iter().collect();
     let staging_root = get_staging_root()?;
     let manager = manifest::ManifestManager::new(&staging_root);
-    let manifests = manager.list_all_manifests().unwrap_or_default();
+    // Older staged UE4SS mods may miss the blank enabled.txt the loader
+    // needs (e.g. MissionObjectiveCounter, SRankAlert shipped without it).
+    // Repair staged dirs now so the link pass below symlinks the file live.
+    let repaired = installer::repair_staged_ue4ss_enabled_files(&staging_root.join("mods"))
+        .map_err(|e| e.to_string())?;
+    let mut manifests = manager.list_all_manifests().unwrap_or_default();
+    if !repaired.is_empty() {
+        // Backfill install manifests so the repaired file is tracked (and
+        // linked when its mod is enabled) on this and future syncs.
+        let staged_mods_root = staging_root.join("mods");
+        for created in &repaired {
+            let Ok(rel) = created.strip_prefix(&staged_mods_root) else {
+                continue;
+            };
+            let Some(key) = rel.components().next().and_then(|c| c.as_os_str().to_str()) else {
+                continue;
+            };
+            for manifest_data in manifests.values_mut() {
+                if archive_install_key(&manifest_data.source_archive) == key
+                    && !manifest_data.installed_files.contains(created)
+                {
+                    manifest_data.installed_files.push(created.clone());
+                    // Best-effort: a failed save must not block the sync.
+                    let _ = manager.save_manifest(manifest_data);
+                }
+            }
+        }
+    }
 
     // Stale profile entries (no install manifest) would otherwise be skipped
     // silently, launching without mods the user thinks are enabled.

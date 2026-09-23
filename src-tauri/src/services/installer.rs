@@ -1004,6 +1004,10 @@ where
         }
     }
 
+    // Some UE4SS mods don't ship the blank `enabled.txt` the loader needs -
+    // create it so the mod actually loads.
+    ensure_ue4ss_enabled_files(&mut report)?;
+
     emit_progress("Archive complete", total_bytes);
 
     Ok(report)
@@ -1178,6 +1182,10 @@ pub fn install_rar_archive(
         }
     }
 
+    // Some UE4SS mods don't ship the blank `enabled.txt` the loader needs -
+    // create it so the mod actually loads.
+    ensure_ue4ss_enabled_files(&mut report)?;
+
     // Clean up temp directory
     let _ = fs::remove_dir_all(temp_dir);
 
@@ -1339,6 +1347,10 @@ pub fn install_7z_archive(
         }
     }
 
+    // Some UE4SS mods don't ship the blank `enabled.txt` the loader needs -
+    // create it so the mod actually loads.
+    ensure_ue4ss_enabled_files(&mut report)?;
+
     let _ = fs::remove_dir_all(&temp_dir);
 
     Ok(report)
@@ -1463,6 +1475,147 @@ pub fn backup_existing_file(source: &Path, backup_root: &Path) -> Result<()> {
 
     fs::copy(source, destination)?;
     Ok(())
+}
+
+/// The install dir (`.../ue4ss/Mods/<mod>`) for an installed UE4SS file, or
+/// `None` when the file isn't inside a user mod folder. Stock helper mods,
+/// the shared Lua library and runtime metadata are not user mods and never
+/// need an `enabled.txt`.
+fn ue4ss_mod_dir_for_installed_file(path: &Path) -> Option<PathBuf> {
+    let comps: Vec<_> = path.components().collect();
+    for i in 0..comps.len() {
+        let is_ue4ss = comps
+            .get(i)
+            .and_then(|c| c.as_os_str().to_str())
+            .map(|s| s.eq_ignore_ascii_case("ue4ss"))
+            .unwrap_or(false);
+        let is_mods = comps
+            .get(i + 1)
+            .and_then(|c| c.as_os_str().to_str())
+            .map(|s| s.eq_ignore_ascii_case("Mods"))
+            .unwrap_or(false);
+        if !(is_ue4ss && is_mods) {
+            continue;
+        }
+        let mod_name = comps.get(i + 2)?.as_os_str().to_str()?;
+        if mod_name.eq_ignore_ascii_case("shared")
+            || mod_name.eq_ignore_ascii_case("mods.txt")
+            || mod_name.eq_ignore_ascii_case("mods.json")
+            || UE4SS_STOCK_MODS
+                .iter()
+                .any(|s| s.eq_ignore_ascii_case(mod_name))
+        {
+            return None;
+        }
+        // Installed files are files inside the mod dir, so there must be at
+        // least one component beyond `<mod>`.
+        if comps.len() <= i + 3 {
+            return None;
+        }
+        return Some(comps[..=i + 2].iter().collect());
+    }
+    None
+}
+
+fn mod_dir_has_enabled_txt(mod_dir: &Path) -> bool {
+    if mod_dir.join("enabled.txt").exists() {
+        return true;
+    }
+    // Case-insensitive check so `ENABLED.TXT` from an odd archive doesn't
+    // gain a duplicate.
+    if let Ok(entries) = fs::read_dir(mod_dir) {
+        for entry in entries.flatten() {
+            if entry
+                .file_name()
+                .to_str()
+                .map(|n| n.eq_ignore_ascii_case("enabled.txt"))
+                .unwrap_or(false)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Ensure every freshly installed UE4SS user mod has its blank `enabled.txt`.
+///
+/// Some mods (e.g. MissionObjectiveCounter, SRankAlert) don't ship the file,
+/// and without it the UE4SS loader ignores the mod. The file is blank (0
+/// bytes) - its presence is the enable signal. Created files are appended to
+/// `report.installed_files` so the install manifest tracks them for
+/// symlinking.
+pub fn ensure_ue4ss_enabled_files(report: &mut InstallReport) -> Result<()> {
+    let mut mod_dirs: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    for file in &report.installed_files {
+        if let Some(mod_dir) = ue4ss_mod_dir_for_installed_file(file) {
+            mod_dirs.insert(mod_dir);
+        }
+    }
+    // Files installed but skipped as identical (already on disk) aren't in
+    // the report, yet their mod dir still counts - rescan is handled by the
+    // on-disk check below via `mod_dir_has_enabled_txt`.
+    for mod_dir in mod_dirs {
+        if mod_dir_has_enabled_txt(&mod_dir) {
+            continue;
+        }
+        fs::create_dir_all(&mod_dir)?;
+        let enabled_path = mod_dir.join("enabled.txt");
+        fs::write(&enabled_path, b"")?;
+        report.installed += 1;
+        report.installed_files.push(enabled_path);
+    }
+    Ok(())
+}
+
+/// Repair previously staged installs whose UE4SS mods are missing the blank
+/// `enabled.txt` (installed before `ensure_ue4ss_enabled_files` existed).
+/// Scans `<staging>/mods/*/ReadyOrNot/Binaries/Win64/ue4ss/Mods/*`, creates
+/// any missing file, and returns the created paths so callers can backfill
+/// install manifests.
+pub fn repair_staged_ue4ss_enabled_files(staging_mods_root: &Path) -> Result<Vec<PathBuf>> {
+    let mut created = Vec::new();
+    let Ok(keys) = fs::read_dir(staging_mods_root) else {
+        return Ok(created);
+    };
+    for key in keys.flatten() {
+        let key_path = key.path();
+        if !key_path.is_dir() {
+            continue;
+        }
+        let mods_root = key_path.join("ReadyOrNot/Binaries/Win64/ue4ss/Mods");
+        if !mods_root.is_dir() {
+            continue;
+        }
+        let Ok(mods) = fs::read_dir(&mods_root) else {
+            continue;
+        };
+        for entry in mods.flatten() {
+            let mod_dir = entry.path();
+            if !mod_dir.is_dir() {
+                continue;
+            }
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.eq_ignore_ascii_case("shared")
+                || name_str.eq_ignore_ascii_case("mods.txt")
+                || name_str.eq_ignore_ascii_case("mods.json")
+                || UE4SS_STOCK_MODS
+                    .iter()
+                    .any(|s| s.eq_ignore_ascii_case(name_str.as_ref()))
+            {
+                continue;
+            }
+            if mod_dir_has_enabled_txt(&mod_dir) {
+                continue;
+            }
+            fs::create_dir_all(&mod_dir)?;
+            let enabled_path = mod_dir.join("enabled.txt");
+            fs::write(&enabled_path, b"")?;
+            created.push(enabled_path);
+        }
+    }
+    Ok(created)
 }
 
 #[cfg(test)]
@@ -2422,5 +2575,114 @@ mod tests {
             .game_path
             .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods/BetaMod")
             .exists());
+    }
+
+    #[test]
+    fn install_creates_missing_enabled_txt_for_ue4ss_mod() {
+        // MissionObjectiveCounter / SRankAlert shape: Lua files but no
+        // enabled.txt. The loader needs the blank file, so install creates it.
+        let temp = TempDir::new().unwrap();
+        let context = create_context(temp.path());
+        fs::create_dir_all(&context.game_path).unwrap();
+
+        let archive = create_test_archive(
+            temp.path(),
+            vec![
+                ("MissionObjectiveCounter/Scripts/main.lua", b"-- lua code"),
+                ("SRankAlert/Scripts/main.lua", b"-- lua code"),
+            ],
+        );
+
+        let report = install_archive(&archive, &context).unwrap();
+
+        for mod_name in ["MissionObjectiveCounter", "SRankAlert"] {
+            let enabled = context.game_path.join(format!(
+                "ReadyOrNot/Binaries/Win64/ue4ss/Mods/{mod_name}/enabled.txt"
+            ));
+            assert!(enabled.exists(), "{mod_name} should gain enabled.txt");
+            assert_eq!(fs::read(&enabled).unwrap().len(), 0, "enabled.txt is blank");
+            assert!(report.installed_files.contains(&enabled));
+        }
+    }
+
+    #[test]
+    fn install_does_not_duplicate_existing_enabled_txt() {
+        let temp = TempDir::new().unwrap();
+        let context = create_context(temp.path());
+        fs::create_dir_all(&context.game_path).unwrap();
+
+        let archive = create_test_archive(
+            temp.path(),
+            vec![
+                ("RoundReport/enabled.txt", b""),
+                ("RoundReport/Scripts/main.lua", b"-- lua code"),
+            ],
+        );
+
+        let report = install_archive(&archive, &context).unwrap();
+
+        assert_eq!(
+            report.installed, 2,
+            "no extra enabled.txt should be created"
+        );
+        let enabled_count = report
+            .installed_files
+            .iter()
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.eq_ignore_ascii_case("enabled.txt"))
+                    .unwrap_or(false)
+            })
+            .count();
+        assert_eq!(enabled_count, 1);
+    }
+
+    #[test]
+    fn ensure_enabled_txt_skips_shared_and_stock_mods() {
+        let temp = TempDir::new().unwrap();
+        let context = create_context(temp.path());
+        let shared_file = context
+            .game_path
+            .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods/shared/UEHelpers/UEHelpers.lua");
+        let stock_file = context
+            .game_path
+            .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods/BPModLoaderMod/Scripts/main.lua");
+        fs::create_dir_all(shared_file.parent().unwrap()).unwrap();
+        fs::create_dir_all(stock_file.parent().unwrap()).unwrap();
+        fs::write(&shared_file, b"-- shared").unwrap();
+        fs::write(&stock_file, b"-- stock").unwrap();
+
+        let mut report = InstallReport {
+            installed: 2,
+            skipped: 0,
+            overrides_backed_up: 0,
+            installed_files: vec![shared_file, stock_file],
+        };
+        ensure_ue4ss_enabled_files(&mut report).unwrap();
+
+        assert_eq!(report.installed, 2, "shared/stock mods need no enabled.txt");
+        assert_eq!(report.installed_files.len(), 2);
+    }
+
+    #[test]
+    fn repair_staged_creates_missing_enabled_txt() {
+        let temp = TempDir::new().unwrap();
+        let staging_mods = temp.path().join("mods");
+        let mod_scripts =
+            staging_mods.join("SomeMod/ReadyOrNot/Binaries/Win64/ue4ss/Mods/SRankAlert/Scripts");
+        fs::create_dir_all(&mod_scripts).unwrap();
+        fs::write(mod_scripts.join("main.lua"), b"-- lua").unwrap();
+
+        let created = repair_staged_ue4ss_enabled_files(&staging_mods).unwrap();
+
+        assert_eq!(created.len(), 1);
+        assert_eq!(fs::read(&created[0]).unwrap().len(), 0);
+        assert!(created[0].ends_with("SRankAlert/enabled.txt"));
+
+        // Second run is a no-op.
+        assert!(repair_staged_ue4ss_enabled_files(&staging_mods)
+            .unwrap()
+            .is_empty());
     }
 }
