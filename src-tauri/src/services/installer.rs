@@ -162,6 +162,11 @@ pub struct Ue4ssLayout {
     /// archives). Stored as a `PathBuf` so multi-component wrappers strip
     /// cleanly.
     pub wrapper: Option<PathBuf>,
+    /// Lowercased names of user mods shipping a real `config.json` at the mod
+    /// root. A `config.example.json` reference copy seeds the staged
+    /// `config.json` only for mods NOT in this set - when the archive has a
+    /// real config, the example stays skipped.
+    pub mods_with_config_json: HashSet<String>,
 }
 
 /// Strip `prefix` from `path` case-insensitively, component by component.
@@ -361,12 +366,24 @@ pub fn detect_ue4ss_layout(entry_names: &[String]) -> Option<Ue4ssLayout> {
     // `has_top_level_mods_dir`, and rewrite() re-roots its `Mods/` segment
     // the same way. Only the bare-folder shape needs the direct prefix.
     let bare_mod_folder = bundles_mod && !has_top_level_mods_dir && wrapper.is_none();
+    // Mods shipping a real `config.json` at the mod root: their
+    // `config.example.json` reference copy stays skipped. Mods without one
+    // get their staged `config.json` seeded from the example at install.
+    let mut mods_with_config_json: HashSet<String> = HashSet::new();
+    for name in entry_names {
+        if let Some((key, file)) = ue4ss_mod_root_file(Path::new(name), &wrapper, bare_mod_folder) {
+            if file == "config.json" {
+                mods_with_config_json.insert(key);
+            }
+        }
+    }
     if bare_mod_folder {
         return Some(Ue4ssLayout {
             prefix: PathBuf::from("ReadyOrNot/Binaries/Win64/ue4ss/Mods"),
             bundles_runtime,
             bundles_mod,
             wrapper,
+            mods_with_config_json,
         });
     }
 
@@ -381,6 +398,7 @@ pub fn detect_ue4ss_layout(entry_names: &[String]) -> Option<Ue4ssLayout> {
         bundles_runtime,
         bundles_mod,
         wrapper,
+        mods_with_config_json,
     })
 }
 
@@ -416,11 +434,117 @@ fn user_ue4ss_mod_subpath(stripped: &Path) -> Option<PathBuf> {
     Some(PathBuf::from("ue4ss").join(stripped))
 }
 
+/// Allowlist for files inside a UE4SS user mod folder, relative to the mod
+/// dir (e.g. `Scripts/main.lua`, `config.json`, `enabled.txt`).
+///
+/// A Lua mod only needs three kinds of files at runtime:
+/// - `enabled.txt` at the mod root (the loader's enable signal),
+/// - `*.json` data files at the mod root (`config.json`; `*.example.json`
+///   reference copies are skipped),
+/// - everything under `Scripts/` (the actual mod code).
+///
+/// Author extras (`*.md`, `LICENSE*`, `*.ps1`, images, docs, voice profiles)
+/// are skipped. `Mods/shared/...` is the shared Lua library, not a user mod
+/// dir, and bypasses this check entirely (see `ue4ss_within_mod_dir`).
+pub fn is_ue4ss_mod_asset_allowed(within_mod: &Path) -> bool {
+    let mut comps = within_mod.components();
+    let Some(first) = comps.next().and_then(|c| c.as_os_str().to_str()) else {
+        return false;
+    };
+    // Everything under Scripts/ is mod code - keep it.
+    if first.eq_ignore_ascii_case("Scripts") {
+        return true;
+    }
+    // Only direct children of the mod dir beyond this point.
+    if comps.next().is_some() {
+        return false;
+    }
+    // enabled.txt at the mod root.
+    if first.eq_ignore_ascii_case("enabled.txt") {
+        return true;
+    }
+    // *.json at the mod root, except *.example.json reference copies.
+    let lower = first.to_ascii_lowercase();
+    if lower.ends_with(".json") && !lower.ends_with(".example.json") {
+        return true;
+    }
+    false
+}
+
+/// `(mod key, root file name)` for an archive entry sitting directly at a
+/// UE4SS user mod's root, both lowercased. Handles the wrapper-stripped
+/// `Mods/<mod>/...` shape and the bare `<mod>/...` shape (which needs
+/// `bare_shape`, mirroring the direct prefix in `detect_ue4ss_layout`).
+/// Returns `None` for the shared library, stock helpers, nested paths and
+/// non-mod paths.
+fn ue4ss_mod_root_file(
+    raw: &Path,
+    wrapper: &Option<PathBuf>,
+    bare_shape: bool,
+) -> Option<(String, String)> {
+    let stripped = match wrapper {
+        Some(w) => strip_prefix_ci(raw, w).unwrap_or_else(|| raw.to_path_buf()),
+        None => raw.to_path_buf(),
+    };
+    let mut comps = stripped.components();
+    let first = comps.next()?.as_os_str().to_str()?;
+    if first.eq_ignore_ascii_case("Mods") {
+        let name = comps.next()?.as_os_str().to_str()?;
+        if UE4SS_STOCK_MODS
+            .iter()
+            .any(|s| s.eq_ignore_ascii_case(name))
+            || name.eq_ignore_ascii_case("shared")
+            || name.eq_ignore_ascii_case("mods.txt")
+            || name.eq_ignore_ascii_case("mods.json")
+        {
+            return None;
+        }
+        let file = comps.next()?.as_os_str().to_str()?;
+        if comps.next().is_some() {
+            return None;
+        }
+        return Some((name.to_ascii_lowercase(), file.to_ascii_lowercase()));
+    }
+    if bare_shape {
+        let file = comps.next()?.as_os_str().to_str()?;
+        if comps.next().is_some() {
+            return None;
+        }
+        return Some((first.to_ascii_lowercase(), file.to_ascii_lowercase()));
+    }
+    None
+}
+
+/// True for a `config.example.json` reference copy sitting directly at a
+/// user mod's root (already lowercased file name from `ue4ss_mod_root_file`).
+fn is_ue4ss_example_config_file(lower_file_name: &str) -> bool {
+    lower_file_name == "config.example.json"
+}
+
+/// Path within a UE4SS user mod dir for a wrapper-stripped `Mods/<mod>/...`
+/// path (everything after `Mods/<mod>`). Returns `None` for
+/// `Mods/shared/...` (shared Lua library - always kept whole) and non-mod
+/// paths.
+fn ue4ss_within_mod_dir(stripped: &Path) -> Option<PathBuf> {
+    let mut comps = stripped.components();
+    let first = comps.next()?.as_os_str().to_str()?;
+    if !first.eq_ignore_ascii_case("Mods") {
+        return None;
+    }
+    let name = comps.next()?.as_os_str().to_str()?;
+    if name.eq_ignore_ascii_case("shared") {
+        return None;
+    }
+    Some(comps.collect())
+}
+
 /// Rewrite a UE4SS entry path for extraction, then prepend the layout prefix.
 /// Returns `None` when the entry must be skipped (only for `bundles_mod`
-/// archives): bundled runtime files, stock helpers, and author extras (docs,
-/// voice profiles, images) that sit outside the user's mod folder. The pinned
-/// runtime comes from `ensure_installed`.
+/// archives): bundled runtime files, stock helpers, author extras (docs,
+/// voice profiles, images) that sit outside the user's mod folder, and files
+/// inside the user's mod folder that the mod doesn't need at runtime (see
+/// `is_ue4ss_mod_asset_allowed`). The pinned runtime comes from
+/// `ensure_installed`.
 ///
 /// Wrapper handling differs by archive kind: for a mod bundle the wrapper
 /// (e.g. `ue4ss/`, `package/`) is author packaging and is stripped, and the
@@ -435,6 +559,30 @@ pub fn rewrite_ue4ss_path(raw: &Path, layout: &Ue4ssLayout) -> Option<PathBuf> {
         // Bare mod folder at the archive root: the prefix already points at
         // `ue4ss/Mods`, so there is no `Mods/` segment to re-root.
         if layout.wrapper.is_none() && layout.prefix.ends_with(Path::new("Win64/ue4ss/Mods")) {
+            // raw is `<mod>/...`; only the mod's runtime files install.
+            let mut comps = raw.components();
+            let mod_name = comps.next()?.as_os_str().to_str()?;
+            let within: PathBuf = comps.collect();
+            if !is_ue4ss_mod_asset_allowed(&within) {
+                // Seed the staged `config.json` from the shipped
+                // `config.example.json` reference copy when the archive has
+                // no real config for this mod. The example itself never
+                // installs - its content becomes the staged config, which is
+                // the source of truth the editor manages and sync links live.
+                if within.components().count() == 1
+                    && within
+                        .file_name()
+                        .and_then(|f| f.to_str())
+                        .map(|f| is_ue4ss_example_config_file(&f.to_ascii_lowercase()))
+                        .unwrap_or(false)
+                    && !layout
+                        .mods_with_config_json
+                        .contains(&mod_name.to_ascii_lowercase())
+                {
+                    return Some(layout.prefix.join(raw.with_file_name("config.json")));
+                }
+                return None;
+            }
             return Some(layout.prefix.join(raw));
         }
         let stripped: Option<PathBuf> = match &layout.wrapper {
@@ -456,7 +604,37 @@ pub fn rewrite_ue4ss_path(raw: &Path, layout: &Ue4ssLayout) -> Option<PathBuf> {
             }
         }
         let stripped = stripped.unwrap_or_else(|| raw.to_path_buf());
-        return user_ue4ss_mod_subpath(&stripped).map(|rel| layout.prefix.join(rel));
+        let rel = user_ue4ss_mod_subpath(&stripped)?;
+        // Inside a user mod folder only the runtime files install
+        // (enabled.txt, *.json minus *.example.json, Scripts/). The shared
+        // Lua library (`ue4ss_within_mod_dir` is None) always installs whole.
+        if let Some(within) = ue4ss_within_mod_dir(&stripped) {
+            if !is_ue4ss_mod_asset_allowed(&within) {
+                // Same example-seeding as the bare-folder branch above: clone
+                // `config.example.json` content into the staged `config.json`
+                // when the archive ships no real config for this mod.
+                if within.components().count() == 1
+                    && within
+                        .file_name()
+                        .and_then(|f| f.to_str())
+                        .map(|f| is_ue4ss_example_config_file(&f.to_ascii_lowercase()))
+                        .unwrap_or(false)
+                    && ue4ss_selectable_unit(&stripped, layout)
+                        .map(|u| {
+                            !layout
+                                .mods_with_config_json
+                                .contains(&u.to_ascii_lowercase())
+                        })
+                        .unwrap_or(false)
+                {
+                    let mut dest = layout.prefix.join(&rel);
+                    dest.set_file_name("config.json");
+                    return Some(dest);
+                }
+                return None;
+            }
+        }
+        return Some(layout.prefix.join(rel));
     }
 
     Some(layout.prefix.join(raw))
@@ -572,6 +750,36 @@ pub fn list_ue4ss_mod_folders(entries: &[(String, u64)]) -> Vec<Ue4ssModFolder> 
         let Some(unit) = ue4ss_selectable_unit(&stripped, &layout) else {
             continue;
         };
+        // Mirror the install allowlist so the picker's file counts and byte
+        // totals match what actually installs (docs, licenses and friends
+        // are skipped at install time). A `config.example.json` reference
+        // copy counts when it seeds the staged `config.json` (no real
+        // config in the archive for that mod). The shared library always
+        // installs whole, so it bypasses the check.
+        let within: Option<PathBuf> =
+            if layout.wrapper.is_none() && layout.prefix.ends_with(Path::new("Win64/ue4ss/Mods")) {
+                let mut comps = stripped.components();
+                comps.next();
+                Some(comps.collect())
+            } else {
+                ue4ss_within_mod_dir(&stripped)
+            };
+        if let Some(within) = within {
+            if !is_ue4ss_mod_asset_allowed(&within) {
+                let seeds_config = within.components().count() == 1
+                    && within
+                        .file_name()
+                        .and_then(|f| f.to_str())
+                        .map(|f| is_ue4ss_example_config_file(&f.to_ascii_lowercase()))
+                        .unwrap_or(false)
+                    && !layout
+                        .mods_with_config_json
+                        .contains(&unit.to_ascii_lowercase());
+                if !seeds_config {
+                    continue;
+                }
+            }
+        }
         let key = unit.to_ascii_lowercase();
         // Display path mirrors where the unit lands in-game.
         let display = format!("Mods/{unit}");
@@ -1597,13 +1805,7 @@ pub fn repair_staged_ue4ss_enabled_files(staging_mods_root: &Path) -> Result<Vec
             }
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
-            if name_str.eq_ignore_ascii_case("shared")
-                || name_str.eq_ignore_ascii_case("mods.txt")
-                || name_str.eq_ignore_ascii_case("mods.json")
-                || UE4SS_STOCK_MODS
-                    .iter()
-                    .any(|s| s.eq_ignore_ascii_case(name_str.as_ref()))
-            {
+            if is_non_user_ue4ss_entry(name_str.as_ref()) {
                 continue;
             }
             if mod_dir_has_enabled_txt(&mod_dir) {
@@ -1616,6 +1818,101 @@ pub fn repair_staged_ue4ss_enabled_files(staging_mods_root: &Path) -> Result<Vec
         }
     }
     Ok(created)
+}
+
+/// True for UE4SS `Mods/` entries that are never user mods: the shared Lua
+/// library, runtime metadata, and stock helper mods.
+fn is_non_user_ue4ss_entry(name: &str) -> bool {
+    name.eq_ignore_ascii_case("shared")
+        || name.eq_ignore_ascii_case("mods.txt")
+        || name.eq_ignore_ascii_case("mods.json")
+        || UE4SS_STOCK_MODS
+            .iter()
+            .any(|s| s.eq_ignore_ascii_case(name))
+}
+
+/// Remove previously installed files inside UE4SS user mod dirs that the
+/// install allowlist no longer keeps (docs, licenses, install scripts,
+/// `*.example.json` reference copies...).
+///
+/// Scans `<staging>/mods/*/ReadyOrNot/Binaries/Win64/ue4ss/Mods/<mod>/` and
+/// deletes every file `is_ue4ss_mod_asset_allowed` rejects, plus directories
+/// left empty by the sweep (never `Scripts/`, never the mod dir itself).
+/// Returns the removed staged paths so callers can prune install manifests
+/// and mirror the deletion live. `config.json`, `enabled.txt` and `Scripts/`
+/// are never touched.
+pub fn sweep_staged_ue4ss_mod_junk(staging_mods_root: &Path) -> Result<Vec<PathBuf>> {
+    let mut removed = Vec::new();
+    let Ok(keys) = fs::read_dir(staging_mods_root) else {
+        return Ok(removed);
+    };
+    for key in keys.flatten() {
+        let key_path = key.path();
+        if !key_path.is_dir() {
+            continue;
+        }
+        let mods_root = key_path.join("ReadyOrNot/Binaries/Win64/ue4ss/Mods");
+        if !mods_root.is_dir() {
+            continue;
+        }
+        let Ok(mods) = fs::read_dir(&mods_root) else {
+            continue;
+        };
+        for entry in mods.flatten() {
+            let mod_dir = entry.path();
+            if !mod_dir.is_dir() {
+                continue;
+            }
+            if is_non_user_ue4ss_entry(&entry.file_name().to_string_lossy()) {
+                continue;
+            }
+            sweep_ue4ss_mod_dir(&mod_dir, &mod_dir, &mut removed);
+        }
+    }
+    Ok(removed)
+}
+
+/// Delete disallowed files under `mod_dir` (recursively) and prune
+/// directories left empty, except `Scripts/` and the mod dir itself.
+fn sweep_ue4ss_mod_dir(mod_dir: &Path, dir: &Path, removed: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() && !path.is_symlink() {
+            sweep_ue4ss_mod_dir(mod_dir, &path, removed);
+            // Prune dirs left empty by the sweep, but never Scripts/ or the
+            // mod dir itself.
+            let is_scripts = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.eq_ignore_ascii_case("Scripts"))
+                .unwrap_or(false);
+            if path != mod_dir
+                && !is_scripts
+                && fs::read_dir(&path)
+                    .map(|mut d| d.next().is_none())
+                    .unwrap_or(false)
+                && fs::remove_dir(&path).is_ok()
+            {
+                removed.push(path);
+            }
+            continue;
+        }
+        if !path.is_file() && !path.is_symlink() {
+            continue;
+        }
+        let Ok(within) = path.strip_prefix(mod_dir) else {
+            continue;
+        };
+        if is_ue4ss_mod_asset_allowed(within) {
+            continue;
+        }
+        if fs::remove_file(&path).is_ok() {
+            removed.push(path);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1804,11 +2101,27 @@ mod tests {
             Path::new("ReadyOrNot/Binaries/Win64/ue4ss/Mods/RoundReport/Scripts/main.lua")
         );
 
-        // A nested .ini under a mod's Mods/ tree must stay an Override, not a
-        // ConfigMod that would get mis-routed to Saved/Config/Windows.
-        let nested_ini = rewrite_ue4ss_path(Path::new("Mods/RoundReport/config.ini"), &layout)
-            .expect("user mod file should not be skipped");
-        assert_eq!(classify_archive_entry(&nested_ini), ModFileType::Override);
+        // A mod-root .ini is author junk, not runtime data - skipped.
+        assert!(rewrite_ue4ss_path(Path::new("Mods/RoundReport/config.ini"), &layout).is_none());
+
+        // A mod-root .json (config.json) installs and stays an Override, not
+        // a ConfigMod that would get mis-routed to Saved/Config/Windows.
+        let nested_json = rewrite_ue4ss_path(Path::new("Mods/RoundReport/config.json"), &layout)
+            .expect("mod config should install");
+        assert_eq!(
+            nested_json,
+            Path::new("ReadyOrNot/Binaries/Win64/ue4ss/Mods/RoundReport/config.json")
+        );
+        assert_eq!(classify_archive_entry(&nested_json), ModFileType::Override);
+
+        // A `config.example.json` reference copy never installs itself - it
+        // seeds the staged `config.json` (no real config in this archive).
+        let seeded = rewrite_ue4ss_path(Path::new("Mods/RoundReport/config.example.json"), &layout)
+            .expect("example should seed staged config.json");
+        assert_eq!(
+            seeded,
+            Path::new("ReadyOrNot/Binaries/Win64/ue4ss/Mods/RoundReport/config.json")
+        );
 
         // Stock helper mods are skipped, but the shared Lua library installs
         // (Lua mods need it at runtime; newest copy wins at link time).
@@ -2684,5 +2997,252 @@ mod tests {
         assert!(repair_staged_ue4ss_enabled_files(&staging_mods)
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn ue4ss_mod_asset_allowlist_keeps_runtime_files_only() {
+        // Scripts/ subtree: everything installs (code, any depth, any type).
+        assert!(is_ue4ss_mod_asset_allowed(Path::new("Scripts/main.lua")));
+        assert!(is_ue4ss_mod_asset_allowed(Path::new(
+            "Scripts/nested/helper.lua"
+        )));
+        assert!(is_ue4ss_mod_asset_allowed(Path::new("scripts/main.LUA")));
+        // enabled.txt at the mod root (case-insensitive).
+        assert!(is_ue4ss_mod_asset_allowed(Path::new("enabled.txt")));
+        assert!(is_ue4ss_mod_asset_allowed(Path::new("ENABLED.TXT")));
+        // *.json at the mod root, except *.example.json reference copies.
+        assert!(is_ue4ss_mod_asset_allowed(Path::new("config.json")));
+        assert!(is_ue4ss_mod_asset_allowed(Path::new("CONFIG.JSON")));
+        assert!(!is_ue4ss_mod_asset_allowed(Path::new(
+            "config.example.json"
+        )));
+        assert!(!is_ue4ss_mod_asset_allowed(Path::new(
+            "CONFIG.EXAMPLE.JSON"
+        )));
+        // Author extras never install.
+        assert!(!is_ue4ss_mod_asset_allowed(Path::new("README.md")));
+        assert!(!is_ue4ss_mod_asset_allowed(Path::new("CHANGELOG.md")));
+        assert!(!is_ue4ss_mod_asset_allowed(Path::new("CONFIG.md")));
+        assert!(!is_ue4ss_mod_asset_allowed(Path::new("LICENSE")));
+        assert!(!is_ue4ss_mod_asset_allowed(Path::new("LICENSE-UE4SS.txt")));
+        assert!(!is_ue4ss_mod_asset_allowed(Path::new("Install.ps1")));
+        assert!(!is_ue4ss_mod_asset_allowed(Path::new("config.ini")));
+        assert!(!is_ue4ss_mod_asset_allowed(Path::new("preview.png")));
+        // Nested files outside Scripts/ never install.
+        assert!(!is_ue4ss_mod_asset_allowed(Path::new("Docs/guide.md")));
+        assert!(!is_ue4ss_mod_asset_allowed(Path::new(
+            "Sub/Scripts/main.lua"
+        )));
+        assert!(!is_ue4ss_mod_asset_allowed(Path::new("")));
+    }
+
+    #[test]
+    fn install_skips_ue4ss_mod_junk_srankalert_shape() {
+        // SRankAlert 0.5.4 shape: bare mod folder with Scripts/, an example
+        // config, and author extras. Only runtime files install - and the
+        // example seeds the staged `config.json` (the example itself never
+        // installs).
+        let temp = TempDir::new().unwrap();
+        let context = create_context(temp.path());
+        fs::create_dir_all(&context.game_path).unwrap();
+
+        let archive = create_test_archive(
+            temp.path(),
+            vec![
+                ("SRankAlert/Scripts/main.lua", b"-- lua code"),
+                ("SRankAlert/Scripts/sra_config.lua", b"-- config code"),
+                (
+                    "SRankAlert/config.example.json",
+                    b"{\"seeded\":true}" as &[u8],
+                ),
+                ("SRankAlert/README.md", b"docs"),
+                ("SRankAlert/CHANGELOG.md", b"docs"),
+                ("SRankAlert/CONFIG.md", b"docs"),
+                ("SRankAlert/THIRD-PARTY.md", b"docs"),
+                ("SRankAlert/LICENSE", b"license"),
+                ("SRankAlert/Install.ps1", b"installer"),
+            ],
+        );
+
+        let report = install_archive(&archive, &context).unwrap();
+
+        // Two lua files plus the auto-created enabled.txt plus the seeded
+        // config.json (the example entry installs as the seed, so it counts
+        // as installed, not skipped).
+        assert_eq!(report.installed, 4);
+        assert_eq!(report.skipped, 6);
+        let mod_root = context
+            .game_path
+            .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods/SRankAlert");
+        assert!(mod_root.join("Scripts/main.lua").exists());
+        assert!(mod_root.join("Scripts/sra_config.lua").exists());
+        assert!(mod_root.join("enabled.txt").exists());
+        let seeded = mod_root.join("config.json");
+        assert!(seeded.exists(), "example seeds staged config.json");
+        assert_eq!(fs::read(&seeded).unwrap(), b"{\"seeded\":true}");
+        assert!(report.installed_files.contains(&seeded));
+        assert!(!mod_root.join("config.example.json").exists());
+        assert!(!mod_root.join("README.md").exists());
+        assert!(!mod_root.join("LICENSE").exists());
+        assert!(!mod_root.join("Install.ps1").exists());
+    }
+
+    #[test]
+    fn install_keeps_mod_root_config_json() {
+        // config.json at the mod root installs (user data); the example copy
+        // does not seed over it.
+        let temp = TempDir::new().unwrap();
+        let context = create_context(temp.path());
+        fs::create_dir_all(&context.game_path).unwrap();
+
+        let archive = create_test_archive(
+            temp.path(),
+            vec![
+                ("SRankAlert/Scripts/main.lua", b"-- lua code"),
+                ("SRankAlert/config.json", b"{\"real\":1}" as &[u8]),
+                (
+                    "SRankAlert/config.example.json",
+                    b"{\"example\":2}" as &[u8],
+                ),
+            ],
+        );
+
+        let report = install_archive(&archive, &context).unwrap();
+
+        assert_eq!(report.installed, 3, "lua + config.json + enabled.txt");
+        assert_eq!(report.skipped, 1, "config.example.json skipped");
+        let installed = context
+            .game_path
+            .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods/SRankAlert/config.json");
+        assert_eq!(
+            fs::read(&installed).unwrap(),
+            b"{\"real\":1}",
+            "real config wins over the example"
+        );
+    }
+
+    #[test]
+    fn install_seeds_config_json_from_example_in_wrapper_bundle() {
+        // Wrapper-bundle shape (`ue4ss/Mods/<mod>/...`): the example seeds
+        // the staged config.json the same way as the bare-folder shape.
+        let temp = TempDir::new().unwrap();
+        let context = create_context(temp.path());
+        fs::create_dir_all(&context.game_path).unwrap();
+
+        let archive = create_test_archive(
+            temp.path(),
+            vec![
+                ("ue4ss/Mods/SRankAlert/Scripts/main.lua", b"-- lua code"),
+                (
+                    "ue4ss/Mods/SRankAlert/config.example.json",
+                    b"{\"seeded\":true}" as &[u8],
+                ),
+            ],
+        );
+
+        let report = install_archive(&archive, &context).unwrap();
+
+        let mod_root = context
+            .game_path
+            .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods/SRankAlert");
+        let seeded = mod_root.join("config.json");
+        assert!(seeded.exists(), "example seeds staged config.json");
+        assert_eq!(fs::read(&seeded).unwrap(), b"{\"seeded\":true}");
+        assert!(report.installed_files.contains(&seeded));
+        assert!(!mod_root.join("config.example.json").exists());
+    }
+
+    #[test]
+    fn list_ue4ss_mod_folders_counts_seeded_config() {
+        // Picker counts mirror what installs: the example counts as the
+        // seeded config.json it produces; other junk stays excluded.
+        let entries = vec![
+            ("SRankAlert/Scripts/main.lua".to_string(), 60),
+            ("SRankAlert/enabled.txt".to_string(), 0),
+            ("SRankAlert/config.example.json".to_string(), 50),
+            ("SRankAlert/README.md".to_string(), 40),
+            ("SRankAlert/LICENSE".to_string(), 30),
+            ("SRankAlert/Install.ps1".to_string(), 20),
+        ];
+        let folders = list_ue4ss_mod_folders(&entries);
+        assert_eq!(folders.len(), 1);
+        assert_eq!(folders[0].name, "SRankAlert");
+        assert_eq!(
+            folders[0].file_count, 3,
+            "main.lua + enabled.txt + seeded config.json"
+        );
+        assert_eq!(folders[0].size, 110);
+    }
+
+    #[test]
+    fn list_ue4ss_mod_folders_skips_example_with_real_config() {
+        // With a real config.json in the archive the example seeds nothing,
+        // so it stays excluded from the counts.
+        let entries = vec![
+            ("SRankAlert/Scripts/main.lua".to_string(), 60),
+            ("SRankAlert/config.json".to_string(), 10),
+            ("SRankAlert/config.example.json".to_string(), 50),
+        ];
+        let folders = list_ue4ss_mod_folders(&entries);
+        assert_eq!(folders.len(), 1);
+        assert_eq!(folders[0].file_count, 2, "main.lua + config.json only");
+        assert_eq!(folders[0].size, 70);
+    }
+
+    #[test]
+    fn sweep_staged_removes_junk_keeps_config_and_scripts() {
+        // A pre-allowlist install: junk beside the runtime files, plus a
+        // user-created config.json. Only junk goes.
+        let temp = TempDir::new().unwrap();
+        let staging_mods = temp.path().join("mods");
+        let mod_dir = staging_mods.join("SomeMod/ReadyOrNot/Binaries/Win64/ue4ss/Mods/SRankAlert");
+        fs::create_dir_all(mod_dir.join("Scripts")).unwrap();
+        fs::create_dir_all(mod_dir.join("Docs")).unwrap();
+        fs::write(mod_dir.join("Scripts/main.lua"), b"-- lua").unwrap();
+        fs::write(mod_dir.join("config.json"), b"{}").unwrap();
+        fs::write(mod_dir.join("enabled.txt"), b"").unwrap();
+        fs::write(mod_dir.join("config.example.json"), b"{}").unwrap();
+        fs::write(mod_dir.join("README.md"), b"docs").unwrap();
+        fs::write(mod_dir.join("LICENSE"), b"license").unwrap();
+        fs::write(mod_dir.join("Install.ps1"), b"ps1").unwrap();
+        fs::write(mod_dir.join("Docs/guide.md"), b"docs").unwrap();
+
+        let removed = sweep_staged_ue4ss_mod_junk(&staging_mods).unwrap();
+
+        assert_eq!(removed.len(), 6, "5 junk files + pruned Docs/ dir");
+        assert!(mod_dir.join("Scripts/main.lua").exists());
+        assert!(mod_dir.join("config.json").exists());
+        assert!(mod_dir.join("enabled.txt").exists());
+        assert!(!mod_dir.join("config.example.json").exists());
+        assert!(!mod_dir.join("README.md").exists());
+        assert!(!mod_dir.join("LICENSE").exists());
+        assert!(!mod_dir.join("Install.ps1").exists());
+        assert!(!mod_dir.join("Docs").exists(), "emptied dir pruned");
+        assert!(mod_dir.join("Scripts").exists(), "Scripts/ never pruned");
+
+        // Second run is a no-op.
+        assert!(sweep_staged_ue4ss_mod_junk(&staging_mods)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn sweep_staged_skips_shared_and_stock_mods() {
+        let temp = TempDir::new().unwrap();
+        let staging_mods = temp.path().join("mods");
+        let shared_readme =
+            staging_mods.join("SomeMod/ReadyOrNot/Binaries/Win64/ue4ss/Mods/shared/README.md");
+        let stock_readme = staging_mods
+            .join("SomeMod/ReadyOrNot/Binaries/Win64/ue4ss/Mods/BPModLoaderMod/README.md");
+        fs::create_dir_all(shared_readme.parent().unwrap()).unwrap();
+        fs::create_dir_all(stock_readme.parent().unwrap()).unwrap();
+        fs::write(&shared_readme, b"docs").unwrap();
+        fs::write(&stock_readme, b"docs").unwrap();
+
+        assert!(sweep_staged_ue4ss_mod_junk(&staging_mods)
+            .unwrap()
+            .is_empty());
+        assert!(shared_readme.exists());
+        assert!(stock_readme.exists());
     }
 }

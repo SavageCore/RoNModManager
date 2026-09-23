@@ -3365,6 +3365,12 @@ pub(crate) async fn install_downloaded_file(
         savegames_path: context.savegames_path.join(&install_key),
         backup_path: context.backup_path.join(&install_key),
     };
+    // User-edited UE4SS configs (`Scripts/config.lua` ships in the
+    // archive; `config.json` is seeded from `config.example.json`) must
+    // survive updates: snapshot staged copies now, restore them after
+    // extraction below.
+    let lua_snapshots = ue4ss::snapshot_staged_lua_configs(&staged_context.mods_path);
+    let json_snapshots = ue4ss::snapshot_staged_json_configs(&staged_context.mods_path);
 
     let extension = path
         .extension()
@@ -3449,6 +3455,8 @@ pub(crate) async fn install_downloaded_file(
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_config_files_from_report(&report, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
+        ue4ss::preserve_user_lua_configs(&staged_context.backup_path, &lua_snapshots);
+        ue4ss::preserve_user_json_configs(&staged_context.backup_path, &json_snapshots);
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
     }
@@ -3488,6 +3496,8 @@ pub(crate) async fn install_downloaded_file(
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_config_files_from_report(&report, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
+        ue4ss::preserve_user_lua_configs(&staged_context.backup_path, &lua_snapshots);
+        ue4ss::preserve_user_json_configs(&staged_context.backup_path, &json_snapshots);
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
     }
@@ -3527,6 +3537,8 @@ pub(crate) async fn install_downloaded_file(
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_config_files_from_report(&report, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
+        ue4ss::preserve_user_lua_configs(&staged_context.backup_path, &lua_snapshots);
+        ue4ss::preserve_user_json_configs(&staged_context.backup_path, &json_snapshots);
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
     }

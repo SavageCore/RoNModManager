@@ -1278,12 +1278,7 @@
       <div class="prefs-row" data-tour="settings-intro-skip">
         <div class="prefs-row-text">
           <div class="prefs-row-title">Intro Skip</div>
-          <div class="prefs-row-subtitle">
-            Removes startup movies{#if linkOnLaunchOnly}
-              - applies on launch, stock at rest{/if}{#if introSkipApplied}
-              - currently applied{:else}
-              - currently stock{/if}
-          </div>
+          <div class="prefs-row-subtitle">Removes startup movies</div>
         </div>
         <div class="prefs-row-suffix">
           <label
@@ -1310,10 +1305,7 @@
               target="_blank"
               style="color:var(--clr-primary-300);text-decoration:underline;"
               >AlexRenderX</a
-            >{#if linkOnLaunchOnly}
-              - applies on launch{/if}{#if appliedProfile}
-              - currently applied{:else}
-              - currently stock{/if}
+            >
           </div>
         </div>
         <div class="prefs-row-suffix">

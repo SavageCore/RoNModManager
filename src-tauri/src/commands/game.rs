@@ -120,6 +120,33 @@ fn override_paths(
     Some((game_target, backup))
 }
 
+/// If `game_relative` (a `ReadyOrNot/...` path) sits inside a UE4SS user mod
+/// dir, returns the live mod dir (`<game>/.../ue4ss/Mods/<mod>`). Used to
+/// bound empty-directory pruning after the author-extra sweep.
+fn live_mod_dir_for_game_relative(game_relative: &Path, game_path: &Path) -> Option<PathBuf> {
+    let comps: Vec<String> = game_relative
+        .components()
+        .filter_map(|c| c.as_os_str().to_str().map(str::to_string))
+        .collect();
+    for i in 0..comps.len().saturating_sub(2) {
+        if comps[i].eq_ignore_ascii_case("ue4ss")
+            && comps[i + 1].eq_ignore_ascii_case("Mods")
+            && i + 2 < comps.len()
+        {
+            let dir: PathBuf = comps[..=i + 2].iter().collect();
+            return Some(game_path.join(dir));
+        }
+    }
+    None
+}
+
+fn is_scripts_dir(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.eq_ignore_ascii_case("Scripts"))
+        .unwrap_or(false)
+}
+
 pub fn launch_game_internal_pub(game_path: &Path, intro_skip_enabled: bool) -> Result<(), String> {
     launch_game_internal(game_path, intro_skip_enabled)
 }
@@ -305,6 +332,72 @@ pub(crate) fn sync_mod_links_for_game_path(
                     let _ = manager.save_manifest(manifest_data);
                 }
             }
+        }
+    }
+
+    // UE4SS mods installed before the asset allowlist carry author extras
+    // (READMEs, licenses, install scripts, *.example.json) in staging and
+    // live. Sweep staged junk now, prune it from manifests so the link pass
+    // below doesn't re-link it, and mirror the deletion live.
+    let staged_mods_root = staging_root.join("mods");
+    let swept =
+        installer::sweep_staged_ue4ss_mod_junk(&staged_mods_root).map_err(|e| e.to_string())?;
+    if !swept.is_empty() {
+        let swept_set: HashSet<&PathBuf> = swept.iter().collect();
+        for removed in &swept {
+            // Staged layout is `mods/<key>/<game-relative>` - mirror live.
+            if let Ok(rel) = removed.strip_prefix(&staged_mods_root) {
+                let mut components = rel.components();
+                if components.next().is_some() {
+                    let game_relative: PathBuf = components.collect();
+                    if !game_relative.as_os_str().is_empty() {
+                        let live_path = game_path.join(&game_relative);
+                        if live_path.is_symlink() || live_path.is_file() {
+                            let _ = fs::remove_file(&live_path);
+                        } else if live_path.is_dir() {
+                            let _ = fs::remove_dir(&live_path);
+                        }
+                        // Prune live parents left empty, stopping at the mod
+                        // dir itself (never Scripts/).
+                        if let Some(mod_dir) =
+                            live_mod_dir_for_game_relative(&game_relative, game_path)
+                        {
+                            let mut dir = live_path.parent().map(Path::to_path_buf);
+                            while let Some(candidate) = dir {
+                                if candidate != mod_dir
+                                    && candidate.starts_with(&mod_dir)
+                                    && !is_scripts_dir(&candidate)
+                                    && candidate
+                                        .read_dir()
+                                        .map(|mut d| d.next().is_none())
+                                        .unwrap_or(false)
+                                {
+                                    if fs::remove_dir(&candidate).is_err() {
+                                        break;
+                                    }
+                                    dir = candidate.parent().map(Path::to_path_buf);
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let mut pruned = false;
+        for manifest_data in manifests.values_mut() {
+            let before = manifest_data.installed_files.len();
+            manifest_data
+                .installed_files
+                .retain(|p| !swept_set.contains(p));
+            if manifest_data.installed_files.len() != before {
+                pruned = true;
+                let _ = manager.save_manifest(manifest_data);
+            }
+        }
+        if pruned {
+            log::info!("sync: swept {} UE4SS author-extra file(s)", swept.len());
         }
     }
 

@@ -1,7 +1,9 @@
 use tauri::State;
 
 use crate::models::Result;
-use crate::services::ue4ss::{self, Ue4ssConsoleMode, Ue4ssSettings};
+use crate::services::ue4ss::{
+    self, Ue4ssConsoleMode, Ue4ssLuaConfig, Ue4ssModConfig, Ue4ssSettings,
+};
 use crate::state::AppState;
 
 /// Current UE4SS runtime settings, read from the staged
@@ -75,6 +77,104 @@ pub async fn set_ue4ss_settings(
     Ok(Ue4ssSettingsApplyResult {
         changed,
         stale_shims_removed,
+    })
+}
+
+/// Read a UE4SS script mod's `config.json` (e.g. SRankAlert's settings).
+/// Reports `exists: false` before the mod's first launch creates the file -
+/// the editor can still create one, and the mod keeps any pre-existing file
+/// (missing fields use its defaults).
+#[tauri::command]
+pub async fn get_ue4ss_mod_config(
+    state: State<'_, AppState>,
+    mod_name: String,
+) -> Result<Ue4ssModConfig> {
+    let config = state.get_config()?;
+    let game_path = config.game_path.ok_or_else(|| {
+        crate::models::AppError::Validation("Game path is not configured".to_string())
+    })?;
+    ue4ss::read_mod_config(&game_path, &mod_name)
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Ue4ssModConfigWriteResult {
+    pub path: String,
+}
+
+/// Write (or create) a UE4SS script mod's `config.json`. The content must be
+/// a JSON object - syntax errors are rejected so a broken file can't disable
+/// the mod's safe features for a session. Takes effect on next game launch.
+#[tauri::command]
+pub async fn set_ue4ss_mod_config(
+    state: State<'_, AppState>,
+    mod_name: String,
+    content: String,
+) -> Result<Ue4ssModConfigWriteResult> {
+    let config = state.get_config()?;
+    let game_path = config.game_path.ok_or_else(|| {
+        crate::models::AppError::Validation("Game path is not configured".to_string())
+    })?;
+    let path = ue4ss::write_mod_config(&game_path, &mod_name, &content)?;
+    Ok(Ue4ssModConfigWriteResult {
+        path: path.to_string_lossy().to_string(),
+    })
+}
+
+/// Read a UE4SS script mod's Lua config file (`Scripts/config.lua`,
+/// seeded from `Scripts/config.default.lua` when the user file doesn't
+/// exist yet). Returns the raw text for the file editor.
+#[tauri::command]
+pub async fn get_ue4ss_lua_config(
+    state: State<'_, AppState>,
+    mod_name: String,
+) -> Result<Ue4ssLuaConfig> {
+    let config = state.get_config()?;
+    let game_path = config.game_path.ok_or_else(|| {
+        crate::models::AppError::Validation("Game path is not configured".to_string())
+    })?;
+    ue4ss::read_lua_config(&game_path, &mod_name)
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Ue4ssLuaConfigWriteResult {
+    pub path: String,
+}
+
+/// Write a UE4SS script mod's Lua config file as raw text. Anything with
+/// Lua syntax errors is rejected before it can reach the game. The pre-edit
+/// file is backed up once (see `revert_ue4ss_lua_config`). Takes effect on
+/// next game launch.
+#[tauri::command]
+pub async fn set_ue4ss_lua_config(
+    state: State<'_, AppState>,
+    mod_name: String,
+    content: String,
+) -> Result<Ue4ssLuaConfigWriteResult> {
+    let config = state.get_config()?;
+    let game_path = config.game_path.ok_or_else(|| {
+        crate::models::AppError::Validation("Game path is not configured".to_string())
+    })?;
+    let path = ue4ss::write_lua_config(&game_path, &mod_name, &content)?;
+    Ok(Ue4ssLuaConfigWriteResult {
+        path: path.to_string_lossy().to_string(),
+    })
+}
+
+/// Restore a UE4SS script mod's Lua config from its pre-edit backup.
+#[tauri::command]
+pub async fn revert_ue4ss_lua_config(
+    state: State<'_, AppState>,
+    mod_name: String,
+) -> Result<Ue4ssLuaConfigWriteResult> {
+    let config = state.get_config()?;
+    let game_path = config.game_path.ok_or_else(|| {
+        crate::models::AppError::Validation("Game path is not configured".to_string())
+    })?;
+    let path = ue4ss::revert_lua_config(&game_path, &mod_name)?;
+    Ok(Ue4ssLuaConfigWriteResult {
+        path: path.to_string_lossy().to_string(),
     })
 }
 

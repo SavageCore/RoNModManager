@@ -410,6 +410,44 @@ export const getUe4ssSettings = () =>
 export const setUe4ssSettings = (updates: Ue4ssSettingsUpdate) =>
   invoke<Ue4ssSettingsApplyResult>("set_ue4ss_settings", { updates });
 
+export interface Ue4ssModConfig {
+  modName: string;
+  exists: boolean;
+  content: string | null;
+  path: string | null;
+}
+export interface Ue4ssModConfigWriteResult {
+  path: string;
+}
+export const getUe4ssModConfig = (modName: string) =>
+  invoke<Ue4ssModConfig>("get_ue4ss_mod_config", { modName });
+export const setUe4ssModConfig = (modName: string, content: string) =>
+  invoke<Ue4ssModConfigWriteResult>("set_ue4ss_mod_config", {
+    modName,
+    content,
+  });
+
+export interface Ue4ssLuaConfig {
+  modName: string;
+  exists: boolean;
+  fromDefault: boolean;
+  content: string | null;
+  path: string | null;
+  canRevert: boolean;
+}
+export interface Ue4ssLuaConfigWriteResult {
+  path: string;
+}
+export const getUe4ssLuaConfig = (modName: string) =>
+  invoke<Ue4ssLuaConfig>("get_ue4ss_lua_config", { modName });
+export const setUe4ssLuaConfig = (modName: string, content: string) =>
+  invoke<Ue4ssLuaConfigWriteResult>("set_ue4ss_lua_config", {
+    modName,
+    content,
+  });
+export const revertUe4ssLuaConfig = (modName: string) =>
+  invoke<Ue4ssLuaConfigWriteResult>("revert_ue4ss_lua_config", { modName });
+
 export const setWindowTitle = (title: string) =>
   invoke<void>("set_window_title", { title });
 export const saveWindowState = (

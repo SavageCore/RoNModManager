@@ -33,6 +33,16 @@ pub(crate) fn process_name_matches(candidate: &str) -> bool {
     candidate.to_lowercase().contains("readyornot")
 }
 
+/// Match for a `/proc` cmdline: only the actual game executable names. A
+/// broad substring match false-positives on any process whose cmdline merely
+/// contains the game folder path (e.g. an editor opening a config file under
+/// `ReadyOrNot/...`), so cmdline matching is deliberately narrower than the
+/// `comm` check above.
+pub(crate) fn cmdline_matches_game_exe(cmdline: &str) -> bool {
+    let lower = cmdline.to_lowercase();
+    lower.contains("readyornot.exe") || lower.contains("readyornot-win64-shipping.exe")
+}
+
 /// True while the game process is alive. No new dependencies: `/proc` scan on
 /// Linux, `tasklist` on Windows, always false elsewhere.
 pub fn is_game_running() -> bool {
@@ -107,15 +117,22 @@ fn is_game_running_linux() -> bool {
         if pid.bytes().any(|b| !b.is_ascii_digit()) {
             continue;
         }
-        // `comm` is truncated to 15 chars but still contains "readyornot".
+        // `comm` is truncated to 15 chars but still contains "readyornot"
+        // (e.g. `ReadyOrNot-Win`) - match it broadly. `comm` is just the
+        // process name, so an editor like Kate (`comm` = `kate`) can't
+        // false-positive here.
         if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm")) {
             if process_name_matches(comm.trim()) {
                 return true;
             }
         }
         // `cmdline` catches wine/proton wrappers launched with the exe path.
+        // Match only the actual game executable names: a broad substring
+        // match false-positives on editor processes whose cmdline merely
+        // contains the game folder path (e.g. Kate editing a config.lua
+        // under `ReadyOrNot/...`).
         if let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) {
-            if process_name_matches(&String::from_utf8_lossy(&cmdline)) {
+            if cmdline_matches_game_exe(&String::from_utf8_lossy(&cmdline)) {
                 return true;
             }
         }
@@ -278,6 +295,22 @@ mod tests {
         assert!(!process_name_matches("explorer.exe"));
         assert!(!process_name_matches("ronmodmanager"));
         assert!(!process_name_matches(""));
+    }
+
+    #[test]
+    fn cmdline_matches_only_game_executables() {
+        assert!(cmdline_matches_game_exe("ReadyOrNot.exe"));
+        assert!(cmdline_matches_game_exe("ReadyOrNot-Win64-Shipping.exe"));
+        assert!(cmdline_matches_game_exe(
+            "Z:\\home\\user\\.steam\\steam\\steamapps\\common\\Ready Or Not\\ReadyOrNot\\Binaries\\Win64\\ReadyOrNot-Win64-Shipping.exe"
+        ));
+        // An editor opening a file under the game folder must not match:
+        // its cmdline contains the folder path but no game executable.
+        assert!(!cmdline_matches_game_exe(
+            "/usr/bin/kate -b /home/user/.local/share/Steam/steamapps/common/Ready Or Not/ReadyOrNot/Binaries/Win64/ue4ss/Mods/RoundReport/Scripts/config.lua"
+        ));
+        assert!(!cmdline_matches_game_exe("steam.exe"));
+        assert!(!cmdline_matches_game_exe(""));
     }
 
     #[test]

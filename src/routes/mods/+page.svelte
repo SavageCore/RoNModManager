@@ -61,9 +61,38 @@
   import { listen } from "@tauri-apps/api/event";
   import { modUpdatesStore } from "$lib/stores/modUpdates";
   import ManageAddOnsModal from "$lib/components/ManageAddOnsModal.svelte";
+  import Ue4ssModConfigModal from "$lib/components/Ue4ssModConfigModal.svelte";
   let showAddOnsModal = false;
   let selectedModName = "";
   let selectedAddOns: InstalledModFile[] = [];
+  let showUe4ssConfigModal = false;
+  let ue4ssConfigModName = "";
+  function openUe4ssConfigModal(modName: string) {
+    ue4ssConfigModName = modName;
+    showUe4ssConfigModal = true;
+  }
+  function closeUe4ssConfigModal() {
+    showUe4ssConfigModal = false;
+    ue4ssConfigModName = "";
+    refresh();
+  }
+  /// UE4SS script-mod folder names inside an installed group, derived from
+  /// the `ue4ss/Mods/<mod>/...` relative paths (the group name itself is the
+  /// source archive name). `shared` is the Lua library, not a mod.
+  function ue4ssModFolderNames(
+    group: Pick<InstalledModGroup, "files">,
+  ): string[] {
+    const names = new Set<string>();
+    for (const file of group.files) {
+      const rel = file.relativePath;
+      if (!rel) continue;
+      const match = rel.match(/^ue4ss\/Mods\/([^/]+)\//);
+      if (match && match[1].toLowerCase() !== "shared") names.add(match[1]);
+    }
+    return [...names].sort((a, b) =>
+      a.toLowerCase().localeCompare(b.toLowerCase()),
+    );
+  }
   let addonMap: Record<string, string[]> = {};
   function openAddOnsModal(modName: string) {
     selectedModName = modName;
@@ -2697,6 +2726,20 @@
                       >
                         Manage Add-ons
                       </button>
+                      {#if group.isUe4ssMod}
+                        {@const ue4ssNames = ue4ssModFolderNames(group)}
+                        {#each ue4ssNames as modFolder}
+                          <button
+                            class="btn btn-sm flex-shrink-0"
+                            on:click={() => openUe4ssConfigModal(modFolder)}
+                            title={`Edit config for UE4SS mod ${modFolder} (config.json / config.lua)`}
+                          >
+                            {ue4ssNames.length > 1
+                              ? `Config: ${modFolder}`
+                              : "Edit config"}
+                          </button>
+                        {/each}
+                      {/if}
                     {/if}
                   </div>
 
@@ -2850,6 +2893,16 @@
             `Failed to update world gen setting: ${String(err)}`,
           );
         }
+      }}
+    />
+
+    <Ue4ssModConfigModal
+      isVisible={showUe4ssConfigModal}
+      modName={ue4ssConfigModName}
+      displayName={ue4ssConfigModName}
+      on:close={closeUe4ssConfigModal}
+      on:saved={() => {
+        refresh();
       }}
     />
 

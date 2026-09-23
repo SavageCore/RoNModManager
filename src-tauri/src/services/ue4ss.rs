@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use emmylua_parser::{LuaLanguageLevel, LuaParser, ParserConfig};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
@@ -603,6 +604,602 @@ fn remove_stable_registrations() {
     }
 }
 
+/// A UE4SS script mod's `config.json` - e.g. SRankAlert's settings file,
+/// which the mod itself creates on first launch beside `Scripts/`. Missing
+/// fields fall back to the mod's defaults, so `{}` is a valid config.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Ue4ssModConfig {
+    pub mod_name: String,
+    pub exists: bool,
+    pub content: Option<String>,
+    pub path: Option<std::path::PathBuf>,
+}
+
+/// Reader cap matching the mod side (SRankAlert refuses files over 256 KiB)
+/// - anything bigger is almost certainly a mistake.
+const MOD_CONFIG_MAX_BYTES: u64 = 256 * 1024;
+
+/// Guard against path traversal in mod names coming from the UI: a mod dir
+/// name is a single plain component.
+fn sanitize_mod_name(mod_name: &str) -> Result<String> {
+    let name = mod_name.trim();
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || name.contains(['/', '\\'])
+        || name.contains('\0')
+    {
+        return Err(crate::models::AppError::Validation(format!(
+            "invalid UE4SS mod name '{mod_name}'"
+        )));
+    }
+    Ok(name.to_string())
+}
+
+/// Staged dir of the UE4SS user mod `mod_name` under any install key (exact
+/// match first, then case-insensitive).
+fn staged_mod_dir(mod_name: &str) -> Option<std::path::PathBuf> {
+    let mods = app_data_root().ok()?.join("staged").join("mods");
+    let mut ci_match = None;
+    for key in std::fs::read_dir(&mods).ok()?.flatten() {
+        let parent = key.path().join("ReadyOrNot/Binaries/Win64/ue4ss/Mods");
+        let exact = parent.join(mod_name);
+        if exact.is_dir() {
+            return Some(exact);
+        }
+        if ci_match.is_none() {
+            if let Ok(entries) = std::fs::read_dir(&parent) {
+                for entry in entries.flatten() {
+                    if entry.path().is_dir()
+                        && entry
+                            .file_name()
+                            .to_str()
+                            .map(|n| n.eq_ignore_ascii_case(mod_name))
+                            .unwrap_or(false)
+                    {
+                        ci_match = Some(entry.path());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    ci_match
+}
+
+/// Resolve the on-disk dir of the UE4SS user mod `mod_name`: the staged copy
+/// when present (managed install - with link-on-launch-only the live folder
+/// is stock at rest, and sync creates live parents as real dirs, so live
+/// alone can't be trusted), then the target of a live symlink, then a real
+/// (manually installed) live dir.
+pub fn mod_dir(game_path: &Path, mod_name: &str) -> Option<std::path::PathBuf> {
+    // Managed install: edit the staged copy that sync links live.
+    if let Some(staged) = staged_mod_dir(mod_name) {
+        return Some(staged);
+    }
+    let live = game_path
+        .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods")
+        .join(mod_name);
+    if live.is_symlink() {
+        if let Ok(target) = std::fs::read_link(&live) {
+            let resolved = if target.is_absolute() {
+                target
+            } else {
+                live.parent().unwrap_or(Path::new("")).join(target)
+            };
+            if resolved.is_dir() {
+                return Some(resolved);
+            }
+        }
+        return None;
+    }
+    if live.is_dir() {
+        // Real dir, not a symlink: manual install - edit it in place.
+        return Some(live);
+    }
+    None
+}
+
+/// Read a UE4SS mod's `config.json`. `exists` is false before the first game
+/// launch creates the file (or before the user creates one through the
+/// editor) - the mod then runs on its built-in defaults.
+pub fn read_mod_config(game_path: &Path, mod_name: &str) -> Result<Ue4ssModConfig> {
+    let name = sanitize_mod_name(mod_name)?;
+    let dir = mod_dir(game_path, &name);
+    let path = dir.as_ref().map(|d| d.join("config.json"));
+    let content = path.as_ref().and_then(|p| std::fs::read_to_string(p).ok());
+    let exists = path.as_ref().map(|p| p.exists()).unwrap_or(false);
+    Ok(Ue4ssModConfig {
+        mod_name: name,
+        exists,
+        content,
+        path,
+    })
+}
+
+/// Write (or create) a UE4SS mod's `config.json`. `content` must be a JSON
+/// object within 256 KiB - the mod ignores unknown fields and falls back to
+/// defaults per field, but broken JSON disables the mod's safe features for
+/// that session, so it is rejected here.
+///
+/// Writes the staged copy, links it live when the mod is currently enabled,
+/// and backfills the install manifest so sync links it on future syncs and
+/// uninstall removes it. Returns the staged path written.
+pub fn write_mod_config(
+    game_path: &Path,
+    mod_name: &str,
+    content: &str,
+) -> Result<std::path::PathBuf> {
+    if content.len() as u64 > MOD_CONFIG_MAX_BYTES {
+        return Err(crate::models::AppError::Validation(
+            "config.json exceeds 256 KiB".to_string(),
+        ));
+    }
+    let value: serde_json::Value = serde_json::from_str(content)
+        .map_err(|e| crate::models::AppError::Validation(format!("invalid JSON: {e}")))?;
+    if !value.is_object() {
+        return Err(crate::models::AppError::Validation(
+            "config.json must contain one JSON object".to_string(),
+        ));
+    }
+    let name = sanitize_mod_name(mod_name)?;
+    let Some(dir) = mod_dir(game_path, &name) else {
+        return Err(crate::models::AppError::Validation(format!(
+            "UE4SS mod '{name}' is not installed"
+        )));
+    };
+    // A manual install lives live as real files; managed installs edit the
+    // staged copy that sync links live.
+    let staged_mods_root = app_data_root().map(|r| r.join("staged").join("mods")).ok();
+    let is_staged = staged_mods_root
+        .as_ref()
+        .map(|root| dir.starts_with(root))
+        .unwrap_or(false);
+    let staged_path = dir.join("config.json");
+    if let Some(parent) = staged_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&staged_path, content)?;
+
+    if !is_staged {
+        return Ok(staged_path);
+    }
+
+    backfill_manifest_for_staged(&staged_path);
+    link_staged_config_live(game_path, &name, "config.json", &staged_path);
+    Ok(staged_path)
+}
+
+/// Track a newly created staged config file in its install manifest so sync
+/// links it on future syncs and uninstall removes it.
+fn backfill_manifest_for_staged(staged_path: &Path) {
+    let Ok(root) = app_data_root().map(|r| r.join("staged")) else {
+        return;
+    };
+    let mods_root = root.join("mods");
+    let Ok(rel) = staged_path.strip_prefix(&mods_root) else {
+        return;
+    };
+    let Some(key) = rel.components().next().and_then(|c| c.as_os_str().to_str()) else {
+        return;
+    };
+    let manager = crate::services::manifest::ManifestManager::new(&root);
+    let Ok(manifests) = manager.list_all_manifests() else {
+        return;
+    };
+    for manifest in manifests.values() {
+        if crate::commands::mods::archive_install_key(&manifest.source_archive) == key
+            && !manifest
+                .installed_files
+                .iter()
+                .any(|f| f.as_path() == staged_path)
+        {
+            if let Ok(Some(mut fresh)) = manager.load_manifest(&manifest.source_archive) {
+                fresh.installed_files.push(staged_path.to_path_buf());
+                let _ = manager.save_manifest(&fresh);
+            }
+            break;
+        }
+    }
+}
+
+/// Link a staged mod config file live now when the mod is enabled (its live
+/// dir exists) so the edit applies on next launch without waiting for a
+/// sync. A live symlink already points at the staged file - nothing to do
+/// there. `rel` is the mod-dir-relative path (`config.json` or
+/// `Scripts/config.lua`).
+fn link_staged_config_live(game_path: &Path, mod_name: &str, rel: &str, staged_path: &Path) {
+    let live_path = game_path
+        .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods")
+        .join(mod_name)
+        .join(rel);
+    if live_path.is_symlink() {
+        return;
+    }
+    if let Some(live_parent) = live_path.parent() {
+        if live_parent.is_dir() {
+            if live_path.exists() {
+                let _ = std::fs::remove_file(&live_path);
+            }
+            link_staged_live(staged_path, &live_path);
+        }
+    }
+}
+
+/// Relative paths of the Lua config files inside a UE4SS mod dir: the user
+/// config and the shipped defaults some mods (SquadEight) seed it from.
+pub const LUA_CONFIG_REL: &str = "Scripts/config.lua";
+pub const LUA_DEFAULT_CONFIG_REL: &str = "Scripts/config.default.lua";
+
+/// A UE4SS script mod's editable Lua config file (`Scripts/config.lua`,
+/// seeded from `Scripts/config.default.lua` when the user file doesn't
+/// exist yet). Edited as raw text, like `config.json` - the backend only
+/// rejects text with Lua syntax errors.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Ue4ssLuaConfig {
+    pub mod_name: String,
+    /// A `config.lua` exists (shipped or user-created).
+    pub exists: bool,
+    /// No `config.lua`, but a `config.default.lua` to seed one from.
+    pub from_default: bool,
+    /// Raw file text of the user config, or of the shipped defaults when
+    /// `from_default`.
+    pub content: Option<String>,
+    pub path: Option<std::path::PathBuf>,
+    /// A pre-edit backup exists and Revert is available.
+    pub can_revert: bool,
+}
+
+/// Backup path for a mod's Lua config: under the key's backup dir for
+/// managed installs (never inside the mod dir, so no loader ever sees it),
+/// beside the file for manual installs.
+fn lua_backup_path(dir: &Path, mod_name: &str) -> Option<std::path::PathBuf> {
+    let safe: String = mod_name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if let Ok(root) = app_data_root().map(|r| r.join("staged")) {
+        if let Ok(rel) = dir.strip_prefix(root.join("mods")) {
+            if let Some(key) = rel.components().next().and_then(|c| c.as_os_str().to_str()) {
+                return Some(
+                    root.join("backups")
+                        .join(key)
+                        .join("ue4ss_lua")
+                        .join(format!("{safe}_config.lua.bak")),
+                );
+            }
+        }
+    }
+    Some(dir.join("Scripts/config.lua.ronmm-bak"))
+}
+
+/// Reject text with Lua syntax errors, reporting the first few with line
+/// numbers. Parsed at the Lua 5.4 level (the UE4SS runtime).
+fn validate_lua_syntax(text: &str) -> Result<()> {
+    let tree = LuaParser::parse(text, ParserConfig::with_level(LuaLanguageLevel::Lua54));
+    if !tree.has_syntax_errors() {
+        return Ok(());
+    }
+    let mut details: Vec<String> = Vec::new();
+    for err in tree.get_errors().iter().take(3) {
+        let line = text[..usize::from(err.range.start()).min(text.len())]
+            .chars()
+            .filter(|c| *c == '\n')
+            .count()
+            + 1;
+        details.push(format!("line {line}: {}", err.message));
+    }
+    Err(crate::models::AppError::Validation(format!(
+        "invalid Lua: {}",
+        details.join("; ")
+    )))
+}
+
+/// Read a UE4SS mod's Lua config file (`Scripts/config.lua`, seeded from
+/// `Scripts/config.default.lua` when the user file doesn't exist yet).
+/// Returns the raw text - unlike the old tailored form, a file with syntax
+/// errors still opens for editing; only saving validates.
+pub fn read_lua_config(game_path: &Path, mod_name: &str) -> Result<Ue4ssLuaConfig> {
+    let name = sanitize_mod_name(mod_name)?;
+    let dir = mod_dir(game_path, &name);
+    let config_path = dir.as_ref().map(|d| d.join(LUA_CONFIG_REL));
+    let default_path = dir.as_ref().map(|d| d.join(LUA_DEFAULT_CONFIG_REL));
+    let source = config_path
+        .as_ref()
+        .filter(|p| p.exists())
+        .or_else(|| default_path.as_ref().filter(|p| p.exists()));
+    let Some(source) = source else {
+        return Ok(Ue4ssLuaConfig {
+            mod_name: name,
+            exists: false,
+            from_default: false,
+            content: None,
+            path: None,
+            can_revert: false,
+        });
+    };
+    let text = std::fs::read_to_string(source)?;
+    if text.len() as u64 > MOD_CONFIG_MAX_BYTES {
+        return Err(crate::models::AppError::Validation(
+            "Lua config exceeds 256 KiB".to_string(),
+        ));
+    }
+    let from_default = Some(source) == default_path.as_ref();
+    let can_revert = dir
+        .as_ref()
+        .and_then(|d| lua_backup_path(d, &name))
+        .map(|b| b.exists())
+        .unwrap_or(false);
+    Ok(Ue4ssLuaConfig {
+        mod_name: name,
+        exists: !from_default,
+        from_default,
+        content: Some(text),
+        path: config_path,
+        can_revert,
+    })
+}
+
+/// Write (or create) a UE4SS mod's Lua config file as raw text. Anything
+/// with Lua syntax errors is rejected before it can reach the game.
+///
+/// The pre-edit content is backed up once (revertible), the manifest is
+/// backfilled, and the file is linked live when the mod is enabled.
+/// Returns the staged path written.
+pub fn write_lua_config(
+    game_path: &Path,
+    mod_name: &str,
+    content: &str,
+) -> Result<std::path::PathBuf> {
+    if content.len() as u64 > MOD_CONFIG_MAX_BYTES {
+        return Err(crate::models::AppError::Validation(
+            "Lua config exceeds 256 KiB".to_string(),
+        ));
+    }
+    validate_lua_syntax(content)?;
+    let name = sanitize_mod_name(mod_name)?;
+    let Some(dir) = mod_dir(game_path, &name) else {
+        return Err(crate::models::AppError::Validation(format!(
+            "UE4SS mod '{name}' is not installed"
+        )));
+    };
+    let config_path = dir.join(LUA_CONFIG_REL);
+    if !config_path.exists() && !dir.join(LUA_DEFAULT_CONFIG_REL).exists() {
+        return Err(crate::models::AppError::Validation(format!(
+            "UE4SS mod '{name}' has no editable Lua config"
+        )));
+    }
+    if config_path.exists() {
+        if let Ok(current) = std::fs::read_to_string(&config_path) {
+            if current == content {
+                return Ok(config_path);
+            }
+        }
+        // Back up the pre-edit user file once, so Revert restores shipped state.
+        if let Some(backup) = lua_backup_path(&dir, &name) {
+            if !backup.exists() {
+                if let Some(parent) = backup.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::copy(&config_path, &backup)?;
+            }
+        }
+    }
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&config_path, content)?;
+
+    let staged_mods_root = app_data_root().map(|r| r.join("staged").join("mods")).ok();
+    let is_staged = staged_mods_root
+        .as_ref()
+        .map(|root| dir.starts_with(root))
+        .unwrap_or(false);
+    if is_staged {
+        backfill_manifest_for_staged(&config_path);
+        link_staged_config_live(game_path, &name, LUA_CONFIG_REL, &config_path);
+    }
+    Ok(config_path)
+}
+
+/// Restore a UE4SS mod's Lua config from its pre-edit backup.
+pub fn revert_lua_config(game_path: &Path, mod_name: &str) -> Result<std::path::PathBuf> {
+    let name = sanitize_mod_name(mod_name)?;
+    let Some(dir) = mod_dir(game_path, &name) else {
+        return Err(crate::models::AppError::Validation(format!(
+            "UE4SS mod '{name}' is not installed"
+        )));
+    };
+    let backup = lua_backup_path(&dir, &name)
+        .filter(|b| b.exists())
+        .ok_or_else(|| {
+            crate::models::AppError::Validation(format!(
+                "UE4SS mod '{name}' has no config backup to revert"
+            ))
+        })?;
+    let content = std::fs::read(&backup)?;
+    let text = String::from_utf8(content).map_err(|_| {
+        crate::models::AppError::Validation("config backup is not valid UTF-8".to_string())
+    })?;
+    validate_lua_syntax(&text)?;
+    let config_path = dir.join(LUA_CONFIG_REL);
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&config_path, text)?;
+    let staged_mods_root = app_data_root().map(|r| r.join("staged").join("mods")).ok();
+    if staged_mods_root
+        .as_ref()
+        .map(|root| dir.starts_with(root))
+        .unwrap_or(false)
+    {
+        link_staged_config_live(game_path, &name, LUA_CONFIG_REL, &config_path);
+    }
+    Ok(config_path)
+}
+
+/// One staged UE4SS user-config file snapshotted before an (update)
+/// install: `Scripts/config.lua` or the mod-root `config.json`.
+pub struct StagedLuaSnapshot {
+    pub mod_name: String,
+    pub staged_path: std::path::PathBuf,
+    pub content: Vec<u8>,
+}
+
+/// Snapshot every staged `rel` config file under a staging key dir before
+/// extraction, so user edits can survive the update below.
+fn snapshot_staged_mod_configs(staging_key_dir: &Path, rel: &str) -> Vec<StagedLuaSnapshot> {
+    let mut snapshots = Vec::new();
+    let mods_root = staging_key_dir.join("ReadyOrNot/Binaries/Win64/ue4ss/Mods");
+    let Ok(entries) = std::fs::read_dir(&mods_root) else {
+        return snapshots;
+    };
+    for entry in entries.flatten() {
+        let mod_dir = entry.path();
+        if !mod_dir.is_dir() {
+            continue;
+        }
+        let config_path = mod_dir.join(rel);
+        if !config_path.is_file() {
+            continue;
+        }
+        if let (Some(name), Ok(content)) = (
+            entry.file_name().to_str().map(str::to_string),
+            std::fs::read(&config_path),
+        ) {
+            snapshots.push(StagedLuaSnapshot {
+                mod_name: name,
+                staged_path: config_path,
+                content,
+            });
+        }
+    }
+    snapshots
+}
+
+/// Snapshot every `Scripts/config.lua` under a staging key dir before
+/// extraction, so user edits can survive the update below.
+pub fn snapshot_staged_lua_configs(staging_key_dir: &Path) -> Vec<StagedLuaSnapshot> {
+    snapshot_staged_mod_configs(staging_key_dir, LUA_CONFIG_REL)
+}
+
+/// Snapshot every mod-root `config.json` under a staging key dir before
+/// extraction, so user edits can survive the update below. Seeded configs
+/// (cloned from `config.example.json` at install) are covered too: once
+/// the user edits one it is indistinguishable from any shipped file, which
+/// is exactly what the sidecar hashes are for.
+pub fn snapshot_staged_json_configs(staging_key_dir: &Path) -> Vec<StagedLuaSnapshot> {
+    snapshot_staged_mod_configs(staging_key_dir, "config.json")
+}
+
+/// Restore user-edited Lua configs an update install overwrote.
+///
+/// Ship hashes live in `<backup_root>/ue4ss_ship/<mod>.sha256` (recorded on
+/// every install). A staged file whose pre-install content differed from the
+/// recorded ship hash was user-edited: if the install replaced it, the
+/// snapshot goes back and the sidecar tracks the new ship hash. Files without
+/// a sidecar are recorded as-is (first sighting assumes unmodified).
+/// Returns the number of restored files.
+pub fn preserve_user_lua_configs(
+    backup_root_for_key: &Path,
+    snapshots: &[StagedLuaSnapshot],
+) -> usize {
+    preserve_user_mod_configs(backup_root_for_key, snapshots, "ue4ss_ship")
+}
+
+/// Restore user-edited `config.json` files an update install overwrote.
+/// Same sidecar protocol as the Lua variant, under `ue4ss_ship_json` so the
+/// two config kinds never share a sidecar. Returns the number of restored
+/// files.
+pub fn preserve_user_json_configs(
+    backup_root_for_key: &Path,
+    snapshots: &[StagedLuaSnapshot],
+) -> usize {
+    preserve_user_mod_configs(backup_root_for_key, snapshots, "ue4ss_ship_json")
+}
+
+fn preserve_user_mod_configs(
+    backup_root_for_key: &Path,
+    snapshots: &[StagedLuaSnapshot],
+    ship_subdir: &str,
+) -> usize {
+    use crate::services::hasher::crc32_bytes;
+    let ship_dir = backup_root_for_key.join(ship_subdir);
+    let mut restored = 0;
+    for snapshot in snapshots {
+        let Ok(current) = std::fs::read(&snapshot.staged_path) else {
+            continue;
+        };
+        let safe: String = snapshot
+            .mod_name
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let sidecar = ship_dir.join(format!("{safe}.sha256"));
+        let current_hash = format!("{:08x}", crc32_bytes(&current));
+        let snapshot_hash = format!("{:08x}", crc32_bytes(&snapshot.content));
+        let recorded = std::fs::read_to_string(&sidecar)
+            .ok()
+            .map(|s| s.trim().to_string());
+        match recorded {
+            None => {
+                // First sighting: assume unmodified, track the ship hash.
+                if let Some(parent) = sidecar.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(&sidecar, &current_hash);
+            }
+            Some(recorded) if snapshot_hash != recorded && current != snapshot.content => {
+                // User-edited file the install just overwrote: put it back.
+                if std::fs::write(&snapshot.staged_path, &snapshot.content).is_ok() {
+                    restored += 1;
+                    log::warn!(
+                        "ue4ss: preserved user-edited {} (update shipped a new copy)",
+                        snapshot.staged_path.display()
+                    );
+                }
+                let _ = std::fs::write(&sidecar, &current_hash);
+            }
+            _ => {
+                let _ = std::fs::write(&sidecar, &current_hash);
+            }
+        }
+    }
+    restored
+}
+
+/// Symlink a staged file live, falling back to copy where symlinks are not
+/// permitted (Windows without Developer Mode). Best-effort: sync re-links on
+/// the next run anyway.
+fn link_staged_live(staged: &Path, live: &Path) {
+    #[cfg(unix)]
+    {
+        let _ = std::os::unix::fs::symlink(staged, live);
+    }
+    #[cfg(windows)]
+    {
+        if std::os::windows::fs::symlink_file(staged, live).is_err()
+            && std::fs::hard_link(staged, live).is_err()
+        {
+            let _ = std::fs::copy(staged, live);
+        }
+    }
+}
+
 /// Read the current UE4SS settings from the staged ini.
 pub fn read_settings(game_path: &Path) -> Ue4ssSettings {
     let Some(path) = staged_settings_path(game_path) else {
@@ -1181,5 +1778,362 @@ mod tests {
         fs::write(ue4ss.join("imgui.ini"), b"x").unwrap();
         sweep_live_residue(dir.path());
         assert!(!ue4ss.exists());
+    }
+
+    /// Staged mod dir for mod-config tests, unique per test via `key` (the
+    /// isolated tree is shared process-wide - callers hold
+    /// `shared_tree_guard` for the whole test body).
+    fn cfg_test_staging(key: &str, mod_name: &str) -> std::path::PathBuf {
+        use crate::test_support::isolated_root;
+        // Pin HOME/XDG first so app_data_root() lands in the isolated tree.
+        let _ = isolated_root();
+        let mod_dir = app_data_root()
+            .unwrap()
+            .join("staged")
+            .join("mods")
+            .join(key)
+            .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods")
+            .join(mod_name);
+        std::fs::create_dir_all(mod_dir.join("Scripts")).unwrap();
+        mod_dir
+    }
+
+    #[test]
+    fn mod_config_missing_before_first_run() {
+        use crate::test_support::{scratch_dir, shared_tree_guard};
+        let _guard = shared_tree_guard();
+        let game = scratch_dir("ue4ss-cfg-missing");
+        cfg_test_staging("CfgMissingKey", "CfgMissingMod");
+
+        let cfg = read_mod_config(game.path(), "CfgMissingMod").unwrap();
+
+        assert!(!cfg.exists);
+        assert!(cfg.content.is_none());
+        assert!(cfg.path.is_some());
+    }
+
+    #[test]
+    fn mod_config_round_trip_through_staged_copy() {
+        use crate::test_support::{scratch_dir, shared_tree_guard};
+        let _guard = shared_tree_guard();
+        let game = scratch_dir("ue4ss-cfg-roundtrip");
+        cfg_test_staging("CfgRoundtripKey", "CfgRoundtripMod");
+
+        let staged = write_mod_config(game.path(), "CfgRoundtripMod", "{\"SCALE\": 1.25}").unwrap();
+        assert!(staged.exists());
+        assert_eq!(
+            std::fs::read_to_string(&staged).unwrap(),
+            "{\"SCALE\": 1.25}"
+        );
+
+        let cfg = read_mod_config(game.path(), "CfgRoundtripMod").unwrap();
+        assert!(cfg.exists);
+        assert_eq!(cfg.content.as_deref(), Some("{\"SCALE\": 1.25}"));
+
+        // A partial config is valid - missing fields use mod defaults.
+        write_mod_config(game.path(), "CfgRoundtripMod", "{}").unwrap();
+        assert_eq!(
+            read_mod_config(game.path(), "CfgRoundtripMod")
+                .unwrap()
+                .content
+                .as_deref(),
+            Some("{}")
+        );
+    }
+
+    #[test]
+    fn mod_config_write_links_live_when_mod_enabled() {
+        use crate::test_support::{scratch_dir, shared_tree_guard};
+        let _guard = shared_tree_guard();
+        let game = scratch_dir("ue4ss-cfg-livelink");
+        cfg_test_staging("CfgLivelinkKey", "CfgLivelinkMod");
+        // Simulate an enabled mod: live dir exists, no config yet.
+        let live_mod = game
+            .path()
+            .join("ReadyOrNot/Binaries/Win64/ue4ss/Mods/CfgLivelinkMod");
+        std::fs::create_dir_all(live_mod.join("Scripts")).unwrap();
+
+        write_mod_config(game.path(), "CfgLivelinkMod", "{\"SCALE\": 1}").unwrap();
+
+        let live_cfg = live_mod.join("config.json");
+        assert!(live_cfg.is_symlink());
+        assert_eq!(
+            std::fs::read_to_string(&live_cfg).unwrap(),
+            "{\"SCALE\": 1}"
+        );
+    }
+
+    #[test]
+    fn mod_config_write_backfills_manifest() {
+        use crate::test_support::{scratch_dir, shared_tree_guard};
+        let _guard = shared_tree_guard();
+        let game = scratch_dir("ue4ss-cfg-manifest");
+        let mod_dir = cfg_test_staging("CfgManifestKey", "CfgManifestMod");
+        let lua = mod_dir.join("Scripts/main.lua");
+        std::fs::write(&lua, b"-- lua").unwrap();
+
+        let staging_root = app_data_root().unwrap().join("staged");
+        let manager = crate::services::manifest::ManifestManager::new(&staging_root);
+        manager
+            .save_manifest(&crate::services::manifest::InstallManifest {
+                source_archive: "CfgManifestKey.zip".to_string(),
+                display_name: None,
+                source_url: None,
+                installed_files: vec![lua],
+                installed_at: 0,
+                content_hash: None,
+                nexus_file_id: None,
+                installed_version: None,
+            })
+            .unwrap();
+
+        let staged = write_mod_config(game.path(), "CfgManifestMod", "{\"SCALE\": 1}").unwrap();
+
+        let manifest = manager
+            .load_manifest("CfgManifestKey.zip")
+            .unwrap()
+            .unwrap();
+        assert!(manifest.installed_files.contains(&staged));
+        let _ = manager.delete_manifest("CfgManifestKey.zip");
+    }
+
+    #[test]
+    fn mod_config_rejects_bad_content_and_names() {
+        use crate::test_support::{scratch_dir, shared_tree_guard};
+        let _guard = shared_tree_guard();
+        let game = scratch_dir("ue4ss-cfg-reject");
+        cfg_test_staging("CfgRejectKey", "CfgRejectMod");
+
+        assert!(write_mod_config(game.path(), "CfgRejectMod", "{broken").is_err());
+        assert!(write_mod_config(game.path(), "CfgRejectMod", "[1, 2]").is_err());
+        assert!(write_mod_config(game.path(), "CfgRejectMod", "\"str\"").is_err());
+        assert!(write_mod_config(game.path(), "CfgRejectMod", &"x".repeat(300 * 1024)).is_err());
+        assert!(read_mod_config(game.path(), "../evil").is_err());
+        assert!(read_mod_config(game.path(), "a/b").is_err());
+        assert!(read_mod_config(game.path(), "").is_err());
+        assert!(write_mod_config(game.path(), "NoSuchMod", "{}").is_err());
+        // Nothing was written for the rejected inputs.
+        assert!(!read_mod_config(game.path(), "CfgRejectMod").unwrap().exists);
+    }
+
+    const LUA_TEST_CONFIG: &str = "-- Test config.\nreturn {\n    -- write the report\n    report_key = Key.F7,\n    enabled = true,\n    watch_ms = 2000,\n    folder = \"RoundReports\",\n}\n";
+
+    #[test]
+    fn lua_config_reads_raw_text() {
+        use crate::test_support::{scratch_dir, shared_tree_guard};
+        let _guard = shared_tree_guard();
+        let game = scratch_dir("ue4ss-lua-read");
+        let mod_dir = cfg_test_staging("CfgLuaReadKey", "CfgLuaReadMod");
+        std::fs::write(mod_dir.join("Scripts/config.lua"), LUA_TEST_CONFIG).unwrap();
+
+        let cfg = read_lua_config(game.path(), "CfgLuaReadMod").unwrap();
+
+        assert!(cfg.exists);
+        assert!(!cfg.from_default);
+        assert!(!cfg.can_revert);
+        assert_eq!(cfg.content.as_deref(), Some(LUA_TEST_CONFIG));
+        assert!(cfg.path.unwrap().ends_with("Scripts/config.lua"));
+    }
+
+    #[test]
+    fn lua_config_seeds_from_default() {
+        use crate::test_support::{scratch_dir, shared_tree_guard};
+        let _guard = shared_tree_guard();
+        let game = scratch_dir("ue4ss-lua-seed");
+        cfg_test_staging("CfgLuaSeedKey", "CfgLuaSeedMod");
+        let mod_dir = app_data_root()
+            .unwrap()
+            .join("staged/mods/CfgLuaSeedKey/ReadyOrNot/Binaries/Win64/ue4ss/Mods/CfgLuaSeedMod");
+        std::fs::write(mod_dir.join("Scripts/config.default.lua"), LUA_TEST_CONFIG).unwrap();
+
+        let cfg = read_lua_config(game.path(), "CfgLuaSeedMod").unwrap();
+        assert!(!cfg.exists);
+        assert!(cfg.from_default);
+        assert_eq!(cfg.content.as_deref(), Some(LUA_TEST_CONFIG));
+
+        // Saving creates the user config from the edited defaults.
+        let edited = LUA_TEST_CONFIG.replace("watch_ms = 2000", "watch_ms = 500");
+        let staged = write_lua_config(game.path(), "CfgLuaSeedMod", &edited).unwrap();
+        assert!(staged.ends_with("Scripts/config.lua"));
+        assert_eq!(std::fs::read_to_string(&staged).unwrap(), edited);
+        // The shipped defaults are untouched.
+        assert!(
+            std::fs::read_to_string(mod_dir.join("Scripts/config.default.lua"))
+                .unwrap()
+                .contains("watch_ms = 2000")
+        );
+    }
+
+    #[test]
+    fn lua_config_write_and_revert() {
+        use crate::test_support::{scratch_dir, shared_tree_guard};
+        let _guard = shared_tree_guard();
+        let game = scratch_dir("ue4ss-lua-revert");
+        let mod_dir = cfg_test_staging("CfgLuaRevertKey", "CfgLuaRevertMod");
+        std::fs::write(mod_dir.join("Scripts/config.lua"), LUA_TEST_CONFIG).unwrap();
+
+        let edited = LUA_TEST_CONFIG.replace("enabled = true", "enabled = false");
+        write_lua_config(game.path(), "CfgLuaRevertMod", &edited).unwrap();
+        let staged = mod_dir.join("Scripts/config.lua");
+        assert!(std::fs::read_to_string(&staged)
+            .unwrap()
+            .contains("enabled = false"));
+        assert!(
+            read_lua_config(game.path(), "CfgLuaRevertMod")
+                .unwrap()
+                .can_revert
+        );
+
+        // Broken Lua never reaches the file.
+        assert!(write_lua_config(game.path(), "CfgLuaRevertMod", "return { broken = ").is_err());
+        assert!(std::fs::read_to_string(&staged)
+            .unwrap()
+            .contains("watch_ms = 2000"));
+
+        // Saving identical content is a no-op success.
+        write_lua_config(game.path(), "CfgLuaRevertMod", &edited).unwrap();
+
+        revert_lua_config(game.path(), "CfgLuaRevertMod").unwrap();
+        let restored = std::fs::read_to_string(&staged).unwrap();
+        assert!(restored.contains("enabled = true"));
+        // Reverting with no backup errors.
+        assert!(revert_lua_config(game.path(), "CfgLuaReadMod").is_err());
+    }
+
+    #[test]
+    fn lua_config_rejects_missing_mod_and_files() {
+        use crate::test_support::{scratch_dir, shared_tree_guard};
+        let _guard = shared_tree_guard();
+        let game = scratch_dir("ue4ss-lua-missing");
+        cfg_test_staging("CfgLuaMissingKey", "CfgLuaMissingMod");
+
+        let cfg = read_lua_config(game.path(), "CfgLuaMissingMod").unwrap();
+        assert!(!cfg.exists && !cfg.from_default && cfg.content.is_none());
+        assert!(write_lua_config(game.path(), "CfgLuaMissingMod", LUA_TEST_CONFIG).is_err());
+        assert!(write_lua_config(game.path(), "NoSuchMod", LUA_TEST_CONFIG).is_err());
+        assert!(read_lua_config(game.path(), "NoSuchMod")
+            .unwrap()
+            .path
+            .is_none());
+    }
+
+    #[test]
+    fn preserve_restores_user_edited_lua_config() {
+        use crate::services::hasher::crc32_bytes;
+        use crate::test_support::{scratch_dir, shared_tree_guard};
+        let _guard = shared_tree_guard();
+        let _game = scratch_dir("ue4ss-lua-preserve");
+        let mod_dir = cfg_test_staging("CfgLuaPreserveKey", "CfgLuaPreserveMod");
+        let key_dir = mod_dir
+            .ancestors()
+            .find(|a| a.ends_with("CfgLuaPreserveKey"))
+            .unwrap()
+            .to_path_buf();
+        let backup_root = app_data_root()
+            .unwrap()
+            .join("staged/backups/CfgLuaPreserveKey");
+
+        // Staged file holds user edits; sidecar records the older ship hash.
+        let user_content = LUA_TEST_CONFIG.replace("watch_ms = 2000", "watch_ms = 500");
+        std::fs::write(mod_dir.join("Scripts/config.lua"), &user_content).unwrap();
+        let ship_content = LUA_TEST_CONFIG;
+        std::fs::create_dir_all(backup_root.join("ue4ss_ship")).unwrap();
+        std::fs::write(
+            backup_root.join("ue4ss_ship/CfgLuaPreserveMod.sha256"),
+            format!("{:08x}", crc32_bytes(ship_content.as_bytes())),
+        )
+        .unwrap();
+
+        let snapshots = snapshot_staged_lua_configs(&key_dir);
+        assert_eq!(snapshots.len(), 1);
+
+        // The update overwrites with its own shipped copy...
+        std::fs::write(
+            mod_dir.join("Scripts/config.lua"),
+            "return { watch_ms = 250 }",
+        )
+        .unwrap();
+        // ...and preserve puts the user content back.
+        assert_eq!(preserve_user_lua_configs(&backup_root, &snapshots), 1);
+        assert_eq!(
+            std::fs::read_to_string(mod_dir.join("Scripts/config.lua")).unwrap(),
+            user_content
+        );
+
+        // Unmodified files are left alone and re-tracked: stage the ship
+        // content the sidecar already records, then update over it.
+        std::fs::write(
+            mod_dir.join("Scripts/config.lua"),
+            "return { watch_ms = 300 }",
+        )
+        .unwrap();
+        std::fs::write(
+            backup_root.join("ue4ss_ship/CfgLuaPreserveMod.sha256"),
+            format!(
+                "{:08x}",
+                crc32_bytes("return { watch_ms = 300 }".as_bytes())
+            ),
+        )
+        .unwrap();
+        let snapshots = snapshot_staged_lua_configs(&key_dir);
+        std::fs::write(
+            mod_dir.join("Scripts/config.lua"),
+            "return { watch_ms = 350 }",
+        )
+        .unwrap();
+        assert_eq!(preserve_user_lua_configs(&backup_root, &snapshots), 0);
+        assert!(std::fs::read_to_string(mod_dir.join("Scripts/config.lua"))
+            .unwrap()
+            .contains("watch_ms = 350"));
+    }
+
+    #[test]
+    fn preserve_restores_user_edited_json_config() {
+        use crate::services::hasher::crc32_bytes;
+        use crate::test_support::{scratch_dir, shared_tree_guard};
+        let _guard = shared_tree_guard();
+        let _game = scratch_dir("ue4ss-json-preserve");
+        let mod_dir = cfg_test_staging("CfgJsonPreserveKey", "CfgJsonPreserveMod");
+        let key_dir = mod_dir
+            .ancestors()
+            .find(|a| a.ends_with("CfgJsonPreserveKey"))
+            .unwrap()
+            .to_path_buf();
+        let backup_root = app_data_root()
+            .unwrap()
+            .join("staged/backups/CfgJsonPreserveKey");
+
+        // Staged file holds user edits over the seeded example content;
+        // the sidecar records the older ship hash.
+        let user_content = "{\"seeded\":true,\"watch_ms\":500}";
+        std::fs::write(mod_dir.join("config.json"), user_content).unwrap();
+        std::fs::create_dir_all(backup_root.join("ue4ss_ship_json")).unwrap();
+        std::fs::write(
+            backup_root.join("ue4ss_ship_json/CfgJsonPreserveMod.sha256"),
+            format!("{:08x}", crc32_bytes(b"{\"seeded\":true}")),
+        )
+        .unwrap();
+
+        let snapshots = snapshot_staged_json_configs(&key_dir);
+        assert_eq!(snapshots.len(), 1);
+
+        // The update re-seeds from the example...
+        std::fs::write(mod_dir.join("config.json"), "{\"seeded\":true}").unwrap();
+        // ...and preserve puts the user content back.
+        assert_eq!(preserve_user_json_configs(&backup_root, &snapshots), 1);
+        assert_eq!(
+            std::fs::read_to_string(mod_dir.join("config.json")).unwrap(),
+            user_content
+        );
+
+        // Unmodified files are left alone: stage the ship content the
+        // sidecar already records, then update over it.
+        std::fs::write(mod_dir.join("config.json"), "{\"seeded\":true}").unwrap();
+        let snapshots = snapshot_staged_json_configs(&key_dir);
+        std::fs::write(mod_dir.join("config.json"), "{\"seeded\":true,\"v\":2}").unwrap();
+        assert_eq!(preserve_user_json_configs(&backup_root, &snapshots), 0);
+        assert!(std::fs::read_to_string(mod_dir.join("config.json"))
+            .unwrap()
+            .contains("\"v\":2"));
     }
 }
