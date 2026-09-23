@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
+const { invoke } = vi.hoisted(() => ({
+  invoke:
+    vi.fn<(cmd: string, args?: Record<string, unknown>) => Promise<unknown>>(),
+}));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 

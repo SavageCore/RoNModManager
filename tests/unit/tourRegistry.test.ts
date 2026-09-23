@@ -6,7 +6,7 @@ import {
 
 describe("tour action registry", () => {
   it("calls a registered action", async () => {
-    const handler = vi.fn();
+    const handler = vi.fn<() => unknown>();
     const unregister = registerTourActions("mods", {
       "open-add-mod": handler,
     });
@@ -22,7 +22,7 @@ describe("tour action registry", () => {
   });
 
   it("stops calling the action once the page unregisters", async () => {
-    const handler = vi.fn();
+    const handler = vi.fn<() => unknown>();
     const unregister = registerTourActions("settings", {
       "close-export-modal": handler,
     });
@@ -34,7 +34,7 @@ describe("tour action registry", () => {
   });
 
   it("waits for an action whose page is still mounting", async () => {
-    const handler = vi.fn();
+    const handler = vi.fn<() => unknown>();
     const registration = new Promise<void>((resolve) => {
       setTimeout(() => {
         unregister = registerTourActions("settings", { "demo-theme": handler });
@@ -52,8 +52,8 @@ describe("tour action registry", () => {
   });
 
   it("lets a remounted page replace the previous handler", async () => {
-    const first = vi.fn();
-    const second = vi.fn();
+    const first = vi.fn<() => unknown>();
+    const second = vi.fn<() => unknown>();
     const unregisterFirst = registerTourActions("mods", {
       "close-add-mod": first,
     });

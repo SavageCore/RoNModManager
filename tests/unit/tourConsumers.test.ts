@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { applyAddModTourCommand } from "../../src/lib/tour/consumers";
 
 function target() {
-  return { setTab: vi.fn(), setLink: vi.fn() };
+  return {
+    setTab: vi.fn<(tab: "link" | "file") => void>(),
+    setLink: vi.fn<(url: string) => void>(),
+  };
 }
 
 describe("applyAddModTourCommand", () => {

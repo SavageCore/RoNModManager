@@ -26,8 +26,8 @@ describe("ConfirmModal", () => {
   });
 
   it("confirms through the callback", async () => {
-    const onConfirm = vi.fn();
-    const onCancel = vi.fn();
+    const onConfirm = vi.fn<() => void>();
+    const onCancel = vi.fn<() => void>();
     render(ConfirmModal, {
       props: { isVisible: true, onConfirm, onCancel, confirmLabel: "Wipe" },
     });
@@ -37,8 +37,8 @@ describe("ConfirmModal", () => {
   });
 
   it("cancels through the callback", async () => {
-    const onConfirm = vi.fn();
-    const onCancel = vi.fn();
+    const onConfirm = vi.fn<() => void>();
+    const onCancel = vi.fn<() => void>();
     render(ConfirmModal, {
       props: { isVisible: true, onConfirm, onCancel },
     });

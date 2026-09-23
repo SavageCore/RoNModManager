@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
+const { invoke } = vi.hoisted(() => ({
+  invoke:
+    vi.fn<(cmd: string, args?: Record<string, unknown>) => Promise<unknown>>(),
+}));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
@@ -1188,11 +1191,11 @@ beforeEach(() => {
 describe("command wrappers", () => {
   it.each(cases)("$name forwards $command", async ({ command, call, args }) => {
     await call();
-    if (args === undefined) {
-      expect(invoke).toHaveBeenCalledWith(command);
-    } else {
-      expect(invoke).toHaveBeenCalledWith(command, args);
-    }
+    // A single unconditional assertion: no-args commands pass nothing extra.
+    expect(invoke).toHaveBeenCalledWith(
+      command,
+      ...(args === undefined ? [] : [args]),
+    );
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 

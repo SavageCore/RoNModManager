@@ -7,29 +7,33 @@ const { updateConfig, goto, steps } = vi.hoisted(() => {
       id: "a",
       title: "A",
       body: "body a",
-      leave: vi.fn(async () => {}),
-      ready: vi.fn(async () => true),
+      leave: vi.fn<() => Promise<void>>(async () => {}),
+      ready: vi.fn<() => Promise<boolean>>(async () => true),
     },
     {
       id: "b",
       title: "B",
       body: "body b",
-      enter: vi.fn(async (ctx: { call: (name: string) => Promise<void> }) => {
+      enter: vi.fn<
+        (ctx: { call: (name: string) => Promise<void> }) => Promise<void>
+      >(async (ctx: { call: (name: string) => Promise<void> }) => {
         await ctx.call("mods:open-add-mod");
       }),
-      leave: vi.fn(async () => {}),
-      ready: vi.fn(async () => true),
+      leave: vi.fn<() => Promise<void>>(async () => {}),
+      ready: vi.fn<() => Promise<boolean>>(async () => true),
     },
     {
       id: "c",
       title: "C",
       body: "body c",
-      leave: vi.fn(async () => {}),
+      leave: vi.fn<() => Promise<void>>(async () => {}),
     },
   ];
   return {
-    updateConfig: vi.fn(async () => undefined),
-    goto: vi.fn(async () => undefined),
+    updateConfig: vi.fn<(patch: Record<string, unknown>) => Promise<void>>(
+      async () => undefined,
+    ),
+    goto: vi.fn<(url: string) => Promise<void>>(async () => undefined),
     steps,
   };
 });
@@ -100,7 +104,7 @@ describe("tourEngine", () => {
   it("runs a step's enter through the action registry", async () => {
     const engine = await loadEngine();
     const registry = await import("../../src/lib/tour/registry");
-    const openAddMod = vi.fn();
+    const openAddMod = vi.fn<() => unknown>();
     registry.registerTourActions("mods", { "open-add-mod": openAddMod });
 
     await engine.startTour();

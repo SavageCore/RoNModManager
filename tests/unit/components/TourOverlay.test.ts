@@ -2,8 +2,10 @@ import { fireEvent, render, screen } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { updateConfig, goto } = vi.hoisted(() => ({
-  updateConfig: vi.fn(async () => undefined),
-  goto: vi.fn(async () => undefined),
+  updateConfig: vi.fn<(patch: Record<string, unknown>) => Promise<void>>(
+    async () => undefined,
+  ),
+  goto: vi.fn<(url: string) => Promise<void>>(async () => undefined),
 }));
 
 vi.mock("$app/navigation", () => ({ goto }));
