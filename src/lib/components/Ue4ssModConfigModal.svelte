@@ -146,8 +146,9 @@
     try {
       JSON.parse(jsonContent);
     } catch (e) {
-      jsonError =
-        e instanceof Error ? `Invalid JSON: ${e.message}` : "Invalid JSON";
+      toastStore.error(
+        e instanceof Error ? `Invalid JSON: ${e.message}` : "Invalid JSON",
+      );
       return;
     }
     jsonSaving = true;
