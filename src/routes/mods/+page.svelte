@@ -2264,12 +2264,6 @@
       </div>
     </div>
 
-    <p style="color: var(--clr-text-secondary);" class="text-sm mb-4">
-      Each profile has its own set of active mods. Use the checkboxes to enable
-      or disable mods for this profile. {#if linkOnLaunchOnly}Changes take
-        effect on next launch; the game folder stays stock until then.{/if}
-    </p>
-
     {#if filteredModGroups.length > 0}
       <div class="flex items-center gap-2 mb-2">
         <label class="ron-switch" title="Toggle all mods on/off">
