@@ -56,10 +56,12 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::Serialize; // This line is kept as it is needed
 use tauri::{AppHandle, Emitter}; // Removed duplicate State import
+use tokio::sync::Semaphore;
 
 use super::game;
 use crate::models::{
@@ -67,7 +69,7 @@ use crate::models::{
     Result,
 };
 use crate::services::{
-    addon_map, downloader, hasher, installer, manifest, modio_api::ModioApiService,
+    addon_map, downloader, hasher, installer, manifest, modio_api, modio_api::ModioApiService,
     modpack as modpack_service, nexus_api, profiles, steam, ue4ss,
 };
 use crate::state::{app_data_root, app_temp_root, AppState};
@@ -1530,20 +1532,23 @@ fn nexus_latest_for_variant(
     options.into_iter().next()
 }
 
-/// Version strings are unreliable/often absent on Nexus, so compare upload
-/// timestamps instead - avoids false positives when the user deliberately
+/// Resolves the variant's latest file and whether it supersedes the installed
+/// one in a single pass.
+///
+/// Version strings are unreliable/often absent on Nexus, so this compares upload
+/// timestamps instead - that avoids false positives when the user deliberately
 /// installed a non-primary variant.
-fn nexus_update_available(
+///
+/// Returns `(latest_version, update_available)`, or `None` when the mod reports
+/// no usable files at all.
+fn nexus_update_state(
     installed_file_id: Option<u64>,
     files: &[nexus_api::NexusModFile],
-) -> bool {
-    let Some(latest_ts) =
-        nexus_latest_for_variant(installed_file_id, files).and_then(|f| f.uploaded_timestamp)
-    else {
-        return false;
-    };
+) -> Option<(Option<String>, bool)> {
+    let latest = nexus_latest_for_variant(installed_file_id, files)?;
+    let latest_ts = latest.uploaded_timestamp.unwrap_or(0);
 
-    match installed_file_id {
+    let update_available = match installed_file_id {
         Some(fid) => match files
             .iter()
             .find(|f| f.file_id == fid)
@@ -1553,7 +1558,41 @@ fn nexus_update_available(
             None => true, // installed variant no longer listed
         },
         None => false, // no recorded baseline to compare against
-    }
+    };
+
+    Some((latest.version.clone(), update_available))
+}
+
+/// Test-only convenience wrapper over [`nexus_update_state`] - the production
+/// path needs the version string too and calls that directly.
+#[cfg(test)]
+fn nexus_update_available(
+    installed_file_id: Option<u64>,
+    files: &[nexus_api::NexusModFile],
+) -> bool {
+    nexus_update_state(installed_file_id, files)
+        .map(|(_, available)| available)
+        .unwrap_or(false)
+}
+
+/// Parallel per-mod upstream lookups allowed when a batch did not cover a mod.
+/// This is the rate-limited path on both hosts, so it stays well under the fixed
+/// 300ms pacing the pre-batch implementation applied to everything.
+const FALLBACK_CONCURRENCY: usize = 10;
+
+/// Identifies the upstream mod an installed archive belongs to.
+///
+/// Keyed rather than iterated per archive: a mod that ships multipart files or
+/// several variants installs as multiple archives, all of which resolve to the
+/// same upstream id and therefore only need one lookup between them.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum UpdateKey {
+    Nexus(u64),
+    /// The source URL already carried a numeric mod id.
+    ModioId(u64),
+    /// The source URL carried a slug, which still costs one resolution request
+    /// - but only once per distinct slug, since this is the group key.
+    ModioSlug(String),
 }
 
 fn modio_update_available(local_hash: &Option<String>, remote_hash: &Option<String>) -> bool {
@@ -1585,7 +1624,10 @@ pub async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<ModUpda
 
     let staging_root = get_staging_root()?;
     let manager = manifest::ManifestManager::new(&staging_root);
-    let manifests = manager.list_all_manifests()?;
+    // Reads and JSON-parses every manifest on disk - keep it off the async runtime.
+    let manifests = tokio::task::spawn_blocking(move || manager.list_all_manifests())
+        .await
+        .map_err(|e| AppError::Validation(format!("manifest scan task failed: {e}")))??;
 
     let nexus_service = state.nexus();
     let modio_service = ModioApiService::new(state.client.clone(), config.modio_game_id);
@@ -1599,8 +1641,10 @@ pub async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<ModUpda
         .cloned()
         .collect();
 
-    let mut results = Vec::new();
-
+    // Bucket archives by upstream mod before making any request. Multipart and
+    // variant installs put several archives under one upstream mod, and all of
+    // them resolve to the same answer - so the lookup below runs once per group.
+    let mut groups: HashMap<UpdateKey, Vec<manifest::InstallManifest>> = HashMap::new();
     for manifest_data in manifests.into_values() {
         if addon_archives.contains(&manifest_data.source_archive) {
             continue;
@@ -1614,69 +1658,230 @@ pub async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<ModUpda
             continue;
         };
 
-        // Small fixed spacing between upstream requests so a large library
-        // doesn't burst the API and trip rate limits.
-        // ponytail: fixed 300ms spacing, switch to header-driven pacing if a
-        // big library still trips limits.
-        tokio::time::sleep(Duration::from_millis(300)).await;
-
-        if source_url.contains("nexusmods.com") {
-            let Some(key) = api_key else { continue };
+        // Credentials are checked here, while grouping, so entries we could never
+        // check don't cost a request or a pacing wait below.
+        let key = if source_url.contains("nexusmods.com") {
+            if api_key.is_none() {
+                continue;
+            }
             let Ok(mod_id) = nexus_api::parse_nexus_url_to_mod_id(source_url) else {
                 continue;
             };
-            let Ok(files) = nexus_service.list_mod_files(key, mod_id).await else {
-                continue;
-            };
-            let Some(latest) = nexus_latest_for_variant(manifest_data.nexus_file_id, &files) else {
-                continue;
-            };
-            let latest_version = latest.version.clone();
-            let update_available = nexus_update_available(manifest_data.nexus_file_id, &files);
-
-            results.push(ModUpdateInfo {
-                archive_name: manifest_data.source_archive.clone(),
-                source: "nexus".to_string(),
-                current_version: manifest_data.installed_version.clone(),
-                latest_version,
-                update_available,
-            });
+            UpdateKey::Nexus(mod_id)
         } else if source_url.contains("mod.io") {
-            let Some(token) = oauth_token else { continue };
+            if oauth_token.is_none() {
+                continue;
+            }
             let Ok((explicit_id, slug)) = parse_modio_input_to_slug_or_id(source_url) else {
                 continue;
             };
-            let mod_id = match explicit_id {
-                Some(id) => id,
-                None => {
-                    let Some(slug_value) = slug else { continue };
-                    let Ok(id) = modio_service
-                        .resolve_slug_to_mod_id(token, &slug_value)
-                        .await
+            match (explicit_id, slug) {
+                (Some(id), _) => UpdateKey::ModioId(id),
+                (None, Some(slug_value)) => UpdateKey::ModioSlug(slug_value),
+                (None, None) => continue,
+            }
+        } else {
+            continue;
+        };
+
+        groups.entry(key).or_default().push(manifest_data);
+    }
+
+    let mut results = Vec::new();
+
+    // Split the bucketed groups by host. Nexus has a batched path; mod.io is
+    // still one request per mod until its batch lands, so it keeps the pacing
+    // wait below.
+    let mut nexus_groups: Vec<(u64, Vec<manifest::InstallManifest>)> = Vec::new();
+    let mut modio_groups: Vec<(UpdateKey, Vec<manifest::InstallManifest>)> = Vec::new();
+    for (key, group) in groups {
+        match key {
+            UpdateKey::Nexus(mod_id) => nexus_groups.push((mod_id, group)),
+            other => modio_groups.push((other, group)),
+        }
+    }
+
+    if let Some(api_key) = api_key {
+        if !nexus_groups.is_empty() {
+            let nexus_ids: Vec<u64> = nexus_groups.iter().map(|(id, _)| *id).collect();
+            let mut files_by_mod = nexus_service
+                .graphql_mod_files_batch(api_key, &nexus_ids)
+                .await;
+
+            // Anything GraphQL did not answer for falls back to REST. Mods it
+            // genuinely has no files for stay absent and are simply skipped.
+            let missing: Vec<(u64, Vec<manifest::InstallManifest>)> = nexus_groups
+                .iter()
+                .filter(|(mod_id, _)| !files_by_mod.contains_key(mod_id))
+                .cloned()
+                .collect();
+            files_by_mod
+                .extend(fetch_nexus_files_fallback(&nexus_service, api_key, &missing).await);
+
+            for (mod_id, group) in nexus_groups {
+                let Some(files) = files_by_mod.get(&mod_id) else {
+                    continue;
+                };
+                for manifest_data in group {
+                    let Some((latest_version, update_available)) =
+                        nexus_update_state(manifest_data.nexus_file_id, files)
                     else {
                         continue;
                     };
-                    id
+                    results.push(ModUpdateInfo {
+                        archive_name: manifest_data.source_archive,
+                        source: "nexus".to_string(),
+                        current_version: manifest_data.installed_version,
+                        latest_version,
+                        update_available,
+                    });
                 }
-            };
-            let Ok(mod_details) = modio_service.get_mod_download_info(token, mod_id).await else {
+            }
+        }
+    }
+
+    // Slug-form URLs still cost one resolution each, but they collapse to ids
+    // and then join the same batched lookup as everything else.
+    let mut modio_by_id: HashMap<u64, Vec<manifest::InstallManifest>> = HashMap::new();
+    let mut modio_slugs: Vec<(String, Vec<manifest::InstallManifest>)> = Vec::new();
+    for (key, group) in modio_groups {
+        match key {
+            UpdateKey::ModioId(mod_id) => {
+                modio_by_id.entry(mod_id).or_default().extend(group);
+            }
+            UpdateKey::ModioSlug(slug) => modio_slugs.push((slug, group)),
+            UpdateKey::Nexus(_) => unreachable!("Nexus groups are handled above"),
+        }
+    }
+
+    if let Some(token) = oauth_token {
+        for (slug, group) in modio_slugs {
+            // Spacing between upstream requests so a large library doesn't
+            // burst the API and trip rate limits. Per distinct slug, not per
+            // archive.
+            // ponytail: fixed 300ms spacing, switch to header-driven pacing if
+            // a big library still trips limits.
+            tokio::time::sleep(Duration::from_millis(300)).await;
+
+            let Ok(mod_id) = modio_service.resolve_slug_to_mod_id(token, &slug).await else {
                 continue;
             };
+            modio_by_id.entry(mod_id).or_default().extend(group);
+        }
 
-            let update_available =
-                modio_update_available(&manifest_data.content_hash, &mod_details.remote_md5);
+        if !modio_by_id.is_empty() {
+            let ids: Vec<u64> = modio_by_id.keys().copied().collect();
+            let mut latest = modio_service.get_mods_latest_batch(token, &ids).await;
 
-            results.push(ModUpdateInfo {
-                archive_name: manifest_data.source_archive.clone(),
-                source: "modio".to_string(),
-                current_version: manifest_data.installed_version.clone(),
-                latest_version: mod_details.version,
-                update_available,
-            });
+            let missing: Vec<u64> = ids
+                .iter()
+                .copied()
+                .filter(|id| !latest.contains_key(id))
+                .collect();
+            latest.extend(fetch_modio_latest_fallback(&modio_service, token, &missing).await);
+
+            for (mod_id, group) in modio_by_id {
+                let Some(details) = latest.get(&mod_id) else {
+                    continue;
+                };
+                push_modio_update_results(&mut results, group, details);
+            }
         }
     }
 
     Ok(results)
+}
+
+/// Per-mod mod.io lookups for mods the batched listing did not return. Bounded
+/// for the same reason the Nexus fallback is: this endpoint is rate limited.
+async fn fetch_modio_latest_fallback(
+    service: &ModioApiService,
+    oauth_token: &str,
+    missing: &[u64],
+) -> HashMap<u64, modio_api::ModioModLatest> {
+    let permits = Arc::new(Semaphore::new(FALLBACK_CONCURRENCY));
+    let mut tasks = Vec::new();
+    for mod_id in missing {
+        let service = service.clone();
+        let permits = Arc::clone(&permits);
+        let oauth_token = oauth_token.to_string();
+        let mod_id = *mod_id;
+        tasks.push(tokio::spawn(async move {
+            let _permit = permits.acquire_owned().await;
+            let details = service
+                .get_mod_download_info(&oauth_token, mod_id)
+                .await
+                .ok()?;
+            Some((
+                mod_id,
+                modio_api::ModioModLatest {
+                    id: details.id,
+                    remote_md5: details.remote_md5,
+                    version: details.version,
+                },
+            ))
+        }));
+    }
+
+    let mut latest = HashMap::new();
+    for task in tasks {
+        if let Ok(Some((mod_id, details))) = task.await {
+            latest.insert(mod_id, details);
+        }
+    }
+    latest
+}
+
+/// REST file lists for mods the GraphQL batch did not answer for.
+///
+/// Bounded by [`FALLBACK_CONCURRENCY`] because, unlike GraphQL, this
+/// endpoint is hourly rate limited - a burst here is what trips a 429.
+async fn fetch_nexus_files_fallback(
+    service: &nexus_api::NexusApiService,
+    api_key: &str,
+    missing: &[(u64, Vec<manifest::InstallManifest>)],
+) -> HashMap<u64, Vec<nexus_api::NexusModFile>> {
+    let permits = Arc::new(Semaphore::new(FALLBACK_CONCURRENCY));
+    let mut tasks = Vec::new();
+    for (mod_id, _) in missing {
+        let service = service.clone();
+        let permits = Arc::clone(&permits);
+        let api_key = api_key.to_string();
+        let mod_id = *mod_id;
+        tasks.push(tokio::spawn(async move {
+            let _permit = permits.acquire_owned().await;
+            let files = service.list_mod_files(&api_key, mod_id).await.ok()?;
+            Some((mod_id, files))
+        }));
+    }
+
+    let mut files = HashMap::new();
+    for task in tasks {
+        if let Ok(Some((mod_id, mod_files))) = task.await {
+            files.insert(mod_id, mod_files);
+        }
+    }
+    files
+}
+
+/// Fans one upstream mod.io result out to every archive that resolved to it.
+fn push_modio_update_results(
+    results: &mut Vec<ModUpdateInfo>,
+    group: Vec<manifest::InstallManifest>,
+    latest: &modio_api::ModioModLatest,
+) {
+    for manifest_data in group {
+        results.push(ModUpdateInfo {
+            archive_name: manifest_data.source_archive,
+            source: "modio".to_string(),
+            current_version: manifest_data.installed_version,
+            latest_version: latest.version.clone(),
+            update_available: modio_update_available(
+                &manifest_data.content_hash,
+                &latest.remote_md5,
+            ),
+        });
+    }
 }
 
 #[tauri::command]
@@ -4012,6 +4217,7 @@ mod command_tests {
     use crate::test_support::{
         isolated_root, mock_app_with, mock_app_with_state, scratch_dir, test_state, TestApp,
     };
+    use mockito::Matcher;
     use tauri::Manager;
 
     fn staging_root() -> PathBuf {
@@ -4044,6 +4250,317 @@ mod command_tests {
 
     fn app_with_config(config: AppConfig) -> TestApp {
         mock_app_with(config)
+    }
+
+    /// Clears staged manifests so a test only sees what it wrote itself.
+    /// `isolated_root()` is process-global, so without this a test inherits
+    /// every manifest the rest of the binary has written.
+    fn clear_manifests() {
+        let dir = staging_root().join(".manifests");
+        if !dir.is_dir() {
+            return;
+        }
+        for entry in fs::read_dir(&dir).unwrap() {
+            let _ = fs::remove_file(entry.unwrap().path());
+        }
+    }
+
+    /// Points a state at the mock server for *both* Nexus endpoints. The
+    /// GraphQL API is on a different path from REST, and leaving it unset would
+    /// send the test to the real Nexus.
+    fn state_with_nexus_endpoints(config: AppConfig, server: &mockito::Server) -> TestApp {
+        let mut state = test_state(config);
+        state.nexus_base_url = Some(server.url());
+        state.nexus_graphql_url = Some(format!("{}/graphql", server.url()));
+        mock_app_with_state(state)
+    }
+
+    /// The GraphQL query that resolves the numeric game id. Aliased `modFiles`
+    /// batches share the same path, so the mocks separate them by body.
+    fn mock_game_id(server: &mut mockito::Server) -> mockito::Mock {
+        server
+            .mock("POST", "/graphql")
+            .match_body(Matcher::Regex("game\\(domainName".to_string()))
+            .with_body(r#"{"data":{"game":{"id":4242}}}"#)
+    }
+
+    fn mock_mod_files(server: &mut mockito::Server, body: &str) -> mockito::Mock {
+        server
+            .mock("POST", "/graphql")
+            .match_body(Matcher::Regex("modFiles\\(gameId".to_string()))
+            .with_body(body)
+    }
+
+    /// A manifest pointing at a Nexus mod page.
+    fn nexus_manifest(
+        archive: &str,
+        mod_id: u64,
+        file_id: Option<u64>,
+    ) -> manifest::InstallManifest {
+        let mut m = manifest(archive, Vec::new());
+        m.source_url = Some(format!(
+            "https://www.nexusmods.com/readyornot/mods/{mod_id}"
+        ));
+        m.nexus_file_id = file_id;
+        m.installed_version = Some("1.0".to_string());
+        m
+    }
+
+    /// Every archive that resolves to the same upstream Nexus mod must share one
+    /// file-list lookup. Multipart and variant installs put several archives
+    /// under one mod id, and each used to fetch the whole file list again.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn check_mod_updates_dedupes_archives_sharing_an_upstream_mod() {
+        let _tree = crate::test_support::shared_tree_guard();
+        clear_manifests();
+        let mut server = mockito::Server::new_async().await;
+        mock_game_id(&mut server).expect(1).create_async().await;
+        let batch = mock_mod_files(
+            &mut server,
+            r#"{"data":{"m123":[
+                {"fileId":1,"uri":"older.zip","categoryId":1,"date":100},
+                {"fileId":2,"uri":"newer.zip","categoryId":1,"date":200}
+            ]}}"#,
+        )
+        .expect(1)
+        .create_async()
+        .await;
+
+        save_manifest(nexus_manifest("older.zip", 123, Some(1)));
+        save_manifest(nexus_manifest("newer.zip", 123, Some(2)));
+
+        let app = state_with_nexus_endpoints(
+            AppConfig {
+                nexus_api_key: Some("test-key".to_string()),
+                ..AppConfig::default()
+            },
+            &server,
+        );
+        let state = app.state::<AppState>();
+
+        let results = check_mod_updates(state).await.unwrap();
+
+        batch.assert_async().await;
+        assert_eq!(results.len(), 2);
+        let mut names: Vec<&str> = results.iter().map(|r| r.archive_name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, ["newer.zip", "older.zip"]);
+        // Both resolved from the same file list, but each archive is judged
+        // against the file it actually installed.
+        let older = results
+            .iter()
+            .find(|r| r.archive_name == "older.zip")
+            .unwrap();
+        let newer = results
+            .iter()
+            .find(|r| r.archive_name == "newer.zip")
+            .unwrap();
+        assert!(older.update_available);
+        assert!(!newer.update_available);
+    }
+
+    /// The batched GraphQL path must cover a whole library without touching the
+    /// hourly rate-limited REST files endpoint at all.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn check_mod_updates_uses_one_graphql_batch_and_no_rest_calls() {
+        let _tree = crate::test_support::shared_tree_guard();
+        clear_manifests();
+        let mut server = mockito::Server::new_async().await;
+        mock_game_id(&mut server).expect(1).create_async().await;
+        // Three distinct mods, all inside the 20-per-request batch size.
+        let batch = mock_mod_files(
+            &mut server,
+            r#"{"data":{
+                "m11":[{"fileId":1,"uri":"a.zip","categoryId":1,"date":100,"version":"2.0"}],
+                "m22":[{"fileId":2,"uri":"b.zip","categoryId":1,"date":100,"version":"2.0"}],
+                "m33":[{"fileId":3,"uri":"c.zip","categoryId":1,"date":100,"version":"2.0"}]
+            }}"#,
+        )
+        .expect(1)
+        .create_async()
+        .await;
+        let rest = server
+            .mock("GET", "/games/readyornot/mods/11/files.json")
+            .expect(0)
+            .create_async()
+            .await;
+
+        for (archive, mod_id, file_id) in
+            [("a.zip", 11u64, 1u64), ("b.zip", 22, 2), ("c.zip", 33, 3)]
+        {
+            save_manifest(nexus_manifest(archive, mod_id, Some(file_id)));
+        }
+
+        let app = state_with_nexus_endpoints(
+            AppConfig {
+                nexus_api_key: Some("test-key".to_string()),
+                ..AppConfig::default()
+            },
+            &server,
+        );
+        let state = app.state::<AppState>();
+
+        let results = check_mod_updates(state).await.unwrap();
+
+        batch.assert_async().await;
+        rest.assert_async().await;
+        assert_eq!(results.len(), 3);
+        assert!(results
+            .iter()
+            .all(|r| r.latest_version.as_deref() == Some("2.0")));
+    }
+
+    /// Mods the GraphQL batch does not answer for fall back to REST individually,
+    /// and only those - the rest stay on the unrate-limited path.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn check_mod_updates_falls_back_to_rest_only_for_graphql_misses() {
+        let _tree = crate::test_support::shared_tree_guard();
+        clear_manifests();
+        let mut server = mockito::Server::new_async().await;
+        mock_game_id(&mut server).expect(1).create_async().await;
+        // m22 is absent from the payload entirely, so only it needs REST.
+        let batch = mock_mod_files(
+            &mut server,
+            r#"{"data":{
+                "m11":[{"fileId":1,"uri":"a.zip","categoryId":1,"date":100}],
+                "m33":[{"fileId":3,"uri":"c.zip","categoryId":1,"date":100}]
+            }}"#,
+        )
+        .expect(1)
+        .create_async()
+        .await;
+        let covered = server
+            .mock("GET", "/games/readyornot/mods/11/files.json")
+            .expect(0)
+            .create_async()
+            .await;
+        let missed = server
+            .mock("GET", "/games/readyornot/mods/22/files.json")
+            .with_body(
+                r#"{"files":[
+                    {"file_id":2,"file_name":"b.zip","category_id":1,"uploaded_timestamp":100},
+                    {"file_id":9,"file_name":"b-v2.zip","category_id":1,"uploaded_timestamp":999}
+                ]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        for (archive, mod_id, file_id) in
+            [("a.zip", 11u64, 1u64), ("b.zip", 22, 2), ("c.zip", 33, 3)]
+        {
+            save_manifest(nexus_manifest(archive, mod_id, Some(file_id)));
+        }
+
+        let app = state_with_nexus_endpoints(
+            AppConfig {
+                nexus_api_key: Some("test-key".to_string()),
+                ..AppConfig::default()
+            },
+            &server,
+        );
+        let state = app.state::<AppState>();
+
+        let results = check_mod_updates(state).await.unwrap();
+
+        batch.assert_async().await;
+        covered.assert_async().await;
+        missed.assert_async().await;
+        assert_eq!(results.len(), 3);
+        // The REST-listed mod is much newer than the batched ones.
+        let b = results.iter().find(|r| r.archive_name == "b.zip").unwrap();
+        assert!(b.update_available);
+    }
+
+    /// If the game id can't be resolved there is no `modFiles` to query, so the
+    /// whole Nexus library must fall back to REST rather than silently report
+    /// "no updates".
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn check_mod_updates_falls_back_when_graphql_is_unavailable() {
+        let _tree = crate::test_support::shared_tree_guard();
+        clear_manifests();
+        let mut server = mockito::Server::new_async().await;
+        let game_id = server
+            .mock("POST", "/graphql")
+            .with_status(500)
+            .with_body(r#"{"errors":[{"message":"boom"}]}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let rest = server
+            .mock("GET", "/games/readyornot/mods/123/files.json")
+            .with_body(
+                r#"{"files":[
+                    {"file_id":1,"file_name":"a.zip","category_id":1,"uploaded_timestamp":100},
+                    {"file_id":9,"file_name":"a-v2.zip","category_id":1,"uploaded_timestamp":999}
+                ]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        save_manifest(nexus_manifest("a.zip", 123, Some(1)));
+
+        let app = state_with_nexus_endpoints(
+            AppConfig {
+                nexus_api_key: Some("test-key".to_string()),
+                ..AppConfig::default()
+            },
+            &server,
+        );
+        let state = app.state::<AppState>();
+
+        let results = check_mod_updates(state).await.unwrap();
+
+        game_id.assert_async().await;
+        rest.assert_async().await;
+        assert_eq!(results.len(), 1);
+        assert!(results[0].update_available);
+    }
+
+    /// Credentials are resolved while grouping, before any pacing wait. This
+    /// used to sleep per manifest first, so an unconfigured library burned
+    /// 300ms per archive and then made no requests at all.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn check_mod_updates_without_credentials_makes_no_requests() {
+        let _tree = crate::test_support::shared_tree_guard();
+        clear_manifests();
+        let mut server = mockito::Server::new_async().await;
+        let files = server
+            .mock("GET", "/games/readyornot/mods/123/files.json")
+            .expect(0)
+            .create_async()
+            .await;
+        let graphql = server
+            .mock("POST", "/graphql")
+            .expect(0)
+            .create_async()
+            .await;
+
+        for i in 0..8u64 {
+            save_manifest(nexus_manifest(&format!("mod-{i}.zip"), 123 + i, None));
+        }
+
+        let app = state_with_nexus_endpoints(AppConfig::default(), &server);
+        let state = app.state::<AppState>();
+
+        let started = Instant::now();
+        let results = check_mod_updates(state).await.unwrap();
+        let elapsed = started.elapsed();
+
+        files.assert_async().await;
+        graphql.assert_async().await;
+        assert!(results.is_empty());
+        // Generous ceiling: the old path spent 8 x 300ms here before giving up.
+        assert!(
+            elapsed < Duration::from_secs(1),
+            "unconfigured check should not pace, took {elapsed:?}"
+        );
     }
 
     /// A game tree with the given pak files already linked into `~mods`.

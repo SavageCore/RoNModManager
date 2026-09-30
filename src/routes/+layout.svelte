@@ -5,7 +5,6 @@
     applyProfile,
     cancelNexusDownload,
     checkForUpdate,
-    checkModUpdates,
     detectGamePath,
     fetchModpackJson,
     getConfig,
@@ -42,6 +41,7 @@
   import { updateCheckStore } from "$lib/stores/updateCheck";
   import {
     MOD_UPDATES_AUTO_CHECK_INTERVAL_MS,
+    checkModUpdatesOnce,
     describeModUpdatesStatus,
     modUpdatesStore,
   } from "$lib/stores/modUpdates";
@@ -891,11 +891,8 @@
       }
       operationStatusStore.setStickyMessage("Checking for mod updates...");
       try {
-        const updates = await checkModUpdates();
-        const available = updates.filter((u) => u.updateAvailable);
-        modUpdatesStore.setUpdates(
-          Object.fromEntries(available.map((u) => [u.archiveName, u])),
-        );
+        const updates = { ...(await checkModUpdatesOnce()) };
+        modUpdatesStore.setUpdates(updates);
         window.dispatchEvent(new CustomEvent("ron:mod-updates-checked"));
         const statusNow = get(operationStatusStore);
         const claimedByOperation =
@@ -904,9 +901,7 @@
           !statusNow.sticky &&
           statusNow.operation !== "";
         if (!claimedByOperation) {
-          const result = describeModUpdatesStatus(
-            Object.fromEntries(available.map((u) => [u.archiveName, u])),
-          );
+          const result = describeModUpdatesStatus(updates);
           if (result) operationStatusStore.setTemporaryMessage(result, 8000);
         } else {
           operationStatusStore.clear();

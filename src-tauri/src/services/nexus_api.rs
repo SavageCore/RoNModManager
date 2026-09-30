@@ -1,25 +1,40 @@
 use std::cmp::Reverse;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Client;
 use serde::Deserialize;
+use tokio::sync::Semaphore;
 use tokio::time::sleep;
 
 use crate::models::{AppError, Result};
 
 const NEXUS_API_BASE: &str = "https://api.nexusmods.com/v1";
+const NEXUS_GRAPHQL_BASE: &str = "https://api.nexusmods.com/v2/graphql";
 const GAME_DOMAIN: &str = "readyornot";
 const MAX_ATTEMPTS: usize = 3;
+
+/// Mods per GraphQL request. `modFiles` returns at most this many aliased
+/// fields per request, so larger libraries are chunked.
+pub const GRAPHQL_FILE_BATCH: usize = 20;
+
+/// GraphQL requests in flight across all batches of one call. Batched requests
+/// are cheap and unrate-limited, so this only needs to bound socket pressure.
+const GRAPHQL_CONCURRENCY: usize = 4;
 
 #[derive(Debug, Clone)]
 pub struct NexusApiService {
     client: Client,
     base_url: String,
+    graphql_url: String,
     /// Category id-to-name map for the game, fetched at most once per service
     /// instance: a bulk metadata refresh then costs one extra request instead
     /// of one per mod.
     categories: Arc<tokio::sync::OnceCell<Vec<NexusGameCategory>>>,
+    /// Numeric Nexus game id, needed by the GraphQL `modFiles` field. Resolved
+    /// at most once per service instance.
+    game_id: Arc<tokio::sync::OnceCell<u64>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -64,6 +79,74 @@ pub struct NexusModFile {
 #[derive(Debug, Deserialize)]
 struct NexusFilesResponse {
     files: Vec<NexusModFile>,
+}
+
+/// `modFiles` is aliased per mod, so the payload is a map of `m<modId>` to that
+/// mod's file list.
+#[derive(Debug, Deserialize)]
+struct GraphQlModFilesResponse {
+    #[serde(default)]
+    data: HashMap<String, Vec<GraphQlModFile>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphQlModFile {
+    #[serde(rename = "fileId")]
+    file_id: u64,
+    #[serde(rename = "uri", default)]
+    file_name: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(rename = "categoryId", default)]
+    category_id: Option<u32>,
+    #[serde(default)]
+    category: Option<GraphQlCategory>,
+    #[serde(rename = "sizeInBytes", default)]
+    size_in_bytes: Option<u64>,
+    #[serde(rename = "date", default)]
+    uploaded_timestamp: Option<u64>,
+}
+
+/// Nexus returns the file category as a bare enum string on some endpoints and
+/// as a `{ name }` object on others; accept either.
+#[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+enum GraphQlCategory {
+    Name(String),
+    Object { name: Option<String> },
+}
+
+impl GraphQlCategory {
+    fn into_name(self) -> Option<String> {
+        match self {
+            GraphQlCategory::Name(value) => Some(value),
+            GraphQlCategory::Object { name } => name,
+        }
+        .filter(|value| !value.trim().is_empty())
+    }
+}
+
+impl GraphQlModFile {
+    /// Reuses [`NexusModFile`] so batched and REST results stay interchangeable
+    /// for the variant logic in `commands::mods`.
+    fn to_mod_file(&self) -> NexusModFile {
+        NexusModFile {
+            file_id: self.file_id,
+            file_name: self.file_name.clone(),
+            name: self.name.clone(),
+            version: self.version.clone(),
+            description: self.description.clone(),
+            category_id: self.category_id,
+            category_name: self.category.clone().and_then(GraphQlCategory::into_name),
+            is_primary: None,
+            uploaded_timestamp: self.uploaded_timestamp,
+            size_in_bytes: self.size_in_bytes,
+        }
+    }
 }
 
 /// Returns the candidates a user should choose from.
@@ -144,11 +227,25 @@ impl NexusApiService {
     /// Not `#[cfg(test)]` like `ModioApiService::with_base_url`: `AppState::nexus`
     /// needs it on the production path.
     pub fn with_base_url(client: Client, base_url: String) -> Self {
+        Self::with_endpoints(client, base_url, NEXUS_GRAPHQL_BASE.to_string())
+    }
+
+    /// Overrides both endpoints. The GraphQL API lives on a different path from
+    /// REST, so tests that exercise it need to point at the mock server too.
+    pub fn with_endpoints(client: Client, base_url: String, graphql_url: String) -> Self {
         Self {
             client,
             base_url,
+            graphql_url,
             categories: Arc::new(tokio::sync::OnceCell::new()),
+            game_id: Arc::new(tokio::sync::OnceCell::new()),
         }
+    }
+
+    /// Redirects the GraphQL endpoint, keeping the REST base as-is.
+    pub fn with_graphql_url(mut self, graphql_url: String) -> Self {
+        self.graphql_url = graphql_url;
+        self
     }
 
     /// Nexus category id-to-name map, fetched at most once per instance.
@@ -163,6 +260,157 @@ impl NexusApiService {
                     .unwrap_or_default()
             })
             .await
+    }
+
+    /// File lists for many mods at once, keyed by mod id.
+    ///
+    /// The REST `files.json` endpoint is hourly rate limited per API key, so
+    /// checking one mod per request is both slow and quota-hungry - a 100-mod
+    /// library burns 100 requests. GraphQL is not rate limited, and `modFiles`
+    /// can be aliased up to [`GRAPHQL_FILE_BATCH`] times per request, so the
+    /// same library costs 5.
+    ///
+    /// Mods absent from the response are simply missing from the map, so the
+    /// caller can fall back to REST for those alone.
+    pub async fn graphql_mod_files_batch(
+        &self,
+        api_key: &str,
+        mod_ids: &[u64],
+    ) -> HashMap<u64, Vec<NexusModFile>> {
+        let mut files = HashMap::new();
+        if mod_ids.is_empty() {
+            return files;
+        }
+
+        // Without a game id there is no `modFiles` to query. Bail out entirely
+        // and let the caller's REST fallback cover the library.
+        let game_id = match self.resolve_game_id(api_key).await {
+            Ok(id) => id,
+            Err(_) => return files,
+        };
+
+        let permits = Arc::new(Semaphore::new(GRAPHQL_CONCURRENCY));
+        let mut tasks = Vec::new();
+        for batch in mod_ids.chunks(GRAPHQL_FILE_BATCH) {
+            let service = self.clone();
+            let permits = Arc::clone(&permits);
+            let api_key = api_key.to_string();
+            let batch = batch.to_vec();
+            tasks.push(tokio::spawn(async move {
+                let _permit = permits.acquire_owned().await;
+                service
+                    .fetch_mod_files_graphql(&api_key, game_id, &batch)
+                    .await
+            }));
+        }
+
+        for task in tasks {
+            if let Ok(batch_files) = task.await {
+                files.extend(batch_files);
+            }
+        }
+        files
+    }
+
+    /// Numeric game id, which the GraphQL `modFiles` field requires instead of
+    /// a domain string. Resolved over GraphQL so it costs no REST quota, and
+    /// cached for the life of the service.
+    ///
+    /// A failure caches as 0 for this instance. That is deliberate rather than
+    /// sloppy: `AppState::nexus()` hands out a fresh service per command, so a
+    /// stuck negative result never outlives the check that produced it.
+    async fn resolve_game_id(&self, api_key: &str) -> Result<u64> {
+        let game_id = *self
+            .game_id
+            .get_or_init(|| async {
+                self.post_graphql(
+                    api_key,
+                    &format!(r#"{{ game(domainName: "{GAME_DOMAIN}") {{ id }} }}"#),
+                )
+                .await
+                .and_then(|payload| payload.get("data")?.get("game")?.get("id")?.as_u64())
+                .unwrap_or(0)
+            })
+            .await;
+
+        if game_id == 0 {
+            return Err(AppError::NotFound(
+                "could not resolve Nexus game id for GraphQL".to_string(),
+            ));
+        }
+        Ok(game_id)
+    }
+
+    /// One aliased `modFiles` request covering up to [`GRAPHQL_FILE_BATCH`] mods.
+    async fn fetch_mod_files_graphql(
+        &self,
+        api_key: &str,
+        game_id: u64,
+        mod_ids: &[u64],
+    ) -> HashMap<u64, Vec<NexusModFile>> {
+        let mut files = HashMap::new();
+        if mod_ids.is_empty() {
+            return files;
+        }
+
+        let aliases = mod_ids
+            .iter()
+            .map(|mod_id| {
+                format!(
+                    "  m{mod_id}: modFiles(gameId: {game_id}, modId: {mod_id}) {{ \
+                     fileId uri name version description categoryId category sizeInBytes date }}"
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let Some(payload) = self
+            .post_graphql(api_key, &format!("query ModFilesBatch {{\n{aliases}\n}}"))
+            .await
+        else {
+            return files;
+        };
+        // A response carrying `errors` alongside a partial `data` still parses,
+        // so absent fields fall through as missing mods rather than failing the
+        // whole batch.
+        let Ok(response) = serde_json::from_value::<GraphQlModFilesResponse>(payload) else {
+            return files;
+        };
+
+        for mod_id in mod_ids {
+            let alias = format!("m{mod_id}");
+            let Some(entries) = response.data.get(&alias) else {
+                continue;
+            };
+            if entries.is_empty() {
+                continue;
+            }
+            files.insert(
+                *mod_id,
+                entries.iter().map(GraphQlModFile::to_mod_file).collect(),
+            );
+        }
+        files
+    }
+
+    /// POSTs a GraphQL query. `None` on any transport, status or decode
+    /// failure - callers treat that as "fall back to REST".
+    async fn post_graphql(&self, api_key: &str, query: &str) -> Option<serde_json::Value> {
+        let response = self
+            .execute_with_retry(|| {
+                self.client
+                    .post(&self.graphql_url)
+                    .header("apikey", api_key)
+                    .header("accept", "application/json")
+                    .json(&serde_json::json!({ "query": query }))
+            })
+            .await
+            .ok()?;
+
+        if !response.status().is_success() {
+            return None;
+        }
+        response.json::<serde_json::Value>().await.ok()
     }
 
     /// Sends a request, retrying on HTTP 429 (honouring `Retry-After`, falling back to

@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use reqwest::Client;
 
@@ -40,6 +40,9 @@ pub struct AppState {
     /// Overrides the Nexus API endpoint. `None` in production; tests point it
     /// at a local mock server.
     pub nexus_base_url: Option<String>,
+    /// Overrides the Nexus GraphQL endpoint, which lives on a different path
+    /// from REST. `None` in production.
+    pub nexus_graphql_url: Option<String>,
     pub config_path: PathBuf,
     /// Cancel flags for in-progress free Nexus manual-download waits, keyed by
     /// a per-invocation wait id. The old single global flag meant starting
@@ -73,8 +76,13 @@ impl AppState {
             e
         })?;
 
+        // Bounds every upstream call. Without these a hung Nexus/mod.io socket
+        // stalls the caller indefinitely - the update check iterates manifests
+        // one at a time, so a single stuck request blocks the whole pass.
         let client = Client::builder()
             .user_agent("RoNModManager/0.1.0")
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(60))
             .build()
             .map_err(|e| AppError::Validation(format!("failed to create http client: {}", e)))?;
 
@@ -109,6 +117,7 @@ impl AppState {
             config: RwLock::new(config),
             client,
             nexus_base_url: None,
+            nexus_graphql_url: None,
             config_path,
             nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
             nexus_wait_id: Arc::new(AtomicU64::new(1)),
@@ -187,15 +196,19 @@ impl AppState {
         Ok(guard.clone())
     }
 
-    /// Nexus API service for this session, honouring the endpoint override so
+    /// Nexus API service for this session, honouring the endpoint overrides so
     /// tests can point the client at a local mock server.
     pub fn nexus(&self) -> crate::services::nexus_api::NexusApiService {
-        match self.nexus_base_url.as_deref() {
+        let service = match self.nexus_base_url.as_deref() {
             Some(base) => crate::services::nexus_api::NexusApiService::with_base_url(
                 self.client.clone(),
                 base.to_string(),
             ),
             None => crate::services::nexus_api::NexusApiService::new(self.client.clone()),
+        };
+        match self.nexus_graphql_url.as_deref() {
+            Some(url) => service.with_graphql_url(url.to_string()),
+            None => service,
         }
     }
 }
@@ -220,6 +233,7 @@ impl Default for AppState {
                     config: RwLock::new(AppConfig::default()),
                     client: Client::new(),
                     nexus_base_url: None,
+                    nexus_graphql_url: None,
                     config_path,
                     nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
                     nexus_wait_id: Arc::new(AtomicU64::new(1)),
@@ -308,6 +322,7 @@ mod tests {
             config: RwLock::new(AppConfig::default()),
             client: Client::new(),
             nexus_base_url: None,
+            nexus_graphql_url: None,
             config_path,
             nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
             nexus_wait_id: Arc::new(AtomicU64::new(1)),
