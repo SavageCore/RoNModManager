@@ -19,6 +19,30 @@
   <releases>
 
 
+    <release version="0.0.19" date="2026-09-30">
+      <description>
+        <ul>
+          <li>Match Nexus action-bar button height</li>
+          <li>Add make targets to build and upload independently</li>
+          <li>Update npm-dependencies</li>
+          <li>Update cargo-dependencies to v2.11.6</li>
+          <li>Create missing enabled.txt for mods that don't ship it</li>
+          <li>Staged config editor, example seeding, and launch guard fix</li>
+          <li>Show invalid JSON as toast in mod config editor</li>
+          <li>Switch to oxfmt and oxlint</li>
+          <li>Enable oxlint vitest plugin and fix findings</li>
+          <li>Drop claude, hermes and commandcode leftovers</li>
+          <li>Update rust crate thiserror to v2.0.21</li>
+          <li>Update npm-dependencies</li>
+          <li>Dedupe update lookups and stop double-running the check</li>
+          <li>Batch file lookups through the GraphQL API</li>
+          <li>Batch update checks through the id-in listing filter</li>
+          <li>Update cargo-dependencies (#84)</li>
+          <li>Update the non-tauri npm dependencies (#85)</li>
+          <li>Remove confusing enable/disable mod hint</li>
+        </ul>
+      </description>
+    </release>
 
     <release version="0.0.18" date="2026-09-19">
       <description>
