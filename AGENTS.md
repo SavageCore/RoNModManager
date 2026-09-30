@@ -24,6 +24,24 @@ Merge commits, `fixup!`/`squash!`, `Revert ...` and bare version bumps
 A squash-merged PR takes its PR title as the subject, so keep that conventional
 too.
 
+## Tauri npm and Rust crates must move together
+
+The tauri CLI aborts `tauri build` (and the flatpak build, which runs the same
+command) when an `@tauri-apps/*` npm package and its Rust crate are not on the
+same major/minor. So `tauri` 2.12.0 needs `@tauri-apps/api` 2.12.x,
+`tauri-plugin-dialog` 2.8.x and so on, in the same commit.
+
+Renovate's per-manager groups used to put the two halves in separate PRs, and
+both halves fail CI on their own. The `tauri-dependencies` rule in
+`renovate.json` groups them and sets `rangeStrategy: bump` so `package.json`
+floors move too. Keep that rule last in `packageRules` so it overrides the
+`npm-dependencies`/`cargo-dependencies` groups, and if a tauri bump ever has to
+be done by hand, move both sides in one commit.
+
+`allowScripts` in `package.json` pins `lefthook@<version>` exactly; Renovate
+bumps the dependency but not that pin, so update it in the same commit or
+`npm install` stops running the `prepare` hook that installs the git hooks.
+
 ## Rust toolchain is pinned
 
 `rust-toolchain.toml` pins the minor track (currently 1.98). Local dev, hooks
