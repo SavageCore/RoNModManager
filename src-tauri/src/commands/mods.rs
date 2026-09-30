@@ -67,7 +67,7 @@ use crate::models::{
     Result,
 };
 use crate::services::{
-    addon_map, downloader, hasher, installer, manifest, modio_api::ModioApiService,
+    addon_map, downloader, hasher, installer, manifest, modio_api, modio_api::ModioApiService,
     modpack as modpack_service, nexus_api, profiles, steam, ue4ss,
 };
 use crate::state::{app_data_root, app_temp_root, AppState};
@@ -1530,20 +1530,23 @@ fn nexus_latest_for_variant(
     options.into_iter().next()
 }
 
-/// Version strings are unreliable/often absent on Nexus, so compare upload
-/// timestamps instead - avoids false positives when the user deliberately
+/// Resolves the variant's latest file and whether it supersedes the installed
+/// one in a single pass.
+///
+/// Version strings are unreliable/often absent on Nexus, so this compares upload
+/// timestamps instead - that avoids false positives when the user deliberately
 /// installed a non-primary variant.
-fn nexus_update_available(
+///
+/// Returns `(latest_version, update_available)`, or `None` when the mod reports
+/// no usable files at all.
+fn nexus_update_state(
     installed_file_id: Option<u64>,
     files: &[nexus_api::NexusModFile],
-) -> bool {
-    let Some(latest_ts) =
-        nexus_latest_for_variant(installed_file_id, files).and_then(|f| f.uploaded_timestamp)
-    else {
-        return false;
-    };
+) -> Option<(Option<String>, bool)> {
+    let latest = nexus_latest_for_variant(installed_file_id, files)?;
+    let latest_ts = latest.uploaded_timestamp.unwrap_or(0);
 
-    match installed_file_id {
+    let update_available = match installed_file_id {
         Some(fid) => match files
             .iter()
             .find(|f| f.file_id == fid)
@@ -1553,7 +1556,36 @@ fn nexus_update_available(
             None => true, // installed variant no longer listed
         },
         None => false, // no recorded baseline to compare against
-    }
+    };
+
+    Some((latest.version.clone(), update_available))
+}
+
+/// Test-only convenience wrapper over [`nexus_update_state`] - the production
+/// path needs the version string too and calls that directly.
+#[cfg(test)]
+fn nexus_update_available(
+    installed_file_id: Option<u64>,
+    files: &[nexus_api::NexusModFile],
+) -> bool {
+    nexus_update_state(installed_file_id, files)
+        .map(|(_, available)| available)
+        .unwrap_or(false)
+}
+
+/// Identifies the upstream mod an installed archive belongs to.
+///
+/// Keyed rather than iterated per archive: a mod that ships multipart files or
+/// several variants installs as multiple archives, all of which resolve to the
+/// same upstream id and therefore only need one lookup between them.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum UpdateKey {
+    Nexus(u64),
+    /// The source URL already carried a numeric mod id.
+    ModioId(u64),
+    /// The source URL carried a slug, which still costs one resolution request
+    /// - but only once per distinct slug, since this is the group key.
+    ModioSlug(String),
 }
 
 fn modio_update_available(local_hash: &Option<String>, remote_hash: &Option<String>) -> bool {
@@ -1585,7 +1617,10 @@ pub async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<ModUpda
 
     let staging_root = get_staging_root()?;
     let manager = manifest::ManifestManager::new(&staging_root);
-    let manifests = manager.list_all_manifests()?;
+    // Reads and JSON-parses every manifest on disk - keep it off the async runtime.
+    let manifests = tokio::task::spawn_blocking(move || manager.list_all_manifests())
+        .await
+        .map_err(|e| AppError::Validation(format!("manifest scan task failed: {e}")))??;
 
     let nexus_service = state.nexus();
     let modio_service = ModioApiService::new(state.client.clone(), config.modio_game_id);
@@ -1599,8 +1634,10 @@ pub async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<ModUpda
         .cloned()
         .collect();
 
-    let mut results = Vec::new();
-
+    // Bucket archives by upstream mod before making any request. Multipart and
+    // variant installs put several archives under one upstream mod, and all of
+    // them resolve to the same answer - so the lookup below runs once per group.
+    let mut groups: HashMap<UpdateKey, Vec<manifest::InstallManifest>> = HashMap::new();
     for manifest_data in manifests.into_values() {
         if addon_archives.contains(&manifest_data.source_archive) {
             continue;
@@ -1614,69 +1651,107 @@ pub async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<ModUpda
             continue;
         };
 
-        // Small fixed spacing between upstream requests so a large library
-        // doesn't burst the API and trip rate limits.
+        // Credentials are checked here, while grouping, so entries we could never
+        // check don't cost a request or a pacing wait below.
+        let key = if source_url.contains("nexusmods.com") {
+            if api_key.is_none() {
+                continue;
+            }
+            let Ok(mod_id) = nexus_api::parse_nexus_url_to_mod_id(source_url) else {
+                continue;
+            };
+            UpdateKey::Nexus(mod_id)
+        } else if source_url.contains("mod.io") {
+            if oauth_token.is_none() {
+                continue;
+            }
+            let Ok((explicit_id, slug)) = parse_modio_input_to_slug_or_id(source_url) else {
+                continue;
+            };
+            match (explicit_id, slug) {
+                (Some(id), _) => UpdateKey::ModioId(id),
+                (None, Some(slug_value)) => UpdateKey::ModioSlug(slug_value),
+                (None, None) => continue,
+            }
+        } else {
+            continue;
+        };
+
+        groups.entry(key).or_default().push(manifest_data);
+    }
+
+    let mut results = Vec::new();
+
+    for (key, group) in groups {
+        // Spacing between upstream requests so a large library doesn't burst the
+        // API and trip rate limits. Per distinct upstream mod, not per archive.
         // ponytail: fixed 300ms spacing, switch to header-driven pacing if a
         // big library still trips limits.
         tokio::time::sleep(Duration::from_millis(300)).await;
 
-        if source_url.contains("nexusmods.com") {
-            let Some(key) = api_key else { continue };
-            let Ok(mod_id) = nexus_api::parse_nexus_url_to_mod_id(source_url) else {
-                continue;
-            };
-            let Ok(files) = nexus_service.list_mod_files(key, mod_id).await else {
-                continue;
-            };
-            let Some(latest) = nexus_latest_for_variant(manifest_data.nexus_file_id, &files) else {
-                continue;
-            };
-            let latest_version = latest.version.clone();
-            let update_available = nexus_update_available(manifest_data.nexus_file_id, &files);
-
-            results.push(ModUpdateInfo {
-                archive_name: manifest_data.source_archive.clone(),
-                source: "nexus".to_string(),
-                current_version: manifest_data.installed_version.clone(),
-                latest_version,
-                update_available,
-            });
-        } else if source_url.contains("mod.io") {
-            let Some(token) = oauth_token else { continue };
-            let Ok((explicit_id, slug)) = parse_modio_input_to_slug_or_id(source_url) else {
-                continue;
-            };
-            let mod_id = match explicit_id {
-                Some(id) => id,
-                None => {
-                    let Some(slug_value) = slug else { continue };
-                    let Ok(id) = modio_service
-                        .resolve_slug_to_mod_id(token, &slug_value)
-                        .await
+        match key {
+            UpdateKey::Nexus(mod_id) => {
+                let Some(api_key) = api_key else { continue };
+                let Ok(files) = nexus_service.list_mod_files(api_key, mod_id).await else {
+                    continue;
+                };
+                for manifest_data in group {
+                    let Some((latest_version, update_available)) =
+                        nexus_update_state(manifest_data.nexus_file_id, &files)
                     else {
                         continue;
                     };
-                    id
+                    results.push(ModUpdateInfo {
+                        archive_name: manifest_data.source_archive,
+                        source: "nexus".to_string(),
+                        current_version: manifest_data.installed_version,
+                        latest_version,
+                        update_available,
+                    });
                 }
-            };
-            let Ok(mod_details) = modio_service.get_mod_download_info(token, mod_id).await else {
-                continue;
-            };
-
-            let update_available =
-                modio_update_available(&manifest_data.content_hash, &mod_details.remote_md5);
-
-            results.push(ModUpdateInfo {
-                archive_name: manifest_data.source_archive.clone(),
-                source: "modio".to_string(),
-                current_version: manifest_data.installed_version.clone(),
-                latest_version: mod_details.version,
-                update_available,
-            });
+            }
+            UpdateKey::ModioId(mod_id) => {
+                let Some(token) = oauth_token else { continue };
+                let Ok(details) = modio_service.get_mod_download_info(token, mod_id).await else {
+                    continue;
+                };
+                push_modio_update_results(&mut results, group, &details);
+            }
+            UpdateKey::ModioSlug(slug) => {
+                let Some(token) = oauth_token else { continue };
+                // One resolution per distinct slug, not per archive.
+                let Ok(mod_id) = modio_service.resolve_slug_to_mod_id(token, &slug).await else {
+                    continue;
+                };
+                let Ok(details) = modio_service.get_mod_download_info(token, mod_id).await else {
+                    continue;
+                };
+                push_modio_update_results(&mut results, group, &details);
+            }
         }
     }
 
     Ok(results)
+}
+
+/// Fans one upstream mod.io result out to every archive that resolved to it.
+fn push_modio_update_results(
+    results: &mut Vec<ModUpdateInfo>,
+    group: Vec<manifest::InstallManifest>,
+    details: &modio_api::ModioModDownload,
+) {
+    for manifest_data in group {
+        results.push(ModUpdateInfo {
+            archive_name: manifest_data.source_archive,
+            source: "modio".to_string(),
+            current_version: manifest_data.installed_version,
+            latest_version: details.version.clone(),
+            update_available: modio_update_available(
+                &manifest_data.content_hash,
+                &details.remote_md5,
+            ),
+        });
+    }
 }
 
 #[tauri::command]
@@ -4044,6 +4119,117 @@ mod command_tests {
 
     fn app_with_config(config: AppConfig) -> TestApp {
         mock_app_with(config)
+    }
+
+    /// Clears staged manifests so a test only sees what it wrote itself.
+    /// `isolated_root()` is process-global, so without this a test inherits
+    /// every manifest the rest of the binary has written.
+    fn clear_manifests() {
+        let dir = staging_root().join(".manifests");
+        if !dir.is_dir() {
+            return;
+        }
+        for entry in fs::read_dir(&dir).unwrap() {
+            let _ = fs::remove_file(entry.unwrap().path());
+        }
+    }
+
+    /// Every archive that resolves to the same upstream Nexus mod must share one
+    /// `files.json` lookup. Multipart and variant installs put several archives
+    /// under one mod id, and each used to fetch the whole file list again.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn check_mod_updates_dedupes_archives_sharing_an_upstream_mod() {
+        let _tree = crate::test_support::shared_tree_guard();
+        clear_manifests();
+        let mut server = mockito::Server::new_async().await;
+        let files = server
+            .mock("GET", "/games/readyornot/mods/123/files.json")
+            .with_body(
+                r#"{"files":[
+                    {"file_id":1,"file_name":"older.zip","category_id":1,"uploaded_timestamp":100},
+                    {"file_id":2,"file_name":"newer.zip","category_id":1,"uploaded_timestamp":200}
+                ]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        for (archive, file_id) in [("older.zip", 1u64), ("newer.zip", 2)] {
+            let mut m = manifest(archive, Vec::new());
+            m.source_url = Some("https://www.nexusmods.com/readyornot/mods/123".to_string());
+            m.nexus_file_id = Some(file_id);
+            m.installed_version = Some("1.0".to_string());
+            save_manifest(m);
+        }
+
+        let mut state = test_state(AppConfig {
+            nexus_api_key: Some("test-key".to_string()),
+            ..AppConfig::default()
+        });
+        state.nexus_base_url = Some(server.url());
+        let app = mock_app_with_state(state);
+        let state = app.state::<AppState>();
+
+        let results = check_mod_updates(state).await.unwrap();
+
+        files.assert_async().await;
+        assert_eq!(results.len(), 2);
+        let mut names: Vec<&str> = results.iter().map(|r| r.archive_name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, ["newer.zip", "older.zip"]);
+        // Both resolved from the same file list, but each archive is judged
+        // against the file it actually installed.
+        let older = results
+            .iter()
+            .find(|r| r.archive_name == "older.zip")
+            .unwrap();
+        let newer = results
+            .iter()
+            .find(|r| r.archive_name == "newer.zip")
+            .unwrap();
+        assert!(older.update_available);
+        assert!(!newer.update_available);
+        assert_eq!(older.latest_version.as_deref(), None);
+    }
+
+    /// Credentials are resolved while grouping, before any pacing wait. This
+    /// used to sleep per manifest first, so an unconfigured library burned
+    /// 300ms per archive and then made no requests at all.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn check_mod_updates_without_credentials_makes_no_requests() {
+        let _tree = crate::test_support::shared_tree_guard();
+        clear_manifests();
+        let mut server = mockito::Server::new_async().await;
+        let files = server
+            .mock("GET", "/games/readyornot/mods/123/files.json")
+            .expect(0)
+            .create_async()
+            .await;
+
+        for i in 0..8 {
+            let mut m = manifest(&format!("mod-{i}.zip"), Vec::new());
+            m.source_url = Some("https://www.nexusmods.com/readyornot/mods/123".to_string());
+            save_manifest(m);
+        }
+
+        let mut state = test_state(AppConfig::default());
+        state.nexus_base_url = Some(server.url());
+        let app = mock_app_with_state(state);
+        let state = app.state::<AppState>();
+
+        let started = Instant::now();
+        let results = check_mod_updates(state).await.unwrap();
+        let elapsed = started.elapsed();
+
+        files.assert_async().await;
+        assert!(results.is_empty());
+        // Generous ceiling: the old path spent 8 x 300ms here before giving up.
+        assert!(
+            elapsed < Duration::from_secs(1),
+            "unconfigured check should not pace, took {elapsed:?}"
+        );
     }
 
     /// A game tree with the given pak files already linked into `~mods`.

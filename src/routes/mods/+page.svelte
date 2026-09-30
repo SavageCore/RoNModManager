@@ -33,7 +33,6 @@
     getNoWorldGenMods,
     setModNoWorldGen,
     clearModNoWorldGen,
-    checkModUpdates,
     fileExists,
     revealInFileManager,
     refreshModMetadata,
@@ -59,7 +58,7 @@
   import { nexusFileSelectionStore } from "$lib/stores/nexusFileSelection";
   import NexusFreeDownloadModal from "$lib/components/NexusFreeDownloadModal.svelte";
   import { listen } from "@tauri-apps/api/event";
-  import { modUpdatesStore } from "$lib/stores/modUpdates";
+  import { checkModUpdatesOnce, modUpdatesStore } from "$lib/stores/modUpdates";
   import ManageAddOnsModal from "$lib/components/ManageAddOnsModal.svelte";
   import Ue4ssModConfigModal from "$lib/components/Ue4ssModConfigModal.svelte";
   let showAddOnsModal = false;
@@ -329,10 +328,7 @@
       }
     }
     try {
-      const updates = await checkModUpdates();
-      modUpdates = Object.fromEntries(
-        updates.filter((u) => u.updateAvailable).map((u) => [u.archiveName, u]),
-      );
+      modUpdates = { ...(await checkModUpdatesOnce()) };
       modUpdatesStore.setUpdates(modUpdates);
     } catch {
       // non-fatal - badges just won't show this pass

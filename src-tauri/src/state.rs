@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use reqwest::Client;
 
@@ -73,8 +73,13 @@ impl AppState {
             e
         })?;
 
+        // Bounds every upstream call. Without these a hung Nexus/mod.io socket
+        // stalls the caller indefinitely - the update check iterates manifests
+        // one at a time, so a single stuck request blocks the whole pass.
         let client = Client::builder()
             .user_agent("RoNModManager/0.1.0")
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(60))
             .build()
             .map_err(|e| AppError::Validation(format!("failed to create http client: {}", e)))?;
 

@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import type { ModUpdateInfo } from "$lib/api/commands";
+import { checkModUpdates, type ModUpdateInfo } from "$lib/api/commands";
 
 /** Re-check cadence for automatic mod-update checks (1 hour). */
 export const MOD_UPDATES_AUTO_CHECK_INTERVAL_MS = 60 * 60 * 1000;
@@ -49,6 +49,31 @@ function clearCachedUpdates(): void {
 export interface ModUpdatesState {
   updates: Record<string, ModUpdateInfo>;
   lastCheckedAt: number | null;
+}
+
+/**
+ * Run the backend update check, collapsing concurrent callers onto one pass.
+ *
+ * Two independent triggers exist - the layout's startup check and the Mods page
+ * on mount - and `lastCheckedAt` is only written once the check resolves, so
+ * without this both could observe an empty timestamp and each start its own
+ * full library scan.
+ */
+let inFlight: Promise<Record<string, ModUpdateInfo>> | null = null;
+
+export function checkModUpdatesOnce(): Promise<Record<string, ModUpdateInfo>> {
+  if (inFlight) return inFlight;
+  const run = checkModUpdates()
+    .then((updates) =>
+      Object.fromEntries(
+        updates.filter((u) => u.updateAvailable).map((u) => [u.archiveName, u]),
+      ),
+    )
+    .finally(() => {
+      if (inFlight === run) inFlight = null;
+    });
+  inFlight = run;
+  return run;
 }
 
 /**
