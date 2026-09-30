@@ -1575,10 +1575,10 @@ fn nexus_update_available(
         .unwrap_or(false)
 }
 
-/// Parallel REST file lookups allowed when the GraphQL batch did not cover a
-/// mod. This is the rate-limited path, so it stays well under the fixed 300ms
-/// pacing the pre-batch implementation used to apply to everything.
-const NEXUS_REST_FALLBACK_CONCURRENCY: usize = 10;
+/// Parallel per-mod upstream lookups allowed when a batch did not cover a mod.
+/// This is the rate-limited path on both hosts, so it stays well under the fixed
+/// 300ms pacing the pre-batch implementation applied to everything.
+const FALLBACK_CONCURRENCY: usize = 10;
 
 /// Identifies the upstream mod an installed archive belongs to.
 ///
@@ -1740,49 +1740,108 @@ pub async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<ModUpda
         }
     }
 
+    // Slug-form URLs still cost one resolution each, but they collapse to ids
+    // and then join the same batched lookup as everything else.
+    let mut modio_by_id: HashMap<u64, Vec<manifest::InstallManifest>> = HashMap::new();
+    let mut modio_slugs: Vec<(String, Vec<manifest::InstallManifest>)> = Vec::new();
     for (key, group) in modio_groups {
-        // Spacing between upstream requests so a large library doesn't burst the
-        // API and trip rate limits. Per distinct upstream mod, not per archive.
-        // ponytail: fixed 300ms spacing, switch to header-driven pacing if a
-        // big library still trips limits.
-        tokio::time::sleep(Duration::from_millis(300)).await;
-
         match key {
             UpdateKey::ModioId(mod_id) => {
-                let Some(token) = oauth_token else { continue };
-                let Ok(details) = modio_service.get_mod_download_info(token, mod_id).await else {
-                    continue;
-                };
-                push_modio_update_results(&mut results, group, &details);
+                modio_by_id.entry(mod_id).or_default().extend(group);
             }
-            UpdateKey::ModioSlug(slug) => {
-                let Some(token) = oauth_token else { continue };
-                // One resolution per distinct slug, not per archive.
-                let Ok(mod_id) = modio_service.resolve_slug_to_mod_id(token, &slug).await else {
-                    continue;
-                };
-                let Ok(details) = modio_service.get_mod_download_info(token, mod_id).await else {
-                    continue;
-                };
-                push_modio_update_results(&mut results, group, &details);
-            }
+            UpdateKey::ModioSlug(slug) => modio_slugs.push((slug, group)),
             UpdateKey::Nexus(_) => unreachable!("Nexus groups are handled above"),
+        }
+    }
+
+    if let Some(token) = oauth_token {
+        for (slug, group) in modio_slugs {
+            // Spacing between upstream requests so a large library doesn't
+            // burst the API and trip rate limits. Per distinct slug, not per
+            // archive.
+            // ponytail: fixed 300ms spacing, switch to header-driven pacing if
+            // a big library still trips limits.
+            tokio::time::sleep(Duration::from_millis(300)).await;
+
+            let Ok(mod_id) = modio_service.resolve_slug_to_mod_id(token, &slug).await else {
+                continue;
+            };
+            modio_by_id.entry(mod_id).or_default().extend(group);
+        }
+
+        if !modio_by_id.is_empty() {
+            let ids: Vec<u64> = modio_by_id.keys().copied().collect();
+            let mut latest = modio_service.get_mods_latest_batch(token, &ids).await;
+
+            let missing: Vec<u64> = ids
+                .iter()
+                .copied()
+                .filter(|id| !latest.contains_key(id))
+                .collect();
+            latest.extend(fetch_modio_latest_fallback(&modio_service, token, &missing).await);
+
+            for (mod_id, group) in modio_by_id {
+                let Some(details) = latest.get(&mod_id) else {
+                    continue;
+                };
+                push_modio_update_results(&mut results, group, details);
+            }
         }
     }
 
     Ok(results)
 }
 
+/// Per-mod mod.io lookups for mods the batched listing did not return. Bounded
+/// for the same reason the Nexus fallback is: this endpoint is rate limited.
+async fn fetch_modio_latest_fallback(
+    service: &ModioApiService,
+    oauth_token: &str,
+    missing: &[u64],
+) -> HashMap<u64, modio_api::ModioModLatest> {
+    let permits = Arc::new(Semaphore::new(FALLBACK_CONCURRENCY));
+    let mut tasks = Vec::new();
+    for mod_id in missing {
+        let service = service.clone();
+        let permits = Arc::clone(&permits);
+        let oauth_token = oauth_token.to_string();
+        let mod_id = *mod_id;
+        tasks.push(tokio::spawn(async move {
+            let _permit = permits.acquire_owned().await;
+            let details = service
+                .get_mod_download_info(&oauth_token, mod_id)
+                .await
+                .ok()?;
+            Some((
+                mod_id,
+                modio_api::ModioModLatest {
+                    id: details.id,
+                    remote_md5: details.remote_md5,
+                    version: details.version,
+                },
+            ))
+        }));
+    }
+
+    let mut latest = HashMap::new();
+    for task in tasks {
+        if let Ok(Some((mod_id, details))) = task.await {
+            latest.insert(mod_id, details);
+        }
+    }
+    latest
+}
+
 /// REST file lists for mods the GraphQL batch did not answer for.
 ///
-/// Bounded by [`NEXUS_REST_FALLBACK_CONCURRENCY`] because, unlike GraphQL, this
+/// Bounded by [`FALLBACK_CONCURRENCY`] because, unlike GraphQL, this
 /// endpoint is hourly rate limited - a burst here is what trips a 429.
 async fn fetch_nexus_files_fallback(
     service: &nexus_api::NexusApiService,
     api_key: &str,
     missing: &[(u64, Vec<manifest::InstallManifest>)],
 ) -> HashMap<u64, Vec<nexus_api::NexusModFile>> {
-    let permits = Arc::new(Semaphore::new(NEXUS_REST_FALLBACK_CONCURRENCY));
+    let permits = Arc::new(Semaphore::new(FALLBACK_CONCURRENCY));
     let mut tasks = Vec::new();
     for (mod_id, _) in missing {
         let service = service.clone();
@@ -1809,17 +1868,17 @@ async fn fetch_nexus_files_fallback(
 fn push_modio_update_results(
     results: &mut Vec<ModUpdateInfo>,
     group: Vec<manifest::InstallManifest>,
-    details: &modio_api::ModioModDownload,
+    latest: &modio_api::ModioModLatest,
 ) {
     for manifest_data in group {
         results.push(ModUpdateInfo {
             archive_name: manifest_data.source_archive,
             source: "modio".to_string(),
             current_version: manifest_data.installed_version,
-            latest_version: details.version.clone(),
+            latest_version: latest.version.clone(),
             update_available: modio_update_available(
                 &manifest_data.content_hash,
-                &details.remote_md5,
+                &latest.remote_md5,
             ),
         });
     }
