@@ -60,7 +60,7 @@
     "eslint-plugin-package-json": "^1.8.1",
     "jsdom": "^30.0.1",
     "lefthook": "^2.1.14",
-    "oxfmt": "^0.70.0",
+    "oxfmt": "^0.71.0",
     "oxlint": "^1.85.0",
     "svelte": "^5.57.0",
     "svelte-check": "^4.7.6",
@@ -74,7 +74,7 @@
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "allowScripts": {
-    "lefthook@2.1.14": true,
+    "lefthook@2.1.15": true,
     "wc_toolkit@0.1.2": true
   }
 }
