@@ -343,6 +343,7 @@ mod tests {
             config: RwLock::new(config),
             client: Client::new(),
             nexus_base_url: None,
+            nexus_graphql_url: None,
             config_path: dir.path().join("config.json"),
             nexus_cancel: Arc::new(Mutex::new(HashMap::new())),
             nexus_wait_id: Arc::new(AtomicU64::new(1)),
