@@ -24,6 +24,18 @@
       "matchPackageNames": ["typescript"],
       "allowedVersions": "<7",
       "groupName": "typescript"
+    },
+    {
+      "description": "The tauri CLI refuses to build when a @tauri-apps/* npm package and its Rust crate are not on the same major/minor, so both sides have to move in one PR",
+      "matchManagers": ["npm", "cargo"],
+      "matchPackageNames": [
+        "@tauri-apps/*",
+        "tauri",
+        "tauri-build",
+        "tauri-plugin-*"
+      ],
+      "groupName": "tauri-dependencies",
+      "rangeStrategy": "bump"
     }
   ]
 }
