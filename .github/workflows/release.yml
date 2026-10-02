@@ -273,3 +273,23 @@ jobs:
           commit_email: talk@savagecore.uk
           ssh_private_key: ${{ secrets.AUR_SSH_KEY }}
           commit_message: "Update to ${{ github.ref_name }}"
+
+  notify-site:
+    # The website rejects any release whose assets are incomplete, so the
+    # dispatch must wait for BOTH uploaders. `release` (Tauri installers) and
+    # `flatpak` (.flatpak + .user.js) only depend on create-release, so they run
+    # in parallel; firing before both finish makes the site fall back to an
+    # older release. aur-publish is intentionally not a dependency.
+    needs: [create-release, release, flatpak]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Dispatch website rebuild
+        env:
+          GH_TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          printf '{"event_type":"app-release","client_payload":{"tag":"%s"}}\n' "$TAG" \
+            | gh api --method POST repos/SavageCore/RoNModManager-site/dispatches --input -
+          echo "Dispatched website rebuild for $TAG"
