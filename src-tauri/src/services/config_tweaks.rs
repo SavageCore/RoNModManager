@@ -81,6 +81,52 @@ fn backup_path(ini: &Path) -> PathBuf {
     PathBuf::from(format!("{}{}", ini.display(), ENGINE_BACKUP_SUFFIX))
 }
 
+/// Whether the file carries the Windows read-only attribute. Users commonly
+/// mark `Engine.ini` read-only (the UE5 optimization pack asks for it and the
+/// game would otherwise rewrite the tune), so every write has to cope with it.
+#[cfg(windows)]
+fn is_readonly(path: &Path) -> bool {
+    fs::metadata(path)
+        .map(|m| m.permissions().readonly())
+        .unwrap_or(false)
+}
+
+#[cfg(not(windows))]
+fn is_readonly(_path: &Path) -> bool {
+    false
+}
+
+/// Set or clear the read-only attribute. A missing file is not an error: the
+/// callers only care about protecting the user's file, not about its existence.
+#[cfg(windows)]
+fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
+    let Ok(metadata) = fs::metadata(path) else {
+        return Ok(());
+    };
+    let mut perms = metadata.permissions();
+    if perms.readonly() != readonly {
+        perms.set_readonly(readonly);
+        fs::set_permissions(path, perms)?;
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn set_readonly(_path: &Path, _readonly: bool) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// Rename `src` over `dst`, clearing `dst`'s read-only bit first. On Windows
+/// `MoveFileEx` with `MOVEFILE_REPLACE_EXISTING` refuses a read-only
+/// destination and fails with `ERROR_ACCESS_DENIED` ("Access is denied.
+/// (os error 5)"). The moved file keeps its own attributes, so renaming a
+/// read-only backup back into place restores the user's original protection
+/// without tracking it anywhere.
+fn rename_over(src: &Path, dst: &Path) -> std::io::Result<()> {
+    set_readonly(dst, false)?;
+    fs::rename(src, dst)
+}
+
 /// Available optimization profiles (display name -> file stem)
 pub fn available_gpu_profiles() -> Vec<String> {
     vec![
@@ -228,16 +274,46 @@ pub fn get_profile_content(profile: &str) -> Result<Vec<u8>> {
 pub fn apply_optimization(profile: &str) -> Result<()> {
     let ini = get_engine_ini_path()?;
     if let Some(parent) = ini.parent() {
-        fs::create_dir_all(parent).map_err(|e| AppError::Validation(e.to_string()))?;
+        fs::create_dir_all(parent).map_err(|e| {
+            AppError::Validation(format!("could not create {}: {e}", parent.display()))
+        })?;
     }
-    let backup = backup_path(&ini);
-    if !backup.exists() && ini.exists() {
-        fs::copy(&ini, &backup).map_err(|e| AppError::Validation(format!("backup failed: {e}")))?;
-    }
+    // Resolve the profile before touching disk so a bad name can't leave a
+    // half-committed folder behind.
     let content = get_profile_content(profile)?;
+    // Capture the user's read-only protection up front; we clear it to write and
+    // put it back on the profile so the game can't overwrite the tune.
+    let was_readonly = is_readonly(&ini);
+
+    let backup = backup_path(&ini);
+    let made_backup = !backup.exists() && ini.exists();
+    if made_backup {
+        fs::copy(&ini, &backup).map_err(|e| {
+            AppError::Validation(format!("backup failed for {}: {e}", ini.display()))
+        })?;
+    }
+
     let tmp = ini.with_extension("ini.tmp");
-    fs::write(&tmp, &content).map_err(|e| AppError::Validation(e.to_string()))?;
-    fs::rename(&tmp, &ini).map_err(|e| AppError::Validation(e.to_string()))?;
+    let write = fs::write(&tmp, &content).and_then(|()| rename_over(&tmp, &ini));
+    if let Err(e) = write {
+        // Never leave a stray .tmp, and never leave a backup we created with
+        // nothing applied over it - a later Restore would then clobber the
+        // user's ini with a folder that looks optimized but isn't.
+        let _ = fs::remove_file(&tmp);
+        let _ = set_readonly(&ini, was_readonly);
+        if made_backup {
+            let _ = fs::remove_file(&backup);
+        }
+        return Err(AppError::Validation(format!(
+            "could not write {}: {e}",
+            ini.display()
+        )));
+    }
+    // The rename dropped the original's attributes along with it; re-assert the
+    // read-only protection the user had on their own Engine.ini.
+    if was_readonly {
+        let _ = set_readonly(&ini, true);
+    }
     Ok(())
 }
 
@@ -280,9 +356,19 @@ pub fn restore_optimization() -> Result<()> {
     let ini = get_engine_ini_path()?;
     let backup = backup_path(&ini);
     if backup.exists() {
-        fs::rename(&backup, &ini).map_err(|e| AppError::Validation(e.to_string()))?;
+        // The backup carries the original's attributes (fs::copy copies them on
+        // Windows), so the restored ini comes back with the user's read-only
+        // protection intact.
+        rename_over(&backup, &ini).map_err(|e| {
+            AppError::Validation(format!("could not restore {}: {e}", ini.display()))
+        })?;
     } else if detect_applied_profile().is_some() {
-        fs::remove_file(&ini).map_err(|e| AppError::Validation(e.to_string()))?;
+        // `fs::remove_file` also refuses a read-only file on Windows, and the
+        // user may have re-protected the applied ini after the fact.
+        let _ = set_readonly(&ini, false);
+        fs::remove_file(&ini).map_err(|e| {
+            AppError::Validation(format!("could not remove {}: {e}", ini.display()))
+        })?;
     }
     Ok(())
 }
@@ -479,5 +565,222 @@ mod tests {
     fn test_normalize_gpu_name() {
         assert_eq!(normalize_gpu_name("RTX_4070-Ti"), "rtx 4070 ti");
         assert_eq!(normalize_gpu_name("GTX970"), "gtx970");
+    }
+
+    /// The shared config tree's `Engine.ini` paths, cleared on construction and
+    /// on drop. Optimization writes to the platform config dir (`LOCALAPPDATA`
+    /// on Windows, `HOME` on Linux), and `commands::config` asserts on the very
+    /// same files, so every test here takes `shared_tree_guard()` and leaves
+    /// nothing behind - including the read-only flag, which would make their
+    /// `remove_file` + `write` fail.
+    struct EngineIni {
+        ini: PathBuf,
+        backup: PathBuf,
+        tmp: PathBuf,
+    }
+
+    impl EngineIni {
+        fn reset() -> Self {
+            use crate::test_support::isolated_root;
+            // Must precede the path lookup: it is what pins the config dir.
+            isolated_root();
+            let ini = get_engine_ini_path().unwrap();
+            let this = EngineIni {
+                backup: backup_path(&ini),
+                tmp: ini.with_extension("ini.tmp"),
+                ini,
+            };
+            this.wipe();
+            this
+        }
+
+        fn wipe(&self) {
+            for path in [&self.ini, &self.backup, &self.tmp] {
+                let _ = set_readonly(path, false);
+                let _ = fs::remove_file(path);
+                let _ = fs::remove_dir_all(path);
+            }
+        }
+
+        fn ini(&self) -> &Path {
+            &self.ini
+        }
+
+        fn backup(&self) -> &Path {
+            &self.backup
+        }
+
+        fn tmp(&self) -> &Path {
+            &self.tmp
+        }
+    }
+
+    impl Drop for EngineIni {
+        fn drop(&mut self) {
+            self.wipe();
+        }
+    }
+
+    fn first_profile() -> String {
+        available_gpu_profiles().first().cloned().unwrap()
+    }
+
+    fn write_original(ini: &Path) {
+        fs::create_dir_all(ini.parent().unwrap()).unwrap();
+        fs::write(ini, b"[Original]\nkey=orig\n").unwrap();
+    }
+
+    #[test]
+    fn apply_then_restore_round_trips_a_writable_ini() {
+        use crate::test_support::shared_tree_guard;
+        let _guard = shared_tree_guard();
+        let files = EngineIni::reset();
+        write_original(files.ini());
+        let profile = first_profile();
+
+        apply_optimization(&profile).unwrap();
+        assert!(files.backup().exists());
+        assert!(!files.tmp().exists());
+        assert_eq!(detect_applied_profile().as_deref(), Some(profile.as_str()));
+
+        restore_optimization().unwrap();
+        assert_eq!(fs::read(files.ini()).unwrap(), b"[Original]\nkey=orig\n");
+        assert!(!files.backup().exists());
+        assert!(!files.tmp().exists());
+    }
+
+    /// The reported bug: `Engine.ini` marked read-only made the replace-rename
+    /// fail with `Access is denied. (os error 5)`, leaving a stray `.tmp` and a
+    /// backup behind. Apply and Restore must both work over a read-only file.
+    #[test]
+    fn apply_and_restore_work_over_a_readonly_ini() {
+        use crate::test_support::shared_tree_guard;
+        let _guard = shared_tree_guard();
+        let files = EngineIni::reset();
+        write_original(files.ini());
+        set_readonly(files.ini(), true).unwrap();
+        assert!(is_readonly(files.ini()));
+        let profile = first_profile();
+
+        apply_optimization(&profile).unwrap();
+        assert_eq!(detect_applied_profile().as_deref(), Some(profile.as_str()));
+        // The user's protection carries over to the applied profile, so the
+        // game can't overwrite the tune on exit.
+        assert!(is_readonly(files.ini()));
+        assert!(files.backup().exists());
+        assert!(!files.tmp().exists());
+
+        restore_optimization().unwrap();
+        assert_eq!(fs::read(files.ini()).unwrap(), b"[Original]\nkey=orig\n");
+        // `fs::copy` carried the attribute onto the backup, so restoring brings
+        // the read-only flag back with the original content.
+        assert!(is_readonly(files.ini()));
+        assert!(!files.backup().exists());
+    }
+
+    /// Re-applying over a read-only file left in place by a previous apply has
+    /// to work too - the user switching GPU does not first press Restore.
+    #[test]
+    fn reapplying_a_second_profile_over_a_readonly_ini_succeeds() {
+        use crate::test_support::shared_tree_guard;
+        let _guard = shared_tree_guard();
+        let files = EngineIni::reset();
+        write_original(files.ini());
+        set_readonly(files.ini(), true).unwrap();
+        let profiles = available_gpu_profiles();
+        let second = profiles[1].clone();
+
+        apply_optimization(&profiles[0]).unwrap();
+        apply_optimization(&second).unwrap();
+
+        assert_eq!(detect_applied_profile().as_deref(), Some(second.as_str()));
+        assert!(is_readonly(files.ini()));
+        // Only the first apply backs up: the backup is the user's original.
+        assert_eq!(fs::read(files.backup()).unwrap(), b"[Original]\nkey=orig\n");
+        assert!(!files.tmp().exists());
+    }
+
+    /// A rename that fails after the temp file is written must not leave that
+    /// temp file in the game's config folder, and must not disturb the backup a
+    /// previous apply already owns. A directory parked on the ini path fails the
+    /// replace-rename the same way a locked file would.
+    #[test]
+    fn a_failed_apply_removes_the_tmp_it_wrote() {
+        use crate::test_support::shared_tree_guard;
+        let _guard = shared_tree_guard();
+        let files = EngineIni::reset();
+        write_original(files.ini());
+        // A backup already exists, so this apply does not own it.
+        fs::write(files.backup(), b"[Original]\nkey=orig\n").unwrap();
+        fs::remove_file(files.ini()).unwrap();
+        fs::create_dir(files.ini()).unwrap();
+
+        let err = apply_optimization(&first_profile()).unwrap_err();
+        // The message names the file it could not write instead of surfacing a
+        // bare "Access is denied. (os error 5)".
+        assert!(
+            err.to_string().contains(&files.ini().display().to_string()),
+            "error should name the ini path, got: {err}"
+        );
+        assert!(!files.tmp().exists());
+        assert_eq!(fs::read(files.backup()).unwrap(), b"[Original]\nkey=orig\n");
+    }
+
+    /// A backup created by an apply that then failed must be rolled back: left
+    /// behind it would make a later Restore clobber the user's ini with a folder
+    /// that only looks optimized.
+    #[test]
+    fn a_failed_apply_does_not_orphan_the_backup_it_created() {
+        use crate::test_support::shared_tree_guard;
+        let _guard = shared_tree_guard();
+        let files = EngineIni::reset();
+        write_original(files.ini());
+        // A directory at the ini path makes the backup copy fail, so this apply
+        // created the backup and then died.
+        fs::remove_file(files.ini()).unwrap();
+        fs::create_dir(files.ini()).unwrap();
+
+        let err = apply_optimization(&first_profile()).unwrap_err();
+        assert!(
+            err.to_string().contains(&files.ini().display().to_string()),
+            "error should name the ini path, got: {err}"
+        );
+        assert!(!files.backup().exists());
+        assert!(!files.tmp().exists());
+    }
+
+    /// An unknown profile is rejected before anything is written, so a typo
+    /// can't cost the user their original ini.
+    #[test]
+    fn an_unknown_profile_touches_nothing() {
+        use crate::test_support::shared_tree_guard;
+        let _guard = shared_tree_guard();
+        let files = EngineIni::reset();
+        write_original(files.ini());
+        set_readonly(files.ini(), true).unwrap();
+
+        assert!(apply_optimization("Voodoo_3dfx").is_err());
+        assert_eq!(fs::read(files.ini()).unwrap(), b"[Original]\nkey=orig\n");
+        assert!(!files.backup().exists());
+        assert!(!files.tmp().exists());
+    }
+
+    #[test]
+    fn rename_over_replaces_a_readonly_destination() {
+        use crate::test_support::shared_tree_guard;
+        let _guard = shared_tree_guard();
+        let dir = crate::test_support::scratch_dir("rename-over");
+        let dst = dir.path().join("dst.ini");
+        let src = dir.path().join("src.ini");
+        fs::write(&src, b"new").unwrap();
+        fs::write(&dst, b"old").unwrap();
+        set_readonly(&dst, true).unwrap();
+
+        rename_over(&src, &dst).unwrap();
+
+        assert_eq!(fs::read(&dst).unwrap(), b"new");
+        assert!(!src.exists());
+        // Renaming carries the source's own attributes, not the cleared ones.
+        assert!(!is_readonly(&dst));
     }
 }

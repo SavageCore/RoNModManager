@@ -993,6 +993,15 @@
       unlistenFunctions.push(fn);
     });
 
+    // A game tweak (Engine.ini optimization) that could not be written before
+    // launch. The game still starts on its stock files, so this is a warning,
+    // not an error - the tune is simply missing for this session.
+    void listen<string>("launch_tweak_warning", (event) => {
+      toastStore.warning(event.payload);
+    }).then((fn) => {
+      unlistenFunctions.push(fn);
+    });
+
     return () => {
       cleanup();
       unsubscribe();

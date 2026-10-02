@@ -4,7 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
-use tauri::{AppHandle, Runtime, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 use crate::commands::mods::archive_install_key;
 use crate::models::AppError;
@@ -151,18 +151,36 @@ pub fn launch_game_internal_pub(game_path: &Path, intro_skip_enabled: bool) -> R
     launch_game_internal(game_path, intro_skip_enabled)
 }
 
+/// Re-apply the stored Engine.ini optimization before launch, in case a game
+/// update restored the file. Returns the failure message for the caller to
+/// surface: a silent `let _ =` here launched the game on the stock ini with no
+/// indication the tune was missing.
+pub(crate) fn reapply_optimization() -> Option<String> {
+    let cfg = crate::state::load_config_fallback().ok()?;
+    if !cfg.optimization_enabled {
+        return None;
+    }
+    let profile = cfg.optimization_profile?;
+    match crate::services::config_tweaks::apply_optimization(&profile) {
+        Ok(()) => None,
+        Err(e) => {
+            log::warn!("launch: failed to apply Engine.ini optimization '{profile}': {e}");
+            Some(format!("Engine.ini optimization failed to apply: {e}"))
+        }
+    }
+}
+
+/// Tell the user a game tweak could not be written before launch. Best-effort:
+/// a lost event must not disturb a launch that is already under way, and the
+/// game still starts on its stock files.
+pub(crate) fn warn_launch_tweak<R: Runtime>(app: &AppHandle<R>, message: String) {
+    let _ = app.emit("launch_tweak_warning", message);
+}
+
 fn launch_game_internal(game_path: &Path, intro_skip_enabled: bool) -> Result<(), String> {
     // Re-apply intro skip if enabled in config, in case a game update restored the files
     if intro_skip_enabled {
         let _ = crate::services::config_tweaks::apply_intro_skip(game_path);
-    }
-    // Re-apply Engine.ini optimization if enabled
-    if let Ok(cfg) = crate::state::load_config_fallback() {
-        if cfg.optimization_enabled {
-            if let Some(p) = cfg.optimization_profile {
-                let _ = crate::services::config_tweaks::apply_optimization(&p);
-            }
-        }
     }
     // UE4SS crash guard, best-effort: force `bUseUObjectArrayCache = false`
     // (stock `true` crashes Ready or Not on startup) while preserving the
@@ -585,6 +603,9 @@ pub async fn launch_game_with_groups(
 
     sync_mod_links_for_game_path(&game_path, enabled_groups)?;
     launch_game_internal(&game_path, config.intro_skip_enabled)?;
+    if let Some(message) = reapply_optimization() {
+        warn_launch_tweak(&app, message);
+    }
     // In link-on-launch-only mode the folder must return to stock once the
     // game quits, so track the game process in the background.
     if config.link_on_launch_only {
@@ -629,6 +650,9 @@ pub async fn launch_vanilla_game<R: Runtime>(
 
     sync_mod_links_for_game_path(&game_path, Vec::new())?;
     launch_game_internal(&game_path, config.intro_skip_enabled)?;
+    if let Some(message) = reapply_optimization() {
+        warn_launch_tweak(&app, message);
+    }
     // Transient tweaks were just applied for the launch; restore them to stock
     // once the game quits, like any other launch path.
     if config.link_on_launch_only {

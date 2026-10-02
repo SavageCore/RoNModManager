@@ -52,6 +52,9 @@ pub async fn headless_launch(
         .map_err(crate::models::AppError::Validation)?;
     game::launch_game_internal_pub(&game_path, config.intro_skip_enabled)
         .map_err(crate::models::AppError::Validation)?;
+    if let Some(message) = game::reapply_optimization() {
+        game::warn_launch_tweak(&app, message);
+    }
     if config.link_on_launch_only {
         crate::services::game_watch::spawn_game_exit_watcher(app, game_path);
     }
