@@ -81,24 +81,18 @@ fn backup_path(ini: &Path) -> PathBuf {
     PathBuf::from(format!("{}{}", ini.display(), ENGINE_BACKUP_SUFFIX))
 }
 
-/// Whether the file carries the Windows read-only attribute. Users commonly
-/// mark `Engine.ini` read-only (the UE5 optimization pack asks for it and the
-/// game would otherwise rewrite the tune), so every write has to cope with it.
-#[cfg(windows)]
+/// Whether the file is marked read-only: the `FILE_ATTRIBUTE_READONLY` bit on
+/// Windows, no write bits at all on Unix. Users commonly mark `Engine.ini`
+/// read-only (the UE5 optimization pack asks for it and the game would
+/// otherwise rewrite the tune), so every write has to cope with it.
 fn is_readonly(path: &Path) -> bool {
     fs::metadata(path)
         .map(|m| m.permissions().readonly())
         .unwrap_or(false)
 }
 
-#[cfg(not(windows))]
-fn is_readonly(_path: &Path) -> bool {
-    false
-}
-
-/// Set or clear the read-only attribute. A missing file is not an error: the
-/// callers only care about protecting the user's file, not about its existence.
-#[cfg(windows)]
+/// Set or clear the read-only bit. A missing file is not an error: the callers
+/// only care about protecting the user's file, not about its existence.
 fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
     let Ok(metadata) = fs::metadata(path) else {
         return Ok(());
@@ -108,11 +102,6 @@ fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
         perms.set_readonly(readonly);
         fs::set_permissions(path, perms)?;
     }
-    Ok(())
-}
-
-#[cfg(not(windows))]
-fn set_readonly(_path: &Path, _readonly: bool) -> std::io::Result<()> {
     Ok(())
 }
 
@@ -356,9 +345,9 @@ pub fn restore_optimization() -> Result<()> {
     let ini = get_engine_ini_path()?;
     let backup = backup_path(&ini);
     if backup.exists() {
-        // The backup carries the original's attributes (fs::copy copies them on
-        // Windows), so the restored ini comes back with the user's read-only
-        // protection intact.
+        // The backup carries the original's attributes (`fs::copy` copies them),
+        // so the restored ini comes back with the user's read-only protection
+        // intact.
         rename_over(&backup, &ini).map_err(|e| {
             AppError::Validation(format!("could not restore {}: {e}", ini.display()))
         })?;
