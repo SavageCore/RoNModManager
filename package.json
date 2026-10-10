@@ -60,7 +60,7 @@
     "eslint-plugin-package-json": "^1.8.1",
     "jsdom": "^30.0.1",
     "lefthook": "^2.1.14",
-    "oxfmt": "^0.71.0",
+    "oxfmt": "^0.72.0",
     "oxlint": "^1.85.0",
     "svelte": "^5.57.0",
     "svelte-check": "^4.7.6",
@@ -69,7 +69,7 @@
     "vite": "^8.3.0",
     "vitest": "^5.0.0"
   },
-  "packageManager": "npm@12.1.0",
+  "packageManager": "npm@12.2.0",
   "engines": {
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
