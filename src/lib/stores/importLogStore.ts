@@ -45,11 +45,13 @@ function createImportLogStore() {
   let currentModId: string | null = null;
   const seenLabels = new Set<string>();
   const prevStatuses = new Map<string, QueueStatus>();
+  const prevMessages = new Map<string, string>();
 
   modAddQueueStore.subscribe((state) => {
     for (const item of state.items) {
       const prev = prevStatuses.get(item.id);
-      if (prev !== item.status) {
+      const statusChanged = prev !== item.status;
+      if (statusChanged) {
         if (item.status === "queued") {
           update((s) => {
             if (s.mods.some((m) => m.id === item.id)) return s;
@@ -116,6 +118,37 @@ function createImportLogStore() {
             ),
           }));
         }
+      } else if (item.status === "queued" || item.status === "running") {
+        // The queue carries the per-row status text ("Queued",
+        // "Waiting for download...", "Checking available files...", ...).
+        // Surface message *changes* as lines so a waiting row says what it
+        // is doing. The message at a status transition is the baseline, not
+        // a line; repeats and empty messages are skipped; phase lines from
+        // operationStatusStore are never touched.
+        const prevMessage = prevMessages.get(item.id);
+        const message = item.message.trim();
+        if (prevMessage === undefined) {
+          prevMessages.set(item.id, item.message);
+        } else if (message && message !== prevMessage.trim()) {
+          prevMessages.set(item.id, item.message);
+          update((s) => {
+            const target = s.mods.find((m) => m.id === item.id);
+            if (!target) return s;
+            if (target.lines[target.lines.length - 1] === message) return s;
+            return {
+              ...s,
+              mods: s.mods.map((m) =>
+                m.id === item.id ? { ...m, lines: [...m.lines, message] } : m,
+              ),
+            };
+          });
+        }
+      }
+      if (statusChanged) {
+        // The transition message is the baseline for later changes; it is
+        // not surfaced itself, so the running entry starts clean for the
+        // phase lines.
+        prevMessages.set(item.id, item.message);
       }
       prevStatuses.set(item.id, item.status);
     }
@@ -123,6 +156,9 @@ function createImportLogStore() {
     const ids = new Set(state.items.map((i) => i.id));
     for (const id of prevStatuses.keys()) {
       if (!ids.has(id)) prevStatuses.delete(id);
+    }
+    for (const id of prevMessages.keys()) {
+      if (!ids.has(id)) prevMessages.delete(id);
     }
     // Names can be resolved after an item is queued (upfront lookup or the
     // post-download result), so sync them onto existing log entries.
@@ -173,6 +209,7 @@ function createImportLogStore() {
     clear: () => {
       currentModId = null;
       seenLabels.clear();
+      prevMessages.clear();
       update((s) => ({ ...s, mods: [] }));
     },
     setCurrentMod: (id: string) => {

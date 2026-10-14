@@ -780,6 +780,7 @@ pub async fn install_mods(
             &archive_name,
             Some(entry.size),
             expected_md5,
+            None,
             |processed, total_bytes| {
                 let elapsed = hash_started.elapsed().as_secs_f64().max(0.001);
                 let mib_per_sec = bytes_to_mib(processed) / elapsed;
@@ -2073,7 +2074,8 @@ pub async fn add_nexus_mod(
         (archive_path, Some(hash))
     } else {
         // Non-premium: watch ~/Downloads, only open browser if the file isn't already there.
-        // Uses find_in_downloads for tolerant name matching (whitespace/case/browser dedup suffix).
+        // Uses find_in_downloads for tolerant name matching (whitespace/case/browser dedup suffix,
+        // Nexus CDN file-id aliases) across the Downloads folder and its subdirectories.
         //
         // The manual-download wait registers a per-invocation cancel flag.
         // The old single global AtomicBool was reset on every entry, so
@@ -2112,7 +2114,7 @@ pub async fn add_nexus_mod(
         // the async worker even here.
         let pre_name = expected_filename.clone();
         if let Some(path) = tokio::task::spawn_blocking(move || {
-            downloader::find_in_downloads(&pre_name, expected_size, None, |_, _| {})
+            downloader::find_in_downloads(&pre_name, expected_size, None, Some(file_id), |_, _| {})
         })
         .await
         .unwrap_or(None)
@@ -2235,7 +2237,13 @@ pub async fn add_nexus_mod(
                 // worker (which a concurrent extraction may already need).
                 let poll_name = expected_filename.clone();
                 let poll_hit = tokio::task::spawn_blocking(move || {
-                    downloader::find_in_downloads(&poll_name, expected_size, None, |_, _| {})
+                    downloader::find_in_downloads(
+                        &poll_name,
+                        expected_size,
+                        None,
+                        Some(file_id),
+                        |_, _| {},
+                    )
                 })
                 .await
                 .unwrap_or(None);
@@ -2266,7 +2274,7 @@ pub async fn add_nexus_mod(
                     // Same blocking-pool treatment as the full scan above.
                     let partial_name = expected_filename.clone();
                     let partial_hit = tokio::task::spawn_blocking(move || {
-                        downloader::find_partial_download(&partial_name)
+                        downloader::find_partial_download(&partial_name, Some(file_id))
                     })
                     .await
                     .unwrap_or(None);

@@ -176,6 +176,60 @@ describe("importLogStore", () => {
     expect(entry(id)?.lines).toEqual(["Checking for duplicates..."]);
   });
 
+  it("surfaces queue status changes as lines without duplicating", () => {
+    const id = modAddQueueStore.enqueue("input", "Alpha");
+    modAddQueueStore.markRunning(id, "Starting...");
+    // The transition message itself is the baseline, not a line.
+    expect(entry(id)?.lines).toEqual([]);
+
+    modAddQueueStore.markRunning(id, "Waiting for download...");
+    expect(entry(id)?.lines).toEqual(["Waiting for download..."]);
+
+    // Repeating the same message does not duplicate the line.
+    modAddQueueStore.markRunning(id, "Waiting for download...");
+    expect(entry(id)?.lines).toEqual(["Waiting for download..."]);
+
+    modAddQueueStore.markRunning(id, "Installing...");
+    expect(entry(id)?.lines).toEqual([
+      "Waiting for download...",
+      "Installing...",
+    ]);
+  });
+
+  it("ignores empty queue messages", () => {
+    const id = modAddQueueStore.enqueue("input", "Alpha");
+    modAddQueueStore.markRunning(id, "Starting...");
+    modAddQueueStore.markRunning(id, "   ");
+    expect(entry(id)?.lines).toEqual([]);
+
+    // A real message after an empty one still surfaces.
+    modAddQueueStore.markRunning(id, "Waiting for download...");
+    expect(entry(id)?.lines).toEqual(["Waiting for download..."]);
+  });
+
+  it("keeps queue status lines alongside phase lines", () => {
+    const id = modAddQueueStore.enqueue("input", "Alpha");
+    modAddQueueStore.markRunning(id, "Starting...");
+    modAddQueueStore.markRunning(id, "Waiting for download...");
+    progress("hash", "Verifying archive");
+    modAddQueueStore.markRunning(id, "Installing...");
+    expect(entry(id)?.lines).toEqual([
+      "Waiting for download...",
+      "Verifying archive...",
+      "Installing...",
+    ]);
+
+    // Completion still appends and collapses the row.
+    modAddQueueStore.markDone(id, "Installed");
+    expect(entry(id)?.lines).toEqual([
+      "Waiting for download...",
+      "Verifying archive...",
+      "Installing...",
+      "Installed",
+    ]);
+    expect(entry(id)).toMatchObject({ status: "done", expanded: false });
+  });
+
   it("applies phase labels to an explicitly selected mod", () => {
     const first = modAddQueueStore.enqueue("first", "First");
     const second = modAddQueueStore.enqueue("second", "Second");

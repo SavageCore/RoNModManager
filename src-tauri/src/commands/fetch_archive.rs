@@ -45,6 +45,7 @@ pub async fn download_mod_archive(
         &filename,
         None,
         expected_hash.as_deref(),
+        None,
         |processed, total| {
             let elapsed = hash_started.elapsed().as_secs_f64().max(0.001);
             let mib_per_sec = (processed as f64 / elapsed) / (1024.0 * 1024.0);
