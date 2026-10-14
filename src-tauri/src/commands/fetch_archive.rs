@@ -1,8 +1,19 @@
 use crate::models::{progress::ProgressEvent, Result};
 use crate::state::AppState;
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, State};
+
+/// Resolve where a download for `filename` is staged.
+///
+/// `filename` is a modpack key or a mod API field, both of which an untrusted
+/// party controls, and it decides where the download is written. `Path::join`
+/// alone is not containment: an absolute name discards the staging root and
+/// `..` walks out of it, so the destination goes through the shared guard.
+fn staged_destination(archives_root: &Path, filename: &str) -> Result<PathBuf> {
+    crate::services::path_safety::safe_join(archives_root, filename)
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,7 +35,7 @@ pub async fn download_mod_archive(
 ) -> Result<DownloadArchiveResult> {
     let client = &state.client;
     let archives_root = crate::state::app_data_root()?.join("staged/archives");
-    let dest = archives_root.join(&filename);
+    let dest = staged_destination(&archives_root, &filename)?;
 
     // Re-use a matching file the user has already downloaded, validated by hash.
     let hash_app = app.clone();
@@ -110,4 +121,49 @@ pub async fn download_mod_archive(
         content_hash: Some(hash),
         reused_local: false,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn root() -> PathBuf {
+        PathBuf::from("/home/user/.config/app/staged/archives")
+    }
+
+    /// The archive name decides where the download lands, and it arrives from a
+    /// modpack key or a mod API response - both attacker-controlled, since a
+    /// shared modpack can come from a URL or a `ronmm://modpack/...` link.
+    #[test]
+    fn an_archive_name_cannot_write_outside_the_staging_root() {
+        for name in [
+            "../../../../evil.zip",
+            "../../home/user/.bashrc",
+            "/tmp/evil.zip",
+            r"..\..\..\evil.zip",
+            r"C:\Windows\evil.zip",
+            "",
+            ".",
+            "..",
+        ] {
+            assert!(
+                staged_destination(&root(), name).is_err(),
+                "expected {name:?} to be refused as a download destination"
+            );
+        }
+    }
+
+    #[test]
+    fn an_ordinary_archive_name_stages_where_it_should() {
+        assert_eq!(
+            staged_destination(&root(), "Cool Mod-1.2.zip").unwrap(),
+            root().join("Cool Mod-1.2.zip")
+        );
+        // A relative path stays a relative path under the root rather than
+        // escaping it.
+        assert_eq!(
+            staged_destination(&root(), "sub/Cool Mod.zip").unwrap(),
+            root().join("sub").join("Cool Mod.zip")
+        );
+    }
 }

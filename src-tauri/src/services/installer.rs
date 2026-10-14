@@ -9,7 +9,7 @@ use zip::read::ZipFile;
 use zip::{CompressionMethod, ZipArchive};
 
 use crate::models::{AppError, Result};
-use crate::services::hasher;
+use crate::services::{hasher, path_safety};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModFileType {
@@ -20,6 +20,20 @@ pub enum ModFileType {
     ConfigMod,
     Unknown,
 }
+
+/// Ceiling on how many entries an archive may declare it holds.
+///
+/// Both this and [`MAX_UNPACKED_BYTES`] are read out of the archive's own
+/// central directory, which a crafted file controls: a zip can claim billions
+/// of entries and make the install loop, or a `Vec::with_capacity` sized from
+/// it, exhaust memory. Real RoN mods are in the hundreds of files.
+pub const MAX_ARCHIVE_ENTRIES: u64 = 100_000;
+
+/// Ceiling on the total unpacked size of an archive.
+///
+/// Bounds a decompression bomb. Genuine RoN mods top out around 40 GiB, so this
+/// leaves generous headroom while stopping a small archive from filling a disk.
+pub const MAX_UNPACKED_BYTES: u64 = 256 * 1024 * 1024 * 1024; // 256 GiB
 
 #[derive(Debug, Clone)]
 pub struct InstallContext {
@@ -35,6 +49,11 @@ pub struct InstallReport {
     pub skipped: usize,
     pub overrides_backed_up: usize,
     pub installed_files: Vec<PathBuf>,
+    /// Archive entries refused because their name pointed outside the install
+    /// (see `services::path_safety`). Kept so the import log can say why a file
+    /// a mod was expected to bring in is missing, rather than silently
+    /// counting it as skipped.
+    pub rejected_unsafe: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -814,17 +833,22 @@ pub fn list_ue4ss_mod_folders(entries: &[(String, u64)]) -> Vec<Ue4ssModFolder> 
 /// List every file entry's `(name, uncompressed size)` in a zip/rar/7z
 /// archive without extracting. Backs both the name-only listing and the
 /// UE4SS mod-folder picker (which needs per-folder byte totals).
+///
+/// The declared entry count and sizes are the archive's own claims, so both are
+/// bounded before the listing is returned. Every extractor calls this before it
+/// unpacks anything, which is what keeps a small archive from filling a disk.
 pub fn list_archive_entries(archive_path: &Path) -> Result<Vec<(String, u64)>> {
     let extension = archive_path
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or_default();
 
-    if extension.eq_ignore_ascii_case("zip") {
+    let entries = if extension.eq_ignore_ascii_case("zip") {
         let file = fs::File::open(archive_path)?;
         let mut archive = ZipArchive::new(file)
             .map_err(|e| AppError::Validation(format!("invalid zip archive: {e}")))?;
-        let mut entries = Vec::with_capacity(archive.len());
+        // Not preallocated from `archive.len()`: that value is the archive's own claim.
+        let mut entries = Vec::new();
         for i in 0..archive.len() {
             let entry = archive
                 .by_index(i)
@@ -833,10 +857,8 @@ pub fn list_archive_entries(archive_path: &Path) -> Result<Vec<(String, u64)>> {
                 entries.push((entry.name().to_string(), entry.size()));
             }
         }
-        return Ok(entries);
-    }
-
-    if extension.eq_ignore_ascii_case("rar") {
+        entries
+    } else if extension.eq_ignore_ascii_case("rar") {
         let archive = RarArchive::new(archive_path)
             .open_for_listing()
             .map_err(|e| AppError::Validation(format!("failed to open RAR: {e:?}")))?;
@@ -851,21 +873,48 @@ pub fn list_archive_entries(archive_path: &Path) -> Result<Vec<(String, u64)>> {
                 ));
             }
         }
-        return Ok(entries);
-    }
-
-    if extension.eq_ignore_ascii_case("7z") {
+        entries
+    } else if extension.eq_ignore_ascii_case("7z") {
         let archive = sevenz_rust2::Archive::open(archive_path)
             .map_err(|e| AppError::Validation(format!("failed to open 7z: {e}")))?;
-        return Ok(archive
+        archive
             .files
             .iter()
             .filter(|f| !f.is_directory)
             .map(|f| (f.name.clone(), f.size))
-            .collect());
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let unpacked_bytes = entries
+        .iter()
+        .fold(0u64, |total, (_, size)| total.saturating_add(*size));
+    check_declared_size(entries.len(), unpacked_bytes)?;
+
+    Ok(entries)
+}
+
+/// Refuse an archive whose own metadata claims more entries or more unpacked
+/// bytes than the limits allow.
+///
+/// Sizes are summed as declared, so this bounds what the extractor is willing to
+/// start; a lying header is caught by the declared total, and a lying body runs
+/// into the download cap on the way in.
+fn check_declared_size(entry_count: usize, unpacked_bytes: u64) -> Result<()> {
+    if entry_count as u64 > MAX_ARCHIVE_ENTRIES {
+        return Err(AppError::Validation(format!(
+            "archive claims {entry_count} entries, over the {MAX_ARCHIVE_ENTRIES} entry limit"
+        )));
     }
 
-    Ok(vec![])
+    if unpacked_bytes > MAX_UNPACKED_BYTES {
+        return Err(AppError::Validation(format!(
+            "archive expands to {unpacked_bytes} bytes, over the {MAX_UNPACKED_BYTES} byte limit"
+        )));
+    }
+
+    Ok(())
 }
 
 /// List every file entry's name in a zip/rar/7z archive without extracting.
@@ -968,10 +1017,24 @@ where
     let mut archive = ZipArchive::new(file)
         .map_err(|error| AppError::Validation(format!("invalid zip archive: {error}")))?;
 
+    // The entry count and the unpacked sizes come out of the archive's own
+    // central directory, so a crafted file can claim to hold billions of
+    // entries. Both are checked before anything is allocated or written.
+    let mut declared_unpacked = 0u64;
+    for index in 0..archive.len() {
+        if let Ok(entry) = archive.by_index(index) {
+            declared_unpacked = declared_unpacked.saturating_add(entry.size());
+        }
+    }
+    check_declared_size(archive.len(), declared_unpacked)?;
+
     let mut report = InstallReport::default();
     let mut total_bytes = 0u64;
 
-    let mut entry_names: Vec<String> = Vec::with_capacity(archive.len());
+    // Capacity is not preallocated from `archive.len()`: that value is the
+    // archive's own claim, so trusting it as an allocation size is exactly the
+    // exhaustion this limit exists to prevent.
+    let mut entry_names: Vec<String> = Vec::new();
     for index in 0..archive.len() {
         let entry = archive.by_index(index).map_err(|error| {
             AppError::Validation(format!("invalid zip entry at {index}: {error}"))
@@ -1182,7 +1245,23 @@ where
                     continue;
                 }
 
-                let destination = context.game_path.join(override_relative);
+                // Overrides are the one entry type written into the game
+                // directory rather than the staged mod dir, so the relative
+                // path is archive-controlled and has to be contained here.
+                let Some(relative) = override_relative.to_str() else {
+                    report.rejected_unsafe.push(entry_name.clone());
+                    report.skipped += 1;
+                    continue;
+                };
+                let destination = match path_safety::safe_join(&context.game_path, relative) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        log::warn!("rejected archive override: {error}");
+                        report.rejected_unsafe.push(entry_name.clone());
+                        report.skipped += 1;
+                        continue;
+                    }
+                };
                 if destination.exists() {
                     backup_existing_file(&destination, &context.backup_path)?;
                     report.overrides_backed_up += 1;
@@ -1278,7 +1357,23 @@ pub fn install_rar_archive(
             Some(p) => p,
             None => raw_entry_path.to_path_buf(),
         };
-        let temp_file = temp_dir.join(raw_entry_path);
+
+        // The staging path is built from the raw entry name, before the entry
+        // is classified, so it needs its own containment check: an entry named
+        // `../../../../home/user/.bashrc` would otherwise be extracted there
+        // with archive-controlled content.
+        let temp_file = match path_safety::safe_join(&temp_dir, &entry_name) {
+            Ok(path) => path,
+            Err(error) => {
+                log::warn!("rejected RAR entry outside the staging dir: {error}");
+                report.rejected_unsafe.push(entry_name.clone());
+                report.skipped += 1;
+                archive = header.skip().map_err(|e| {
+                    AppError::Validation(format!("Failed to skip RAR entry: {e:?}"))
+                })?;
+                continue;
+            }
+        };
 
         if let Some(parent) = temp_file.parent() {
             fs::create_dir_all(parent)?;
@@ -1371,7 +1466,20 @@ pub fn install_rar_archive(
                     continue;
                 }
 
-                let destination = context.game_path.join(override_relative);
+                let Some(relative) = override_relative.to_str() else {
+                    report.rejected_unsafe.push(entry_name.clone());
+                    report.skipped += 1;
+                    continue;
+                };
+                let destination = match path_safety::safe_join(&context.game_path, relative) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        log::warn!("rejected archive override: {error}");
+                        report.rejected_unsafe.push(entry_name.clone());
+                        report.skipped += 1;
+                        continue;
+                    }
+                };
                 if destination.exists() {
                     backup_existing_file(&destination, &context.backup_path)?;
                     report.overrides_backed_up += 1;
@@ -1536,7 +1644,20 @@ pub fn install_7z_archive(
                     continue;
                 }
 
-                let destination = context.game_path.join(override_relative);
+                let Some(relative) = override_relative.to_str() else {
+                    report.rejected_unsafe.push(rel_path.display().to_string());
+                    report.skipped += 1;
+                    continue;
+                };
+                let destination = match path_safety::safe_join(&context.game_path, relative) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        log::warn!("rejected archive override: {error}");
+                        report.rejected_unsafe.push(rel_path.display().to_string());
+                        report.skipped += 1;
+                        continue;
+                    }
+                };
                 if destination.exists() {
                     backup_existing_file(&destination, &context.backup_path)?;
                     report.overrides_backed_up += 1;
@@ -1946,6 +2067,172 @@ mod tests {
 
         zip.finish().unwrap();
         archive_path
+    }
+
+    /// Regression tests for the archive-entry traversal class of bug.
+    ///
+    /// `_overrides` and `ReadyOrNot` entries are the only ones written into the
+    /// game directory rather than the staged mod dir, so their relative path is
+    /// the one place an archive could aim a write outside its own install.
+    mod entry_traversal {
+        use super::*;
+
+        fn install_with_escapes(
+            root: &Path,
+            entries: Vec<(&str, &[u8])>,
+        ) -> (InstallReport, PathBuf) {
+            let context = create_context(root);
+            fs::create_dir_all(&context.game_path).unwrap();
+            let archive_path = create_test_archive(root, entries);
+            let report = install_archive(&archive_path, &context).unwrap();
+            (report, context.game_path)
+        }
+
+        fn escapes_are_blocked(name: &str) {
+            let temp = TempDir::new().unwrap();
+            let root = temp.path();
+
+            // A directory outside the install tree, so an escape is observable.
+            let outside = root.join("outside");
+            fs::create_dir_all(&outside).unwrap();
+
+            let (report, game_path) =
+                install_with_escapes(root, vec![(name, b"attacker-controlled")]);
+
+            assert!(
+                !outside.join("escaped.pak").exists(),
+                "{name} wrote outside the game directory"
+            );
+            assert!(
+                !root.join("escaped.pak").exists(),
+                "{name} wrote outside the game directory"
+            );
+            assert_eq!(report.installed, 0, "{name} should install nothing at all");
+            assert_eq!(
+                report.rejected_unsafe,
+                vec![name.to_string()],
+                "{name} should be reported as an unsafe path"
+            );
+            assert!(
+                !game_path.join("escaped.pak").exists(),
+                "{name} should not be quietly relocated into the game dir either"
+            );
+        }
+
+        #[test]
+        fn parent_traversal_in_an_override_is_refused() {
+            escapes_are_blocked("_overrides/../outside/escaped.pak");
+        }
+
+        #[test]
+        fn deep_parent_traversal_in_an_override_is_refused() {
+            escapes_are_blocked("_overrides/../../outside/escaped.pak");
+        }
+
+        #[test]
+        fn traversal_through_the_readyornot_prefix_is_refused() {
+            escapes_are_blocked("ReadyOrNot/../outside/escaped.pak");
+        }
+
+        #[test]
+        fn windows_separators_do_not_bypass_the_check_on_unix() {
+            // A backslash escape authored on Windows must not slip through when
+            // the archive is extracted on Linux. The leading `_overrides/`
+            // segment is what makes this an override on both platforms; the
+            // backslashes that follow are what `safe_join` has to split on,
+            // because on Unix they are otherwise ordinary filename characters.
+            escapes_are_blocked(r"_overrides/..\..\outside\escaped.pak");
+        }
+
+        #[test]
+        fn a_backslash_only_prefix_is_contained_as_a_filename_on_unix() {
+            // Not an escape on Unix: with no `/` anywhere, the whole name is one
+            // path component, so it classifies as a pak and is installed by
+            // basename into the staged mod dir. Windows reads the backslashes as
+            // separators and takes the override path, which `safe_join` refuses.
+            // Either way nothing lands outside the install - this pins the Unix
+            // half so the behaviour is deliberate rather than accidental.
+            let temp = TempDir::new().unwrap();
+            let root = temp.path();
+            let context = create_context(root);
+            fs::create_dir_all(&context.mods_path).unwrap();
+
+            let archive_path =
+                create_test_archive(root, vec![(r"_overrides\..\..\outside\escaped.pak", b"x")]);
+            let report = install_archive(&archive_path, &context).unwrap();
+
+            for installed in &report.installed_files {
+                assert!(
+                    installed.starts_with(&context.mods_path),
+                    "{installed:?} escaped the staged mod dir"
+                );
+            }
+        }
+
+        #[test]
+        fn traversal_is_refused_for_non_override_entries_too() {
+            // `.pak` entries are written into the staged mod dir by basename, so
+            // a traversal there is contained by construction - but an `_overrides`
+            // path with a traversal suffix must still not slip through.
+            let temp = TempDir::new().unwrap();
+            let root = temp.path();
+            let outside = root.join("outside");
+            fs::create_dir_all(&outside).unwrap();
+
+            let (report, _) = install_with_escapes(
+                root,
+                vec![("_overrides/sub/../../outside/escaped.pak", b"nope")],
+            );
+
+            assert!(!outside.join("escaped.pak").exists());
+            assert_eq!(report.rejected_unsafe.len(), 1);
+        }
+
+        #[test]
+        fn legitimate_overrides_still_install() {
+            // The guard must not break the feature it protects.
+            let temp = TempDir::new().unwrap();
+            let root = temp.path();
+            let (report, game_path) = install_with_escapes(
+                root,
+                vec![(
+                    "_overrides/ReadyOrNot/Content/Paks/pakchunk0.pak",
+                    b"real-override",
+                )],
+            );
+
+            assert_eq!(report.installed, 1);
+            assert!(report.rejected_unsafe.is_empty());
+            let installed = &report.installed_files[0];
+            assert!(installed.starts_with(&game_path));
+            assert_eq!(installed.file_name().unwrap(), "pakchunk0.pak");
+            assert_eq!(fs::read(installed).unwrap(), b"real-override");
+        }
+    }
+
+    #[test]
+    fn an_archive_declaring_more_than_the_entry_limit_is_refused() {
+        let error = check_declared_size(MAX_ARCHIVE_ENTRIES as usize + 1, 0)
+            .expect_err("an oversized entry count should be refused");
+        assert!(error.to_string().contains("entry limit"));
+
+        assert!(check_declared_size(MAX_ARCHIVE_ENTRIES as usize, 0).is_ok());
+    }
+
+    #[test]
+    fn an_archive_declaring_more_than_the_size_limit_is_refused() {
+        let error = check_declared_size(1, MAX_UNPACKED_BYTES + 1)
+            .expect_err("an oversized unpacked total should be refused");
+        assert!(error.to_string().contains("byte limit"));
+
+        assert!(check_declared_size(1, MAX_UNPACKED_BYTES).is_ok());
+    }
+
+    #[test]
+    fn a_normal_archive_is_within_both_limits() {
+        // The fixture has to stay installable, so pin the limits against
+        // something realistic rather than only testing the refusals.
+        assert!(check_declared_size(2, 2 * 1024 * 1024).is_ok());
     }
 
     #[test]
@@ -2971,6 +3258,7 @@ mod tests {
             skipped: 0,
             overrides_backed_up: 0,
             installed_files: vec![shared_file, stock_file],
+            rejected_unsafe: Vec::new(),
         };
         ensure_ue4ss_enabled_files(&mut report).unwrap();
 

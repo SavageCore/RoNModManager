@@ -215,6 +215,15 @@ pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<St
     download_file_with_progress(client, url, dest, None).await
 }
 
+/// Upper bound on a single archive download.
+///
+/// Mod archives are realistically a few hundred megabytes; the largest Ready or
+/// Not mods sit well under a gigabyte. The cap stops a server (or a hostile
+/// mirror) from streaming until the disk is full. `Content-Length` is checked
+/// before the first byte and the running total is checked as chunks arrive,
+/// because the header is a claim rather than a guarantee.
+const MAX_DOWNLOAD_BYTES: u64 = 8 * 1024 * 1024 * 1024; // 8 GiB
+
 /// Download a file with progress reporting, returning its MD5 hash.
 pub async fn download_file_with_progress(
     client: &Client,
@@ -231,6 +240,12 @@ pub async fn download_file_with_progress(
     }
 
     let total_size = response.content_length().unwrap_or(0);
+    if total_size > MAX_DOWNLOAD_BYTES {
+        return Err(crate::models::AppError::Validation(format!(
+            "archive is {total_size} bytes, over the {} byte download limit",
+            MAX_DOWNLOAD_BYTES
+        )));
+    }
 
     // Create parent directory if it doesn't exist
     if let Some(parent) = dest.parent() {
@@ -246,9 +261,19 @@ pub async fn download_file_with_progress(
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
+        downloaded = downloaded.saturating_add(chunk.len() as u64);
+        if downloaded > MAX_DOWNLOAD_BYTES {
+            // Drop the partial file rather than leaving a truncated archive in
+            // the staging dir for a later install to pick up.
+            drop(file);
+            let _ = tokio::fs::remove_file(dest).await;
+            return Err(crate::models::AppError::Validation(format!(
+                "archive exceeded the {} byte download limit",
+                MAX_DOWNLOAD_BYTES
+            )));
+        }
         file.write_all(&chunk).await?;
         hasher.update(&chunk);
-        downloaded += chunk.len() as u64;
 
         if let Some(ref callback) = progress_callback {
             callback(downloaded, total_size);
@@ -402,6 +427,62 @@ mod tests {
 
         let result = download_file(&client, url, dest).await;
         assert!(result.is_err());
+    }
+
+    /// A one-shot HTTP server that answers with a fixed `Content-Length` and no
+    /// body. Keeps the size-cap tests self-contained and deterministic rather
+    /// than depending on a remote host's behaviour.
+    async fn serve_declared_length(length: u64) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt as _};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buffer = [0u8; 1024];
+                let _ = socket.read(&mut buffer).await;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n"
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.flush().await;
+            }
+        });
+
+        format!("http://{addr}/archive.zip")
+    }
+
+    #[tokio::test]
+    async fn a_declared_size_over_the_cap_is_refused_without_writing() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let dest = temp_dir.path().join("archive.zip");
+        let url = serve_declared_length(MAX_DOWNLOAD_BYTES + 1).await;
+
+        let result = download_file(&Client::new(), &url, &dest).await;
+
+        let error = result.expect_err("an oversized archive should be refused");
+        assert!(
+            error.to_string().contains("download limit"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !dest.exists(),
+            "a refused download must not leave a file behind"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_size_within_the_cap_still_downloads() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let dest = temp_dir.path().join("archive.zip");
+        // Small, but declared, so the check under test is the same one.
+        let url = serve_declared_length(0).await;
+
+        let result = download_file(&Client::new(), &url, &dest).await;
+
+        assert!(result.is_ok(), "a small archive should download");
     }
 
     #[tokio::test]

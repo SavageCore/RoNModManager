@@ -163,13 +163,8 @@ impl ManifestManager {
 }
 
 fn sanitize_filename(filename: &str) -> String {
-    filename
-        .chars()
-        .map(|c| match c {
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
-            _ => c,
-        })
-        .collect()
+    crate::services::path_safety::sanitize_archive_filename(filename)
+        .unwrap_or_else(|_| "manifest".to_string())
 }
 
 #[cfg(test)]

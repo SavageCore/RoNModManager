@@ -11,6 +11,7 @@ pub mod manifest;
 pub mod modio_api;
 pub mod modpack;
 pub mod nexus_api;
+pub mod path_safety;
 pub mod profiles;
 pub mod steam;
 pub mod steam_launch;

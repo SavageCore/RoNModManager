@@ -110,6 +110,15 @@ fn list_archive_paks(path: &Path) -> Result<Vec<PakFileInfo>> {
         let file = fs::File::open(path)?;
         let mut archive = zip::ZipArchive::new(file)
             .map_err(|e| AppError::Validation(format!("invalid zip archive: {e}")))?;
+        // `len()` is the archive's own claim about its central directory, so it
+        // is bounded before it is used to drive a loop or size an allocation.
+        if archive.len() as u64 > installer::MAX_ARCHIVE_ENTRIES {
+            return Err(AppError::Validation(format!(
+                "archive claims {} entries, over the {} entry limit",
+                archive.len(),
+                installer::MAX_ARCHIVE_ENTRIES
+            )));
+        }
         let mut paks = Vec::new();
         for i in 0..archive.len() {
             let entry = archive
@@ -246,20 +255,8 @@ fn parse_modio_input_to_slug_or_id(input: &str) -> Result<(Option<u64>, Option<S
 }
 
 fn sanitize_filename_for_download(name: &str) -> String {
-    let sanitized = name
-        .chars()
-        .map(|c| match c {
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
-            _ => c,
-        })
-        .collect::<String>();
-
-    let trimmed = sanitized.trim();
-    if trimmed.is_empty() {
-        "modio-download.zip".to_string()
-    } else {
-        trimmed.to_string()
-    }
+    crate::services::path_safety::sanitize_archive_filename(name)
+        .unwrap_or_else(|_| "modio-download.zip".to_string())
 }
 
 /// Strips a mod from one profile's enabled list, tags and collections.
@@ -449,16 +446,13 @@ fn cleanup_empty_install_dirs(file_path: &Path, staging_root: &Path, live_mods_r
 }
 
 pub(crate) fn archive_install_key(archive_name: &str) -> String {
+    // The stem drops any directory part, then the shared guard flattens the
+    // rest into one component so `..` cannot become a staged directory name.
     PathBuf::from(archive_name)
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("unknown")
-        .chars()
-        .map(|c| match c {
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
-            _ => c,
-        })
-        .collect()
+        .and_then(|stem| crate::services::path_safety::sanitize_archive_filename(stem).ok())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 fn cleanup_mod_staging_directories(archive_name: &str, staging_root: &Path) {
@@ -3284,6 +3278,20 @@ pub async fn install_local_mod(
     }
 }
 
+/// Surface archive entries the installer refused because their name pointed
+/// outside the install. Without this a hostile archive's rejected files look
+/// identical to files the mod simply did not ship.
+fn log_rejected_entries(report: &installer::InstallReport) {
+    if report.rejected_unsafe.is_empty() {
+        return;
+    }
+    log::warn!(
+        "{} archive entries rejected for unsafe paths: {}",
+        report.rejected_unsafe.len(),
+        report.rejected_unsafe.join(", ")
+    );
+}
+
 fn backup_bank_files_from_report(
     report: &installer::InstallReport,
     game_path: &Path,
@@ -3657,6 +3665,7 @@ pub(crate) async fn install_downloaded_file(
             archive_name,
             report.installed_files.len()
         );
+        log_rejected_entries(&report);
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_config_files_from_report(&report, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
@@ -3698,6 +3707,7 @@ pub(crate) async fn install_downloaded_file(
         })
         .await
         .map_err(|e| AppError::Validation(format!("Extraction task failed: {e}")))??;
+        log_rejected_entries(&report);
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_config_files_from_report(&report, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
@@ -3739,6 +3749,7 @@ pub(crate) async fn install_downloaded_file(
         })
         .await
         .map_err(|e| AppError::Validation(format!("Extraction task failed: {e}")))??;
+        log_rejected_entries(&report);
         backup_bank_files_from_report(&report, &context.game_path, &staged_context.backup_path)?;
         backup_config_files_from_report(&report, &staged_context.backup_path)?;
         backup_override_files_from_report(&report, &context.game_path, &staged_context)?;
@@ -3771,6 +3782,7 @@ pub(crate) async fn install_downloaded_file(
             skipped: 0,
             overrides_backed_up: 0,
             installed_files: vec![destination],
+            rejected_unsafe: Vec::new(),
         };
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
@@ -3799,6 +3811,7 @@ pub(crate) async fn install_downloaded_file(
             skipped: 0,
             overrides_backed_up: 0,
             installed_files: vec![destination],
+            rejected_unsafe: Vec::new(),
         };
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
@@ -3833,6 +3846,7 @@ pub(crate) async fn install_downloaded_file(
             skipped: 0,
             overrides_backed_up: 0,
             installed_files: vec![destination],
+            rejected_unsafe: Vec::new(),
         };
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
@@ -3867,6 +3881,7 @@ pub(crate) async fn install_downloaded_file(
             skipped: 0,
             overrides_backed_up: 0,
             installed_files: vec![destination],
+            rejected_unsafe: Vec::new(),
         };
         save_install_manifest(path, &report, &staged_context, Some(content_hash))?;
         return Ok(false);
