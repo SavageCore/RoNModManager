@@ -163,7 +163,6 @@ export interface Profile {
 export interface UpdateInfo {
   available: boolean;
   version: string | null;
-  notes: string | null;
 }
 
 export interface WindowState {

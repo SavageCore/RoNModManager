@@ -6,7 +6,6 @@ use tauri_plugin_updater::UpdaterExt;
 pub struct UpdateInfo {
     pub available: bool,
     pub version: Option<String>,
-    pub notes: Option<String>,
 }
 
 #[tauri::command]
@@ -25,13 +24,11 @@ pub async fn check_for_update(app: AppHandle) -> Result<UpdateInfo, String> {
         Ok(UpdateInfo {
             available: true,
             version: Some(update.version),
-            notes: update.body,
         })
     } else {
         Ok(UpdateInfo {
             available: false,
             version: None,
-            notes: None,
         })
     }
 }
@@ -50,7 +47,6 @@ pub async fn install_update(app: AppHandle) -> Result<UpdateInfo, String> {
 
     if let Some(update) = update {
         let version = update.version.clone();
-        let notes = update.body.clone();
 
         update
             .download_and_install(|_, _| {}, || {})
@@ -60,13 +56,11 @@ pub async fn install_update(app: AppHandle) -> Result<UpdateInfo, String> {
         Ok(UpdateInfo {
             available: true,
             version: Some(version),
-            notes,
         })
     } else {
         Ok(UpdateInfo {
             available: false,
             version: None,
-            notes: None,
         })
     }
 }
