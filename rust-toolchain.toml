@@ -5,6 +5,6 @@
 # minor track gets security fixes without surprise lints.
 # Bump deliberately: install locally, run `make lint-backend`, then update.
 [toolchain]
-channel = "1.98"
+channel = "1.99"
 components = ["clippy", "rustfmt", "llvm-tools-preview"]
 profile = "minimal"
