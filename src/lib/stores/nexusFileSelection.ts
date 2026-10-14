@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import type { NexusFileOption } from "$lib/api/commands";
+import type { NexusFileOption } from "#lib/api/commands.js";
 
 interface NexusFileSelectionRequest {
   modName: string;

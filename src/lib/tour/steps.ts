@@ -1,5 +1,5 @@
-import { setSetupWizardPage } from "$lib/stores/setupWizard";
-import { addModTourCommand } from "$lib/stores/tourUi";
+import { setSetupWizardPage } from "#lib/stores/setupWizard.js";
+import { addModTourCommand } from "#lib/stores/tourUi.js";
 import type { TourContext, TourStep } from "./types";
 
 const EXAMPLE_MOD_URL =

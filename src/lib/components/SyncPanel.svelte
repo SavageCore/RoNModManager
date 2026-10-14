@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { syncLogStore } from "$lib/stores/syncLogStore";
+  import { syncLogStore } from "#lib/stores/syncLogStore.js";
   import LogPanel from "./LogPanel.svelte";
 </script>
 

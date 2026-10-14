@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import { downloadDir } from "@tauri-apps/api/path";
-  import { openDir } from "$lib/api/commands";
+  import { openDir } from "#lib/api/commands.js";
   import ModalShell from "./ModalShell.svelte";
 
   export let isVisible = true;

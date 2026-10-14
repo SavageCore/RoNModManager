@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
-  import type { NexusFileOption } from "$lib/api/commands";
-  import type { NexusFileSelectionResult } from "$lib/stores/nexusFileSelection";
+  import type { NexusFileOption } from "#lib/api/commands.js";
+  import type { NexusFileSelectionResult } from "#lib/stores/nexusFileSelection.js";
   import ModalShell from "./ModalShell.svelte";
 
   export let isVisible = true;

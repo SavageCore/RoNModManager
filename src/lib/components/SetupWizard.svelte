@@ -3,7 +3,7 @@
     validateAndSaveModioApiKey,
     validateAndSaveModioToken,
     validateAndSaveNexusApiKey,
-  } from "$lib/api/apiKeyValidation";
+  } from "#lib/api/apiKeyValidation.js";
   import {
     detectGamePath,
     fetchModpackJson,
@@ -12,11 +12,14 @@
     setGamePath,
     setModpackUrl,
     updateConfig,
-  } from "$lib/api/commands";
-  import { setSetupWizardPage, setupWizardPage } from "$lib/stores/setupWizard";
-  import { toastStore } from "$lib/stores/toast";
-  import { tokenStore } from "$lib/stores/token";
-  import { registerTourActions } from "$lib/tour/registry";
+  } from "#lib/api/commands.js";
+  import {
+    setSetupWizardPage,
+    setupWizardPage,
+  } from "#lib/stores/setupWizard.js";
+  import { toastStore } from "#lib/stores/toast.js";
+  import { tokenStore } from "#lib/stores/token.js";
+  import { registerTourActions } from "#lib/tour/registry.js";
   import { open } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";

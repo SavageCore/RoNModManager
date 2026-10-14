@@ -15,18 +15,18 @@
     updateModDisplayName,
     updateModSourceUrl,
     updateNexusFileId,
-  } from "$lib/api/commands";
-  import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
-  import { alertStore } from "$lib/stores/alert";
-  import { addModTourCommand } from "$lib/stores/tourUi";
-  import { applyAddModTourCommand } from "$lib/tour/consumers";
-  import { registerTourActions } from "$lib/tour/registry";
-  import { importLogStore } from "$lib/stores/importLogStore";
-  import { modAddQueueStore } from "$lib/stores/modAddQueue";
-  import { requestPakSelection } from "$lib/stores/pakSelection";
-  import { requestUe4ssModSelection } from "$lib/stores/ue4ssModSelection";
-  import { requestNexusFileSelection } from "$lib/stores/nexusFileSelection";
-  import type { NexusFileSelectionResult } from "$lib/stores/nexusFileSelection";
+  } from "#lib/api/commands.js";
+  import { addModpackPanelStore } from "#lib/stores/addModpackPanelStore.js";
+  import { alertStore } from "#lib/stores/alert.js";
+  import { addModTourCommand } from "#lib/stores/tourUi.js";
+  import { applyAddModTourCommand } from "#lib/tour/consumers.js";
+  import { registerTourActions } from "#lib/tour/registry.js";
+  import { importLogStore } from "#lib/stores/importLogStore.js";
+  import { modAddQueueStore } from "#lib/stores/modAddQueue.js";
+  import { requestPakSelection } from "#lib/stores/pakSelection.js";
+  import { requestUe4ssModSelection } from "#lib/stores/ue4ssModSelection.js";
+  import { requestNexusFileSelection } from "#lib/stores/nexusFileSelection.js";
+  import type { NexusFileSelectionResult } from "#lib/stores/nexusFileSelection.js";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { open } from "@tauri-apps/plugin-dialog";
   import { createEventDispatcher, onDestroy, onMount } from "svelte";

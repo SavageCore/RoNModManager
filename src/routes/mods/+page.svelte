@@ -39,28 +39,31 @@
     setUe4ssLaunchOption,
     ue4ssLaunchOptionStatus,
     type ModUpdateInfo,
-  } from "$lib/api/commands";
-  import { ue4ssBannerDismissed } from "$lib/stores/ue4ssBannerDismissed";
-  import AddModModal from "$lib/components/AddModModal.svelte";
-  import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
-  import { pendingInstall } from "$lib/stores/pendingInstall";
-  import PakFileSelectionModal from "$lib/components/PakFileSelectionModal.svelte";
+  } from "#lib/api/commands.js";
+  import { ue4ssBannerDismissed } from "#lib/stores/ue4ssBannerDismissed.js";
+  import AddModModal from "#lib/components/AddModModal.svelte";
+  import { addModpackPanelStore } from "#lib/stores/addModpackPanelStore.js";
+  import { pendingInstall } from "#lib/stores/pendingInstall.js";
+  import PakFileSelectionModal from "#lib/components/PakFileSelectionModal.svelte";
   import {
     pakSelectionStore,
     requestPakSelection,
-  } from "$lib/stores/pakSelection";
-  import Ue4ssModSelectionModal from "$lib/components/Ue4ssModSelectionModal.svelte";
+  } from "#lib/stores/pakSelection.js";
+  import Ue4ssModSelectionModal from "#lib/components/Ue4ssModSelectionModal.svelte";
   import {
     ue4ssModSelectionStore,
     requestUe4ssModSelection,
-  } from "$lib/stores/ue4ssModSelection";
-  import NexusFileSelectionModal from "$lib/components/NexusFileSelectionModal.svelte";
-  import { nexusFileSelectionStore } from "$lib/stores/nexusFileSelection";
-  import NexusFreeDownloadModal from "$lib/components/NexusFreeDownloadModal.svelte";
+  } from "#lib/stores/ue4ssModSelection.js";
+  import NexusFileSelectionModal from "#lib/components/NexusFileSelectionModal.svelte";
+  import { nexusFileSelectionStore } from "#lib/stores/nexusFileSelection.js";
+  import NexusFreeDownloadModal from "#lib/components/NexusFreeDownloadModal.svelte";
   import { listen } from "@tauri-apps/api/event";
-  import { checkModUpdatesOnce, modUpdatesStore } from "$lib/stores/modUpdates";
-  import ManageAddOnsModal from "$lib/components/ManageAddOnsModal.svelte";
-  import Ue4ssModConfigModal from "$lib/components/Ue4ssModConfigModal.svelte";
+  import {
+    checkModUpdatesOnce,
+    modUpdatesStore,
+  } from "#lib/stores/modUpdates.js";
+  import ManageAddOnsModal from "#lib/components/ManageAddOnsModal.svelte";
+  import Ue4ssModConfigModal from "#lib/components/Ue4ssModConfigModal.svelte";
   let showAddOnsModal = false;
   let selectedModName = "";
   let selectedAddOns: InstalledModFile[] = [];
@@ -217,19 +220,19 @@
       await syncModLinks(getFullSyncList(modsForActiveProfile));
     }
   }
-  import ItemPickerModal from "$lib/components/ItemPickerModal.svelte";
-  import BrokenModModal from "$lib/components/BrokenModModal.svelte";
-  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
-  import SourceIcon from "$lib/components/SourceIcon.svelte";
-  import CustomSelect from "$lib/components/CustomSelect.svelte";
-  import CustomMenu from "$lib/components/CustomMenu.svelte";
-  import type { MenuItem } from "$lib/components/CustomMenu.svelte";
-  import { importLogStore } from "$lib/stores/importLogStore";
-  import { manualDownloadStore } from "$lib/stores/manualDownloadStore";
-  import { modAddQueueStore } from "$lib/stores/modAddQueue";
-  import { modSortOrder } from "$lib/stores/modSortOrder";
-  import { showBroken } from "$lib/stores/showBroken";
-  import { toastStore } from "$lib/stores/toast";
+  import ItemPickerModal from "#lib/components/ItemPickerModal.svelte";
+  import BrokenModModal from "#lib/components/BrokenModModal.svelte";
+  import ConfirmModal from "#lib/components/ConfirmModal.svelte";
+  import SourceIcon from "#lib/components/SourceIcon.svelte";
+  import CustomSelect from "#lib/components/CustomSelect.svelte";
+  import CustomMenu from "#lib/components/CustomMenu.svelte";
+  import type { MenuItem } from "#lib/components/CustomMenu.svelte";
+  import { importLogStore } from "#lib/stores/importLogStore.js";
+  import { manualDownloadStore } from "#lib/stores/manualDownloadStore.js";
+  import { modAddQueueStore } from "#lib/stores/modAddQueue.js";
+  import { modSortOrder } from "#lib/stores/modSortOrder.js";
+  import { showBroken } from "#lib/stores/showBroken.js";
+  import { toastStore } from "#lib/stores/toast.js";
   import {
     incognitoMode,
     wizardScreenshotMode,
@@ -240,21 +243,21 @@
     DUMMY_TAGS,
     DUMMY_MOD_UPDATES,
     DUMMY_BROKEN_MODS,
-  } from "$lib/stores/incognitoMode";
+  } from "#lib/stores/incognitoMode.js";
   import { formatDistanceToNow } from "date-fns";
-  import { isMapTag } from "$lib/utils/mapTags";
-  import { formatBytes } from "$lib/utils/format";
+  import { isMapTag } from "#lib/utils/mapTags.js";
+  import { formatBytes } from "#lib/utils/format.js";
   import {
     describeUninstallOutcome,
     uninstallProfileWarning,
     uninstallTargetFor,
-  } from "$lib/utils/uninstall";
+  } from "#lib/utils/uninstall.js";
   import type {
     InstalledModGroup,
     InstalledModFile,
     Profile,
     UninstallOutcome,
-  } from "$lib/types";
+  } from "#lib/types/index.js";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
     AlertTriangle,
@@ -278,7 +281,7 @@
     X,
   } from "@lucide/svelte";
   import { onMount } from "svelte";
-  import { registerTourActions } from "$lib/tour/registry";
+  import { registerTourActions } from "#lib/tour/registry.js";
 
   let modGroups: (InstalledModGroup & { addonFiles?: InstalledModFile[] })[] =
     [];

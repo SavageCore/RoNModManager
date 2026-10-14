@@ -2,8 +2,8 @@
   import { createEventDispatcher } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { homeDir } from "@tauri-apps/api/path";
-  import { testSyncAuth } from "$lib/api/commands";
-  import { toastStore } from "$lib/stores/toast";
+  import { testSyncAuth } from "#lib/api/commands.js";
+  import { toastStore } from "#lib/stores/toast.js";
   import ModalShell from "./ModalShell.svelte";
 
   export let isVisible = false;

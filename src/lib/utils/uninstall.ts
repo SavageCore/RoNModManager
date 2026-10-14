@@ -1,4 +1,4 @@
-import type { UninstallOutcome } from "$lib/types";
+import type { UninstallOutcome } from "#lib/types/index.js";
 
 /// "A, B and C" - profile names as the user sees them in a sentence.
 export function joinNames(names: string[]): string {

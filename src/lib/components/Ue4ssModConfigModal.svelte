@@ -6,10 +6,10 @@
     revertUe4ssLuaConfig,
     setUe4ssLuaConfig,
     setUe4ssModConfig,
-  } from "$lib/api/commands";
+  } from "#lib/api/commands.js";
   import CodeEditor from "./CodeEditor.svelte";
   import ModalShell from "./ModalShell.svelte";
-  import { toastStore } from "$lib/stores/toast";
+  import { toastStore } from "#lib/stores/toast.js";
 
   // Raw file editor for a UE4SS script mod's settings, with syntax
   // highlighting on both tabs:

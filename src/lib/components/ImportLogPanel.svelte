@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { importLogStore } from "$lib/stores/importLogStore";
+  import { importLogStore } from "#lib/stores/importLogStore.js";
   import {
     CheckCircle,
     ChevronRight,
@@ -9,7 +9,7 @@
     XCircle,
   } from "@lucide/svelte";
   import LogPanel from "./LogPanel.svelte";
-  import { tourState } from "$lib/tour/tourEngine";
+  import { tourState } from "#lib/tour/tourEngine.js";
 
   $: flatLog = $importLogStore.mods.flatMap((m, i) => [
     ...(i > 0 ? ["---"] : []),
