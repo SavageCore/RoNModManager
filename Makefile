@@ -54,7 +54,7 @@ build-fast: ## Build with fast profile, no bundles (iteration builds)
 build-frontend: ## Build only the Svelte frontend with Vite
 	npm run build
 
-release: ## Release build signed via dotenvx (requires .env with signing keys)
+release: ## Release build signed via dotenvx (requires .env with signing keys, DOTENV_KEYS_FILE to point at .env.keys outside the repo)
 	npm run release
 
 # ── Userscript ────────────────────────────────────────────────────────────────

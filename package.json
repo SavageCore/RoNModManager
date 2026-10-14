@@ -23,7 +23,7 @@
     "lint:package-json": "eslint .",
     "prepare": "lefthook install",
     "preview": "vite preview",
-    "release": "dotenvx run -- npm run tauri build",
+    "release": "dotenvx run -fk ${DOTENV_KEYS_FILE:-.env.keys} -- npm run tauri build",
     "tauri": "tauri",
     "test:unit": "vitest run",
     "test:unit:coverage": "vitest run --coverage",

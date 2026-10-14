@@ -12,6 +12,7 @@
     getStartupUrls,
     headlessLaunch,
     ensureGameStock,
+    isRunningInFlatpak,
     isGameRunning as checkGameRunning,
     launchGameWithGroups,
     launchVanillaGame,
@@ -844,6 +845,13 @@
         ]);
         if (isScreenshot || isWizard) return;
       } catch {}
+      // Flatpak installs are updated via `flatpak update`; the in-app
+      // updater has no matching artifact and Settings hides its button.
+      try {
+        if (await isRunningInFlatpak().catch(() => false)) return;
+      } catch {
+        return;
+      }
       const lastCheckedAt = $updateCheckStore;
       if (
         lastCheckedAt &&
