@@ -118,7 +118,11 @@ fn list_archive_paks(path: &Path) -> Result<Vec<PakFileInfo>> {
             if entry.is_dir() {
                 continue;
             }
-            let entry_path = PathBuf::from(entry.name());
+            let entry_name = entry
+                .name()
+                .map_err(|e| AppError::Validation(format!("invalid zip entry name: {e}")))?
+                .into_owned();
+            let entry_path = PathBuf::from(&entry_name);
             if installer::classify_archive_entry(&entry_path) == installer::ModFileType::PakMod {
                 let name = entry_path
                     .file_name()
@@ -126,7 +130,7 @@ fn list_archive_paks(path: &Path) -> Result<Vec<PakFileInfo>> {
                     .unwrap_or_default();
                 paks.push(PakFileInfo {
                     name,
-                    path: entry.name().to_string(),
+                    path: entry_name,
                     size: entry.size(),
                 });
             }

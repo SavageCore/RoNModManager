@@ -45,6 +45,17 @@ pub struct ArchiveProgress {
     pub percent: f32,
 }
 
+/// zip 9 decodes entry names lazily, so `ZipFile::name()` can now fail on
+/// bytes that are neither valid UTF-8 nor valid CP437. Map that onto the same
+/// validation error the surrounding archive reads use, so a corrupt name is
+/// reported rather than silently skipped.
+fn zip_entry_name(entry: &ZipFile<'_, fs::File>) -> Result<String> {
+    entry
+        .name()
+        .map(|name| name.into_owned())
+        .map_err(|e| AppError::Validation(format!("invalid zip entry name: {e}")))
+}
+
 pub fn classify_archive_entry(path: &Path) -> ModFileType {
     if path
         .components()
@@ -830,7 +841,7 @@ pub fn list_archive_entries(archive_path: &Path) -> Result<Vec<(String, u64)>> {
                 .by_index(i)
                 .map_err(|e| AppError::Validation(format!("zip entry error: {e}")))?;
             if !entry.is_dir() {
-                entries.push((entry.name().to_string(), entry.size()));
+                entries.push((zip_entry_name(&entry)?, entry.size()));
             }
         }
         return Ok(entries);
@@ -902,24 +913,21 @@ fn open_lzma_zip_entry(
     archive_path: &Path,
     entry: &ZipFile<'_, fs::File>,
 ) -> Result<LzmaEntryDecoder> {
+    let entry_name = zip_entry_name(entry)?;
+
     if entry.encrypted() {
         return Err(AppError::Validation(format!(
-            "encrypted LZMA zip entry '{}' is not supported",
-            entry.name()
+            "encrypted LZMA zip entry '{entry_name}' is not supported"
         )));
     }
 
     let data_start = entry.data_start().ok_or_else(|| {
-        AppError::Validation(format!(
-            "missing data offset for zip entry '{}'",
-            entry.name()
-        ))
+        AppError::Validation(format!("missing data offset for zip entry '{entry_name}'"))
     })?;
     let compressed_size = entry.compressed_size();
     if compressed_size < 9 {
         return Err(AppError::Validation(format!(
-            "truncated LZMA zip entry '{}'",
-            entry.name()
+            "truncated LZMA zip entry '{entry_name}'"
         )));
     }
 
@@ -931,8 +939,7 @@ fn open_lzma_zip_entry(
     let props_size = u16::from_le_bytes([header[2], header[3]]);
     if props_size != 5 {
         return Err(AppError::Validation(format!(
-            "unexpected LZMA properties size of {props_size} in zip entry '{}'",
-            entry.name()
+            "unexpected LZMA properties size of {props_size} in zip entry '{entry_name}'"
         )));
     }
     let mut properties = [0u8; 5];
@@ -977,7 +984,7 @@ where
             AppError::Validation(format!("invalid zip entry at {index}: {error}"))
         })?;
         if !entry.is_dir() {
-            entry_names.push(entry.name().to_string());
+            entry_names.push(zip_entry_name(&entry)?);
         }
     }
     let ue4ss = detect_ue4ss_layout(&entry_names);
@@ -991,7 +998,8 @@ where
             continue;
         }
 
-        let raw_path = Path::new(entry.name());
+        let entry_name = zip_entry_name(&entry)?;
+        let raw_path = Path::new(&entry_name);
         let entry_path = match ue4ss
             .as_ref()
             .and_then(|layout| rewrite_ue4ss_path_filtered(raw_path, layout, ue4ss_mod_filter))
@@ -1035,8 +1043,8 @@ where
             continue;
         }
 
-        let raw_path = Path::new(entry.name());
-        let entry_name = entry.name().to_string();
+        let entry_name = zip_entry_name(&entry)?;
+        let raw_path = Path::new(&entry_name);
         let entry_path = match ue4ss
             .as_ref()
             .and_then(|layout| rewrite_ue4ss_path_filtered(raw_path, layout, ue4ss_mod_filter))
@@ -1920,7 +1928,7 @@ mod tests {
     use std::io::Write;
 
     use tempfile::TempDir;
-    use zip::write::FileOptions;
+    use zip::write::SimpleFileOptions;
 
     use super::*;
 
@@ -1937,7 +1945,7 @@ mod tests {
         let archive_path = root.join("test.zip");
         let file = fs::File::create(&archive_path).unwrap();
         let mut zip = zip::ZipWriter::new(file);
-        let options: FileOptions<'_, ()> = FileOptions::default();
+        let options: SimpleFileOptions = SimpleFileOptions::default();
 
         for (name, bytes) in entries {
             zip.start_file(name, options).unwrap();
@@ -1946,6 +1954,43 @@ mod tests {
 
         zip.finish().unwrap();
         archive_path
+    }
+
+    #[test]
+    fn list_archive_entries_decodes_cp437_names() {
+        // zip 9 decodes entry names lazily via `ZipFile::name()`, which falls
+        // back to CP437 for non-UTF-8 bytes. Mods zipped on Windows routinely
+        // carry such names, so they must still list and install correctly.
+        let temp = TempDir::new().unwrap();
+        let archive_path = temp.path().join("cp437.zip");
+
+        // The writer only emits UTF-8 names, so write an ASCII entry and then
+        // patch the name bytes (in both the local header and the central
+        // directory) to an equal-length run of non-UTF-8 CP437 bytes.
+        let file = fs::File::create(&archive_path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        zip.start_file("maps/aaaa.pak", SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(b"pak-bytes").unwrap();
+        zip.finish().unwrap();
+
+        let mut bytes = fs::read(&archive_path).unwrap();
+        let needle = b"maps/aaaa.pak";
+        let mut patched = 0;
+        for i in 0..=bytes.len() - needle.len() {
+            if &bytes[i..i + needle.len()] == needle {
+                bytes[i + 5..i + 9].copy_from_slice(&[0x82, 0x92, 0x82, 0x92]);
+                patched += 1;
+            }
+        }
+        assert_eq!(patched, 2, "expected the name in both zip headers");
+        fs::write(&archive_path, &bytes).unwrap();
+
+        let entries = list_archive_entries(&archive_path).unwrap();
+        assert_eq!(entries.len(), 1);
+        // 0x82 -> U+00E9, 0x92 -> U+00C6 under the zip crate's CP437 table.
+        assert_eq!(entries[0].0, "maps/\u{e9}\u{c6}\u{e9}\u{c6}.pak");
+        assert_eq!(entries[0].1, 9);
     }
 
     #[test]
