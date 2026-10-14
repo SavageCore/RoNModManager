@@ -46,7 +46,16 @@
         <svelte:component this={getIcon(toast.type)} size={20} />
       </div>
       <div class="toast-message">
-        {@html toast.message}
+        <!--
+          Most toast text carries names and error strings from Nexus, mod.io or
+          a shared modpack, so it renders as text. Only a message explicitly
+          flagged as trusted markup reaches the HTML sink.
+        -->
+        {#if toast.html}
+          {@html toast.message}
+        {:else}
+          {toast.message}
+        {/if}
       </div>
       {#if toast.action}
         <button

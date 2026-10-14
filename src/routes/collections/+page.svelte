@@ -23,6 +23,7 @@
     DUMMY_MOD_GROUPS,
   } from "$lib/stores/incognitoMode";
   import { toastStore } from "$lib/stores/toast";
+  import { escapeHtml } from "$lib/utils/escapeHtml";
   import { X } from "@lucide/svelte";
   import { onMount } from "svelte";
 
@@ -88,14 +89,6 @@
         sensitivity: "base",
       }),
     );
-  }
-  function escapeHtml(v: string): string {
-    return v
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;");
   }
   function renderDeleteModList(mods: string[]): string {
     return sortedMods(mods)

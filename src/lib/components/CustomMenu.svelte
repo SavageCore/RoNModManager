@@ -1,8 +1,16 @@
 <script context="module" lang="ts">
+  import type { Component } from "svelte";
+
   export interface MenuItem {
     id?: string;
     label?: string;
-    icon?: string;
+    /**
+     * A Svelte component (normally from `@lucide/svelte`), rendered as an
+     * element rather than as markup. Icons used to be raw SVG strings injected
+     * with `{@html}`, which is an HTML sink on a field a caller could populate
+     * from anywhere; a component reference cannot carry script.
+     */
+    icon?: Component<{ size?: number | string }>;
     danger?: boolean;
     disabled?: boolean;
     divider?: boolean;
@@ -281,8 +289,8 @@
                 : (openSubmenuIndex = null)}
           >
             {#if item.icon}
-              <span class="custom-menu-item-icon">
-                {@html item.icon}
+              <span class="custom-menu-item-icon" aria-hidden="true">
+                <svelte:component this={item.icon} size={16} />
               </span>
             {/if}
             <span class="custom-menu-item-label">{item.label}</span>

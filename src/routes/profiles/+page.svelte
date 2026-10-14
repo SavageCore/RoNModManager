@@ -5,13 +5,23 @@
   import { get } from "svelte/store";
   import { onMount } from "svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
+  import { escapeHtml } from "$lib/utils/escapeHtml";
   import { registerTourActions } from "$lib/tour/registry";
   import {
     incognitoMode,
     DUMMY_PROFILES,
     wizardScreenshotMode,
   } from "$lib/stores/incognitoMode";
-  import { Ellipsis, Play } from "@lucide/svelte";
+  import {
+    CircleDot,
+    Copy,
+    Ellipsis,
+    Monitor,
+    Pencil,
+    Play,
+    Power,
+    Trash2,
+  } from "@lucide/svelte";
   import CustomMenu from "$lib/components/CustomMenu.svelte";
   import type { MenuItem } from "$lib/components/CustomMenu.svelte";
 
@@ -55,7 +65,7 @@
       {
         id: "edit",
         label: "Edit",
-        icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
+        icon: Pencil,
         action: () => {
           closeMenu();
           openForm(menuProfile);
@@ -64,7 +74,7 @@
       {
         id: "duplicate",
         label: "Duplicate",
-        icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
+        icon: Copy,
         action: () => {
           closeMenu();
           void handleDuplicate(menuProfile.name);
@@ -76,7 +86,7 @@
         label: shortcutInfo[menuProfile.name]?.desktop
           ? "Remove desktop shortcut"
           : "Create desktop shortcut",
-        icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>',
+        icon: Monitor,
         disabled: shortcutBusy === menuProfile.name,
         check: !!shortcutInfo[menuProfile.name]?.desktop,
         action: () => {
@@ -91,7 +101,7 @@
         label: shortcutInfo[menuProfile.name]?.steam
           ? "Remove from Steam"
           : "Add to Steam",
-        icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v0a10 10 0 0 1 10 10v0a10 10 0 0 1-10 10v0a10 10 0 0 1-10-10v0a10 10 0 0 1 10-10v0Z"/><path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0"/></svg>',
+        icon: CircleDot,
         disabled: shortcutBusy === menuProfile.name,
         check: !!shortcutInfo[menuProfile.name]?.steam,
         action: () => {
@@ -106,7 +116,7 @@
       items.push({
         id: "quit-steam",
         label: quitBusy === menuProfile.name ? "Quitting Steam…" : "Quit Steam",
-        icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" x2="12" y1="2" y2="12"/></svg>',
+        icon: Power,
         disabled: quitBusy === menuProfile.name,
         action: () => {
           const n = menuProfile.name;
@@ -120,7 +130,7 @@
       {
         id: "delete",
         label: "Delete",
-        icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
+        icon: Trash2,
         danger: true,
         action: () => {
           const n = menuProfile.name;
@@ -593,7 +603,7 @@
   <ConfirmModal
     bind:isVisible={showDeleteConfirm}
     title="Delete profile?"
-    message={`Delete profile <strong>"${deleteTarget}"</strong>? Its one-click desktop shortcut and Steam entry will be removed too. Installed mods are kept.`}
+    message={`Delete profile <strong>"${escapeHtml(deleteTarget ?? "")}"</strong>? Its one-click desktop shortcut and Steam entry will be removed too. Installed mods are kept.`}
     confirmLabel="Delete"
     danger={true}
     onConfirm={() => deleteTarget && void handleDelete(deleteTarget)}

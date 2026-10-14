@@ -62,6 +62,7 @@
   import { updateCheckStore } from "$lib/stores/updateCheck";
   import { screenshotMode } from "$lib/stores/incognitoMode";
   import { applyThemeClass } from "$lib/theme";
+  import { escapeHtml } from "$lib/utils/escapeHtml";
   import { clearTutorialComplete, startTour } from "$lib/tour/tourEngine";
   import { registerTourActions } from "$lib/tour/registry";
   import { getVersion } from "@tauri-apps/api/app";
@@ -874,9 +875,13 @@
         await exportModpackToFile(modpack, exportDir);
         console.log("Export successful!");
         const toastId = toastStore.add(
-          `Modpack exported to: ${exportDir}<br><span class='text-xs opacity-80'>Contains modpack.json and mods/</span> <button class='btn btn-xs ml-2' onclick='window.__OPEN_EXPORT_DIR && window.__OPEN_EXPORT_DIR()'>Open Folder</button>`,
+          `Modpack exported to: ${escapeHtml(exportDir)}<br><span class='text-xs opacity-80'>Contains modpack.json and mods/</span> <button class='btn btn-xs ml-2' onclick='window.__OPEN_EXPORT_DIR && window.__OPEN_EXPORT_DIR()'>Open Folder</button>`,
           "success",
           0,
+          undefined,
+          // Markup is intentional here (the Open Folder button); the only
+          // interpolated value is escaped.
+          true,
         );
         // @ts-ignore
         window.__OPEN_EXPORT_DIR = () => {

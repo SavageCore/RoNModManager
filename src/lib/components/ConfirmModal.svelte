@@ -3,6 +3,14 @@
 
   export let isVisible = false;
   export let title = "Are you sure?";
+  /**
+   * Rendered as HTML, because confirmations legitimately mix emphasis and a
+   * styled detail block into the sentence.
+   *
+   * Every interpolated value must go through `escapeHtml` - these prompts quote
+   * mod names and profile names that arrived from Nexus, mod.io or a shared
+   * modpack. Prefer a plain-text message when no markup is needed.
+   */
   export let message = "";
   export let detail = "";
   export let confirmLabel = "Confirm";

@@ -13,6 +13,14 @@ export interface Toast {
   type: ToastType;
   duration: number; // milliseconds, max 30000 (30 seconds)
   action?: ToastAction;
+  /**
+   * Whether `message` is trusted markup. False by default: toast text routinely
+   * carries names and error strings that came from Nexus, mod.io or a shared
+   * modpack, and a message rendered as HTML is script execution in a webview
+   * that can invoke every backend command. Only set this from a call site whose
+   * message is built entirely from literals.
+   */
+  html?: boolean;
 }
 
 interface ToastStore {
@@ -31,6 +39,7 @@ function createToastStore() {
       type: ToastType = "info",
       duration?: number,
       action?: ToastAction,
+      html = false,
     ) => {
       const defaults: Record<ToastType, number> = {
         success: 4000,
@@ -51,6 +60,7 @@ function createToastStore() {
           type,
           duration: clampedDuration,
           action,
+          html,
         });
         return state;
       });
@@ -78,6 +88,22 @@ function createToastStore() {
     },
     warning: (message: string, duration?: number, action?: ToastAction) => {
       return toastStore.add(message, "warning", duration, action);
+    },
+    /**
+     * Markup variants. The message must be built from literals - see
+     * {@link Toast.html}.
+     */
+    successHtml: (message: string, duration?: number, action?: ToastAction) => {
+      return toastStore.add(message, "success", duration, action, true);
+    },
+    errorHtml: (message: string, duration?: number, action?: ToastAction) => {
+      return toastStore.add(message, "error", duration, action, true);
+    },
+    infoHtml: (message: string, duration?: number, action?: ToastAction) => {
+      return toastStore.add(message, "info", duration, action, true);
+    },
+    warningHtml: (message: string, duration?: number, action?: ToastAction) => {
+      return toastStore.add(message, "warning", duration, action, true);
     },
     fromError: (err: unknown, duration?: number) => {
       const message = err instanceof Error ? err.message : String(err);

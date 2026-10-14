@@ -249,6 +249,7 @@
     uninstallProfileWarning,
     uninstallTargetFor,
   } from "$lib/utils/uninstall";
+  import { escapeHtml } from "$lib/utils/escapeHtml";
   import type {
     InstalledModGroup,
     InstalledModFile,
@@ -1210,8 +1211,8 @@
     confirmModal = {
       isVisible: true,
       title: "Uninstall mod?",
-      message: `Are you sure you want to uninstall <strong>${label}</strong>? This cannot be undone.${uninstallProfileWarning(
-        otherProfiles,
+      message: `Are you sure you want to uninstall <strong>${escapeHtml(label)}</strong>? This cannot be undone.${escapeHtml(
+        uninstallProfileWarning(otherProfiles),
       )}`,
       detail: isNamed ? group.name : "",
       confirmLabel: "Uninstall",
