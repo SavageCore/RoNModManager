@@ -105,6 +105,34 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.release-id }}
           tauriScript: npm run tauri
 
+  updater-urls:
+    # tauri-action writes api.github.com asset URLs into latest.json, which
+    # are rate-limited (60 req/h unauthenticated) and need a special Accept
+    # header. Point them at the public CDN download URLs instead. Safe: the
+    # minisign signature covers the artifact bytes, not the URL. Idempotent:
+    # re-runs are no-ops. Nothing depends on this job, so a failure here is
+    # loud but never blocks the release train.
+    needs: [create-release, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/rewrite-updater-urls.py
+          sparse-checkout-cone-mode: false
+      - name: Rewrite updater download URLs to public CDN form
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          work=$(mktemp -d)
+          gh release download "$TAG" --repo "$REPO" -p 'latest.json' -D "$work"
+          python3 scripts/rewrite-updater-urls.py "$work/latest.json" \
+            --repo "$REPO" --tag "$TAG"
+          gh release upload "$TAG" --repo "$REPO" "$work/latest.json" --clobber
+
   flatpak:
     needs: create-release
     runs-on: ubuntu-26.04
