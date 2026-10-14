@@ -257,6 +257,34 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: ronmodmanager.flatpak
+      - name: Mirror updater metadata to GitHub Pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Second updater endpoint (see tauri.conf.json): serve latest.json
+          # from the Pages site behind the Flatpak remote, so a GitHub
+          # Release outage does not blind the updater. The `release` job runs
+          # in parallel and may still be uploading: poll, then degrade
+          # gracefully so the bundle/userscript uploads stay on track.
+          work=$(mktemp -d)
+          attempt=1
+          max_attempts=40
+          until gh release download "$TAG" --repo "$REPO" \
+              -p 'latest.json' -D "$work" --clobber; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -gt "$max_attempts" ]; then
+              echo "::warning::latest.json missing from release $TAG after $max_attempts tries; skipping Pages mirror (updater keeps its primary endpoint)"
+              exit 0
+            fi
+            sleep 60
+          done
+          # Idempotent: normalizes to public download URLs even if the
+          # updater-urls job has not run yet.
+          python3 scripts/rewrite-updater-urls.py "$work/latest.json" \
+            --repo "$REPO" --tag "$TAG"
+          cp "$work/latest.json" flatpak-repo/latest.json
       - name: Deploy OSTree repo to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
