@@ -1,6 +1,6 @@
 <script lang="ts">
-  import CustomMenu from "$lib/components/CustomMenu.svelte";
-  import type { MenuItem } from "$lib/components/CustomMenu.svelte";
+  import CustomMenu from "#lib/components/CustomMenu.svelte";
+  import type { MenuItem } from "#lib/components/CustomMenu.svelte";
 
   export let items: MenuItem[] = [];
   export let cursor = { x: 50, y: 50 };

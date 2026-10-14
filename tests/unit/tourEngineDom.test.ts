@@ -10,11 +10,10 @@ const { updateConfig, goto, currentPath } = vi.hoisted(() => ({
 }));
 
 vi.mock("$app/navigation", () => ({ goto }));
-vi.mock("$app/stores", () => ({
+vi.mock("$app/state", () => ({
   page: {
-    subscribe: (run: (value: unknown) => void) => {
-      run({ url: new URL(`http://localhost${currentPath.value}`) });
-      return () => {};
+    get url() {
+      return new URL(`http://localhost${currentPath.value}`);
     },
   },
 }));

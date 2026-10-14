@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { infoLogStore } from "$lib/stores/infoLogStore";
+  import { infoLogStore } from "#lib/stores/infoLogStore.js";
   import {
     buildMetadataRefreshDetailText,
     metadataRefreshDetailsStore,
-  } from "$lib/stores/metadataRefreshDetailsStore";
+  } from "#lib/stores/metadataRefreshDetailsStore.js";
   import LogPanel from "./LogPanel.svelte";
   import MetadataRefreshDetailsModal from "./MetadataRefreshDetailsModal.svelte";
 

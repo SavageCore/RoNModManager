@@ -34,36 +34,36 @@
     updateConfig,
     validateToken,
     verifyNexusApiKey,
-  } from "$lib/api/commands";
+  } from "#lib/api/commands.js";
   import {
     validateAndSaveModioApiKey,
     validateAndSaveModioToken,
     validateAndSaveNexusApiKey,
-  } from "$lib/api/apiKeyValidation";
-  import ExportModpackModal from "$lib/components/ExportModpackModal.svelte";
-  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
-  import CustomSelect from "$lib/components/CustomSelect.svelte";
-  import type { DropdownOption } from "$lib/components/CustomSelect.svelte";
-  import ModalShell from "$lib/components/ModalShell.svelte";
-  import SyncAuthModal from "$lib/components/SyncAuthModal.svelte";
-  import { syncLogStore } from "$lib/stores/syncLogStore";
+  } from "#lib/api/apiKeyValidation.js";
+  import ExportModpackModal from "#lib/components/ExportModpackModal.svelte";
+  import ConfirmModal from "#lib/components/ConfirmModal.svelte";
+  import CustomSelect from "#lib/components/CustomSelect.svelte";
+  import type { DropdownOption } from "#lib/components/CustomSelect.svelte";
+  import ModalShell from "#lib/components/ModalShell.svelte";
+  import SyncAuthModal from "#lib/components/SyncAuthModal.svelte";
+  import { syncLogStore } from "#lib/stores/syncLogStore.js";
   import type {
     CloseAction,
     MinimizeTarget,
     OnGameLaunchAction,
     SyncAuth,
-  } from "$lib/types";
+  } from "#lib/types/index.js";
   import { listen } from "@tauri-apps/api/event";
   import type { UnlistenFn } from "@tauri-apps/api/event";
-  import type { ModProgressEvent } from "$lib/types";
-  import { operationStatusStore } from "$lib/stores/operationStatus";
-  import { toastStore } from "$lib/stores/toast";
-  import { tokenStore } from "$lib/stores/token";
-  import { updateCheckStore } from "$lib/stores/updateCheck";
-  import { screenshotMode } from "$lib/stores/incognitoMode";
-  import { applyThemeClass } from "$lib/theme";
-  import { clearTutorialComplete, startTour } from "$lib/tour/tourEngine";
-  import { registerTourActions } from "$lib/tour/registry";
+  import type { ModProgressEvent } from "#lib/types/index.js";
+  import { operationStatusStore } from "#lib/stores/operationStatus.js";
+  import { toastStore } from "#lib/stores/toast.js";
+  import { tokenStore } from "#lib/stores/token.js";
+  import { updateCheckStore } from "#lib/stores/updateCheck.js";
+  import { screenshotMode } from "#lib/stores/incognitoMode.js";
+  import { applyThemeClass } from "#lib/theme.js";
+  import { clearTutorialComplete, startTour } from "#lib/tour/tourEngine.js";
+  import { registerTourActions } from "#lib/tour/registry.js";
   import { getVersion } from "@tauri-apps/api/app";
   import { downloadDir } from "@tauri-apps/api/path";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -902,7 +902,7 @@
         UPDATE_CHECK_COOLDOWN_MS - (Date.now() - lastCheckedAt);
       if (cooldownRemaining > 0) {
         const secondsRemaining = Math.ceil(cooldownRemaining / 1000);
-        import("$lib/stores/operationStatus").then(
+        import("#lib/stores/operationStatus.js").then(
           ({ operationStatusStore }) => {
             operationStatusStore.setTemporaryMessage(
               `Please wait ${secondsRemaining}s before checking again.`,

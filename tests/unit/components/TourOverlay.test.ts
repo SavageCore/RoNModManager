@@ -9,12 +9,9 @@ const { updateConfig, goto } = vi.hoisted(() => ({
 }));
 
 vi.mock("$app/navigation", () => ({ goto }));
-vi.mock("$app/stores", () => ({
+vi.mock("$app/state", () => ({
   page: {
-    subscribe: (run: (value: unknown) => void) => {
-      run({ url: new URL("http://localhost/mods") });
-      return () => {};
-    },
+    url: new URL("http://localhost/mods"),
   },
 }));
 vi.mock("../../../src/lib/api/commands", () => ({ updateConfig }));

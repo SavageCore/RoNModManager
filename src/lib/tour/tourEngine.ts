@@ -1,8 +1,8 @@
 import { goto } from "$app/navigation";
-import { page } from "$app/stores";
+import { page } from "$app/state";
 import { get, writable } from "svelte/store";
 import { tick } from "svelte";
-import { updateConfig } from "$lib/api/commands";
+import { updateConfig } from "#lib/api/commands.js";
 import { callTourAction } from "./registry";
 import { TOUR_STEPS } from "./steps";
 import type { TourContext, TourRoute, TourStep } from "./types";
@@ -105,7 +105,7 @@ function nextFrame(): Promise<void> {
 const ctx: TourContext = {
   call: (name) => callTourAction(name),
   goto: async (route: TourRoute) => {
-    if (get(page).url.pathname !== route) {
+    if (page.url.pathname !== route) {
       await goto(route);
       await nextFrame();
       await tick();

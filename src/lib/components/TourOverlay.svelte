@@ -1,5 +1,5 @@
 <script lang="ts">
-  import SetupWizard from "$lib/components/SetupWizard.svelte";
+  import SetupWizard from "#lib/components/SetupWizard.svelte";
   import {
     closeTour,
     currentStep,
@@ -7,7 +7,7 @@
     nextStep,
     prevStep,
     tourState,
-  } from "$lib/tour/tourEngine";
+  } from "#lib/tour/tourEngine.js";
   import { onDestroy, onMount, tick } from "svelte";
 
   const CARD_WIDTH = 380;

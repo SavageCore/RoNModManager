@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
-  import type { PakFileInfo } from "$lib/api/commands";
+  import type { PakFileInfo } from "#lib/api/commands.js";
   import ModalShell from "./ModalShell.svelte";
 
   export let isVisible = true;

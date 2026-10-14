@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { cancelNexusDownload } from "$lib/api/commands";
-  import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
-  import { importLogStore } from "$lib/stores/importLogStore";
-  import { manualDownloadStore } from "$lib/stores/manualDownloadStore";
-  import { modAddQueueStore } from "$lib/stores/modAddQueue";
-  import { operationStatusStore } from "$lib/stores/operationStatus";
-  import { infoLogStore } from "$lib/stores/infoLogStore";
-  import { syncLogStore } from "$lib/stores/syncLogStore";
+  import { cancelNexusDownload } from "#lib/api/commands.js";
+  import { addModpackPanelStore } from "#lib/stores/addModpackPanelStore.js";
+  import { importLogStore } from "#lib/stores/importLogStore.js";
+  import { manualDownloadStore } from "#lib/stores/manualDownloadStore.js";
+  import { modAddQueueStore } from "#lib/stores/modAddQueue.js";
+  import { operationStatusStore } from "#lib/stores/operationStatus.js";
+  import { infoLogStore } from "#lib/stores/infoLogStore.js";
+  import { syncLogStore } from "#lib/stores/syncLogStore.js";
   import { ChevronDown, ChevronUp } from "@lucide/svelte";
-  import { formatBytes } from "$lib/utils/format";
+  import { formatBytes } from "#lib/utils/format.js";
 
   // Track the file currently owning the byte counters. When the backend
   // switches to a different file (sequential installs), reset the counters

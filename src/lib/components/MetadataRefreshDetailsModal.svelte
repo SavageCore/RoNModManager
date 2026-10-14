@@ -8,11 +8,11 @@
     Save,
     Check,
   } from "@lucide/svelte";
-  import { toastStore } from "$lib/stores/toast";
+  import { toastStore } from "#lib/stores/toast.js";
   import {
     downloadTextFile,
     timestampedFilename,
-  } from "$lib/utils/downloadText";
+  } from "#lib/utils/downloadText.js";
   import ModalIconButton from "./ModalIconButton.svelte";
   import ModalCloseButton from "./ModalCloseButton.svelte";
 

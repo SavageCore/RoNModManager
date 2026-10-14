@@ -1,3 +1,10 @@
+// Tauri doesn't have a Node.js server to do proper SSR
+// so we use adapter-static with a fallback to index.html to put the site in SPA mode
+// See: https://svelte.dev/docs/kit/single-page-apps
+// See: https://v2.tauri.app/start/frontend/sveltekit/ for more info
+import adapter from "@sveltejs/adapter-static";
+
+import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vitest/config";
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
@@ -31,7 +38,14 @@ const svelteCssGuard: Plugin = {
 };
 
 export default defineConfig({
-  plugins: [svelteCssGuard, tailwindcss(), sveltekit()],
+  plugins: [
+    svelteCssGuard,
+    tailwindcss(),
+    sveltekit({
+      preprocess: vitePreprocess(),
+      adapter: adapter({ fallback: "index.html" }),
+    }),
+  ],
   clearScreen: false,
   resolve: isVitest ? { conditions: ["browser"] } : undefined,
   server: {

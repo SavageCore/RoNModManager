@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
-  import type { ModInfo } from "$lib/types/modpack";
+  import { addModpackPanelStore } from "#lib/stores/addModpackPanelStore.js";
+  import type { ModInfo } from "#lib/types/modpack.js";
 
   import { get } from "svelte/store";
   let url = "";
@@ -32,8 +32,8 @@
     updateConfig,
     updateModSourceUrl,
     updateNexusFileId,
-  } from "$lib/api/commands";
-  import { requestNexusFileSelection } from "$lib/stores/nexusFileSelection";
+  } from "#lib/api/commands.js";
+  import { requestNexusFileSelection } from "#lib/stores/nexusFileSelection.js";
   import { listen } from "@tauri-apps/api/event";
   import { tick } from "svelte";
   import LogPanel from "./LogPanel.svelte";
