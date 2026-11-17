@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import type { ModProgressEvent } from "$lib/types";
+import type { ModProgressEvent } from "#lib/types/index.js";
 
 export interface OperationStatusState {
   visible: boolean;

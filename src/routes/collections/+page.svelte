@@ -12,17 +12,17 @@
     renameCollection,
     setCollectionColor,
     toggleCollection,
-  } from "$lib/api/commands";
-  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
-  import EditCollectionModal from "$lib/components/EditCollectionModal.svelte";
+  } from "#lib/api/commands.js";
+  import ConfirmModal from "#lib/components/ConfirmModal.svelte";
+  import EditCollectionModal from "#lib/components/EditCollectionModal.svelte";
   import {
     incognitoMode,
     wizardScreenshotMode,
     DUMMY_COLLECTIONS,
     DUMMY_COLLECTION_COLORS,
     DUMMY_MOD_GROUPS,
-  } from "$lib/stores/incognitoMode";
-  import { toastStore } from "$lib/stores/toast";
+  } from "#lib/stores/incognitoMode.js";
+  import { toastStore } from "#lib/stores/toast.js";
   import { X } from "@lucide/svelte";
   import { onMount } from "svelte";
 

@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import type { Ue4ssModFolder } from "$lib/api/commands";
+import type { Ue4ssModFolder } from "#lib/api/commands.js";
 
 interface Ue4ssModSelectionRequest {
   archiveName: string;

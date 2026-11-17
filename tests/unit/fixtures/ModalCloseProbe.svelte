@@ -1,5 +1,5 @@
 <script lang="ts">
-  import ModalShell from "$lib/components/ModalShell.svelte";
+  import ModalShell from "#lib/components/ModalShell.svelte";
 
   export let closeOnEscape = true;
 

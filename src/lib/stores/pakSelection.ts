@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import type { PakFileInfo } from "$lib/api/commands";
+import type { PakFileInfo } from "#lib/api/commands.js";
 
 interface PakSelectionRequest {
   archiveName: string;

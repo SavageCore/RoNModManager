@@ -1,6 +1,6 @@
 <script lang="ts">
   import { afterNavigate, goto } from "$app/navigation";
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import {
     applyProfile,
     cancelNexusDownload,
@@ -26,27 +26,27 @@
     setWindowTitle,
     suppressExitCleanup,
     updateConfig,
-  } from "$lib/api/commands";
-  import FooterStatusBar from "$lib/components/FooterStatusBar.svelte";
-  import LaunchButton from "$lib/components/LaunchButton.svelte";
-  import CustomSelect from "$lib/components/CustomSelect.svelte";
-  import ImportLogPanel from "$lib/components/ImportLogPanel.svelte";
-  import SyncPanel from "$lib/components/SyncPanel.svelte";
-  import Toast from "$lib/components/Toast.svelte";
-  import AuthSetupModal from "$lib/components/AuthSetupModal.svelte";
-  import { operationStatusStore } from "$lib/stores/operationStatus";
-  import { pendingInstall } from "$lib/stores/pendingInstall";
-  import { toastStore } from "$lib/stores/toast";
-  import { tokenStore } from "$lib/stores/token";
-  import { updateCheckStore } from "$lib/stores/updateCheck";
+  } from "#lib/api/commands.js";
+  import FooterStatusBar from "#lib/components/FooterStatusBar.svelte";
+  import LaunchButton from "#lib/components/LaunchButton.svelte";
+  import CustomSelect from "#lib/components/CustomSelect.svelte";
+  import ImportLogPanel from "#lib/components/ImportLogPanel.svelte";
+  import SyncPanel from "#lib/components/SyncPanel.svelte";
+  import Toast from "#lib/components/Toast.svelte";
+  import AuthSetupModal from "#lib/components/AuthSetupModal.svelte";
+  import { operationStatusStore } from "#lib/stores/operationStatus.js";
+  import { pendingInstall } from "#lib/stores/pendingInstall.js";
+  import { toastStore } from "#lib/stores/toast.js";
+  import { tokenStore } from "#lib/stores/token.js";
+  import { updateCheckStore } from "#lib/stores/updateCheck.js";
   import {
     MOD_UPDATES_AUTO_CHECK_INTERVAL_MS,
     checkModUpdatesOnce,
     describeModUpdatesStatus,
     modUpdatesStore,
-  } from "$lib/stores/modUpdates";
-  import { initTheme } from "$lib/theme";
-  import { parseNexusDeepLink } from "$lib/utils/parseNexusDeepLink";
+  } from "#lib/stores/modUpdates.js";
+  import { initTheme } from "#lib/theme.js";
+  import { parseNexusDeepLink } from "#lib/utils/parseNexusDeepLink.js";
   import type {
     CloseAction,
     MinimizeTarget,
@@ -54,7 +54,7 @@
     OnGameLaunchAction,
     Profile,
     ThemeMode,
-  } from "$lib/types";
+  } from "#lib/types/index.js";
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
@@ -77,21 +77,21 @@
   import "@fontsource/rajdhani/700.css";
   import "../app.css";
 
-  import AddModpackPanel from "$lib/components/AddModpackPanel.svelte";
-  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
-  import InfoPanel from "$lib/components/InfoPanel.svelte";
-  import TourOverlay from "$lib/components/TourOverlay.svelte";
-  import { nextStep, startTour, tourState } from "$lib/tour/tourEngine";
-  import { registerTourActions } from "$lib/tour/registry";
-  import { addModpackPanelStore } from "$lib/stores/addModpackPanelStore";
-  import { importLogStore } from "$lib/stores/importLogStore";
-  import { infoLogStore } from "$lib/stores/infoLogStore";
-  import { metadataRefreshDetailsStore } from "$lib/stores/metadataRefreshDetailsStore";
+  import AddModpackPanel from "#lib/components/AddModpackPanel.svelte";
+  import ConfirmModal from "#lib/components/ConfirmModal.svelte";
+  import InfoPanel from "#lib/components/InfoPanel.svelte";
+  import TourOverlay from "#lib/components/TourOverlay.svelte";
+  import { nextStep, startTour, tourState } from "#lib/tour/tourEngine.js";
+  import { registerTourActions } from "#lib/tour/registry.js";
+  import { addModpackPanelStore } from "#lib/stores/addModpackPanelStore.js";
+  import { importLogStore } from "#lib/stores/importLogStore.js";
+  import { infoLogStore } from "#lib/stores/infoLogStore.js";
+  import { metadataRefreshDetailsStore } from "#lib/stores/metadataRefreshDetailsStore.js";
   import {
     incognitoMode,
     screenshotMode,
     wizardScreenshotMode,
-  } from "$lib/stores/incognitoMode";
+  } from "#lib/stores/incognitoMode.js";
 
   const APP_NAME = "RoN Mod Manager";
   const UPDATE_AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -534,6 +534,7 @@
           const id = /^\d+$/.test(raw)
             ? raw
             : `https://mod.io/g/readyornot/m/${raw}`;
+
           pendingInstall.set({ url: id });
           void goto("/mods");
         } else if (url.startsWith("ronmm://modpack/")) {
@@ -670,6 +671,7 @@
         ]).then(([sm, wm]) =>
           sm || wm ? screenshotTheme().catch(() => null) : null,
         );
+
         cleanup = initTheme((themeOverride as ThemeMode) ?? config.theme);
 
         // Modpack update check
@@ -1143,24 +1145,20 @@
             title={item.label}
             aria-label={item.label}
             data-tour={`nav-${item.href.slice(1)}`}
-            style={$page.url.pathname === item.href
+            style={page.url.pathname === item.href
               ? `background: var(--clr-primary-300); color: var(--clr-primary-text);`
               : `color: var(--clr-text);`}
-            class={`flex h-12 w-12 items-center justify-center rounded-none transition-all hover:bg-[var(--clr-btn-adaptive-hover)] ${
-              $page.url.pathname === item.href ? "shadow-sm" : ""
-            }`}
+            class={`flex h-12 w-12 items-center justify-center rounded-none transition-all hover:bg-[var(--clr-btn-adaptive-hover)] ${page.url.pathname === item.href ? "shadow-sm" : ""}`}
+            ><svelte:component this={item.icon} size={20} /></a
           >
-            <svelte:component this={item.icon} size={20} />
-          </a>
         {/each}
       </nav>
     </aside>
 
     <!-- Main content area -->
+
     <main style="background: var(--clr-bg);" class="flex-1 overflow-auto p-6">
-      <div class="mx-auto h-full max-w-5xl">
-        <slot />
-      </div>
+      <div class="mx-auto h-full max-w-5xl"><slot></slot></div>
     </main>
   </div>
 

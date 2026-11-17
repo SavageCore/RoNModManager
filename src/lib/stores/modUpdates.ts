@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import { checkModUpdates, type ModUpdateInfo } from "$lib/api/commands";
+import { checkModUpdates, type ModUpdateInfo } from "#lib/api/commands.js";
 
 /** Re-check cadence for automatic mod-update checks (1 hour). */
 export const MOD_UPDATES_AUTO_CHECK_INTERVAL_MS = 60 * 60 * 1000;

@@ -1,11 +1,11 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import { Minus } from "@lucide/svelte";
-  import { toastStore } from "$lib/stores/toast";
+  import { toastStore } from "#lib/stores/toast.js";
   import {
     downloadTextFile,
     timestampedFilename,
-  } from "$lib/utils/downloadText";
+  } from "#lib/utils/downloadText.js";
 
   export let title: string;
   export let isVisible = true;

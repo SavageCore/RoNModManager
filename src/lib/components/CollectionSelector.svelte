@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Collection } from "$lib/types";
+  import type { Collection } from "#lib/types/index.js";
 
   export let isVisible = false;
   export let collections: Record<string, Collection> = {};

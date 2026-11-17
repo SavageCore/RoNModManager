@@ -3,9 +3,9 @@
     validateAndSaveModioApiKey,
     validateAndSaveModioToken,
     validateAndSaveNexusApiKey,
-  } from "$lib/api/apiKeyValidation";
-  import { logout, updateConfig } from "$lib/api/commands";
-  import { tokenStore } from "$lib/stores/token";
+  } from "#lib/api/apiKeyValidation.js";
+  import { logout, updateConfig } from "#lib/api/commands.js";
+  import { tokenStore } from "#lib/stores/token.js";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import ModalShell from "./ModalShell.svelte";
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { toastStore, type Toast } from "$lib/stores/toast";
+  import { toastStore, type Toast } from "#lib/stores/toast.js";
   import {
     AlertCircle,
     AlertTriangle,

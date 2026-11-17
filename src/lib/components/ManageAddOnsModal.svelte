@@ -1,9 +1,9 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
-  import { alertStore } from "$lib/stores/alert";
-  import { modAddQueueStore } from "$lib/stores/modAddQueue";
+  import { alertStore } from "#lib/stores/alert.js";
+  import { modAddQueueStore } from "#lib/stores/modAddQueue.js";
   import { open } from "@tauri-apps/plugin-dialog";
-  import type { InstalledModFile } from "$lib/types";
+  import type { InstalledModFile } from "#lib/types/index.js";
   import ModalShell from "./ModalShell.svelte";
 
   export let isVisible = false;
