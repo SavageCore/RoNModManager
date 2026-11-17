@@ -19,12 +19,14 @@ const metainfoPath =
 const directories: string[] = [];
 
 function run(directory: string, command: string, args: string[]) {
-  // Strip GIT_* env vars (e.g. GIT_DIR set by git hooks like lefthook's
+  // Strip unrelated GIT_* env vars (e.g. GIT_DIR set by git hooks like lefthook's
   // pre-push) so fixture commands always operate on the temp dir, never on
   // the real repo checkout.
   const env = { ...process.env };
   for (const key of Object.keys(env))
-    if (key.startsWith("GIT_")) delete env[key];
+    if (key.startsWith("GIT_") && key !== "GIT_CONFIG_GLOBAL") delete env[key];
+  // Honor an explicit override; otherwise ignore global config such as signing.
+  env.GIT_CONFIG_GLOBAL ??= "/dev/null";
   return execFileSync(command, args, {
     cwd: directory,
     encoding: "utf8",
