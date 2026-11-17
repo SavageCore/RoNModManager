@@ -465,10 +465,7 @@ pub fn is_ue4ss_mod_asset_allowed(within_mod: &Path) -> bool {
     }
     // *.json at the mod root, except *.example.json reference copies.
     let lower = first.to_ascii_lowercase();
-    if lower.ends_with(".json") && !lower.ends_with(".example.json") {
-        return true;
-    }
-    false
+    lower.ends_with(".json") && !lower.ends_with(".example.json")
 }
 
 /// `(mod key, root file name)` for an archive entry sitting directly at a
