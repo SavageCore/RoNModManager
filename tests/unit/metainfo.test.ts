@@ -19,10 +19,17 @@ const metainfoPath =
 const directories: string[] = [];
 
 function run(directory: string, command: string, args: string[]) {
+  // Strip GIT_* env vars (e.g. GIT_DIR set by git hooks like lefthook's
+  // pre-push) so fixture commands always operate on the temp dir, never on
+  // the real repo checkout.
+  const env = { ...process.env };
+  for (const key of Object.keys(env))
+    if (key.startsWith("GIT_")) delete env[key];
   return execFileSync(command, args, {
     cwd: directory,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    env,
   });
 }
 
