@@ -1424,8 +1424,10 @@ pub fn install_7z_archive(
 
     let src = archive_path.to_string_lossy().to_string();
     let dest = temp_dir.to_string_lossy().to_string();
-    sevenz_rust2::decompress_file(&src, &dest)
-        .map_err(|e| AppError::Validation(format!("Failed to open 7z archive: {e}")))?;
+    sevenz_rust2::decompress_file(&src, &dest).map_err(|e| {
+        let _ = fs::remove_dir_all(&temp_dir);
+        AppError::Validation(format!("Failed to open 7z archive: {e}"))
+    })?;
 
     for abs_path in walk_files(&temp_dir) {
         let raw_rel_path = abs_path
