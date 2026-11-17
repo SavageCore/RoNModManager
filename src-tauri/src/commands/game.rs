@@ -1081,7 +1081,9 @@ mod tests {
         }
 
         #[tokio::test]
+        #[allow(clippy::await_holding_lock)]
         async fn exit_cleanup_restores_stock_when_link_on_launch_only_is_on() {
+            let _guard = crate::test_support::shared_tree_guard();
             let game = scratch_dir("game-exit");
             let app = mock_app_with(AppConfig {
                 game_path: Some(game.path().to_path_buf()),

@@ -4577,6 +4577,7 @@ mod command_tests {
 
     #[test]
     fn reading_a_manifest_returns_none_until_one_is_stored() {
+        let _tree = crate::test_support::shared_tree_guard();
         let _ = isolated_root();
 
         assert!(read_manifest_for_archive("nothing.zip".to_string())
@@ -4687,7 +4688,9 @@ mod command_tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn display_names_are_trimmed_and_cleared() {
+        let _tree = crate::test_support::shared_tree_guard();
         let app = app_with_config(AppConfig::default());
         let state = app.state::<AppState>();
         save_manifest(manifest("rename.zip", Vec::new()));
@@ -4722,7 +4725,9 @@ mod command_tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn source_urls_are_cleaned_and_stored() {
+        let _tree = crate::test_support::shared_tree_guard();
         let app = app_with_config(AppConfig::default());
         let state = app.state::<AppState>();
         save_manifest(manifest("source.zip", Vec::new()));
@@ -4748,7 +4753,9 @@ mod command_tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn source_urls_create_a_manifest_for_unstaged_archives() {
+        let _tree = crate::test_support::shared_tree_guard();
         let app = app_with_config(AppConfig::default());
         let state = app.state::<AppState>();
 
@@ -4774,7 +4781,9 @@ mod command_tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn blank_source_urls_clear_the_stored_value() {
+        let _tree = crate::test_support::shared_tree_guard();
         let app = app_with_config(AppConfig::default());
         let state = app.state::<AppState>();
         let mut stored = manifest("clear.zip", Vec::new());
@@ -4978,7 +4987,9 @@ mod command_tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn nexus_file_ids_are_only_stored_for_known_archives() {
+        let _tree = crate::test_support::shared_tree_guard();
         let app = app_with_config(AppConfig::default());
         let state = app.state::<AppState>();
         save_manifest(manifest("nexus.zip", Vec::new()));
