@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::{Chain, Cursor, Read, Seek, SeekFrom, Take, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::Serialize;
 use unrar::Archive as RarArchive;
@@ -1407,15 +1408,18 @@ pub fn install_7z_archive(
     pak_filter: Option<&HashSet<String>>,
     ue4ss_mod_filter: Option<&HashSet<String>>,
 ) -> Result<InstallReport> {
+    static EXTRACTION_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
     let mut report = InstallReport::default();
 
     let temp_dir = temp_root.join(format!(
-        "ronmod_{}_{}",
+        "ronmod_{}_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_secs()
+            .as_secs(),
+        EXTRACTION_SEQUENCE.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir_all(&temp_dir)?;
 
@@ -1424,8 +1428,10 @@ pub fn install_7z_archive(
 
     let src = archive_path.to_string_lossy().to_string();
     let dest = temp_dir.to_string_lossy().to_string();
-    sevenz_rust2::decompress_file(&src, &dest)
-        .map_err(|e| AppError::Validation(format!("Failed to open 7z archive: {e}")))?;
+    sevenz_rust2::decompress_file(&src, &dest).map_err(|e| {
+        let _ = fs::remove_dir_all(&temp_dir);
+        AppError::Validation(format!("Failed to open 7z archive: {e}"))
+    })?;
 
     for abs_path in walk_files(&temp_dir) {
         let raw_rel_path = abs_path
