@@ -15,11 +15,11 @@ name = "ronmodmanager_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.7.5", features = [] }
+tauri-build = { version = "2.7.6", features = [] }
 
 
 [dependencies]
-tauri = { version = "2.12.6", features = ["tray-icon"] }
+tauri = { version = "2.12.7", features = ["tray-icon"] }
 tauri-plugin-opener = "2.7.3"
 tauri-plugin-updater = "2.14.1"
 tauri-plugin-deep-link = "2.6.3"
@@ -64,5 +64,5 @@ tokio = { version = "1", features = ["macros", "rt"] }
 mockito = "1"
 # `tauri::test` (mock runtime) is behind the `test` feature, and dependencies
 # are compiled without cfg(test), so it has to be requested explicitly here.
-tauri = { version = "2.12.6", features = ["test"] }
+tauri = { version = "2.12.7", features = ["test"] }
 
