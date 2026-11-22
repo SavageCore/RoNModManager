@@ -19,10 +19,18 @@ const metainfoPath =
 const directories: string[] = [];
 
 function run(directory: string, command: string, args: string[]) {
+  // Never inherit the caller's Git environment: GIT_DIR/GIT_WORK_TREE make
+  // git ignore cwd, so a hook running with them set would execute these
+  // fixture commands against the real repo instead of the temp dir.
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined && !key.startsWith("GIT_")) env[key] = value;
+  }
   return execFileSync(command, args, {
     cwd: directory,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    env,
   });
 }
 
