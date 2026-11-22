@@ -7,8 +7,8 @@
     setModpackUrl,
     syncModpack,
     uninstallMods,
-  } from "$lib/api/commands";
-  import { toastStore } from "$lib/stores/toast";
+  } from "#lib/api/commands.js";
+  import { toastStore } from "#lib/stores/toast.js";
   import { onMount } from "svelte";
 
   let modpackUrl = "";

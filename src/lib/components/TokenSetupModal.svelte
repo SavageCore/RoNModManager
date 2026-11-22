@@ -2,12 +2,12 @@
   import {
     validateAndSaveModioToken,
     validateToken,
-  } from "$lib/api/apiKeyValidation";
-  import { logout } from "$lib/api/commands";
-  import { tokenStore } from "$lib/stores/token";
+  } from "#lib/api/apiKeyValidation.js";
+  import { logout } from "#lib/api/commands.js";
+  import { tokenStore } from "#lib/stores/token.js";
 
-  import { getConfig, updateConfig } from "$lib/api/commands";
-  import { toastStore } from "$lib/stores/toast";
+  import { getConfig, updateConfig } from "#lib/api/commands.js";
+  import { toastStore } from "#lib/stores/toast.js";
   import { onDestroy } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import ModalShell from "./ModalShell.svelte";

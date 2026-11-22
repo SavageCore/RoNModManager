@@ -1,6 +1,6 @@
 import { writable } from "svelte/store";
-import type { InstalledModGroup, Profile } from "$lib/types";
-import type { ModUpdateInfo } from "$lib/api/commands";
+import type { InstalledModGroup, Profile } from "#lib/types/index.js";
+import type { ModUpdateInfo } from "#lib/api/commands.js";
 
 export const incognitoMode = writable<boolean>(false);
 export const screenshotMode = writable<boolean>(false);

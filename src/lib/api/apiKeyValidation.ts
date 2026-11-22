@@ -4,8 +4,8 @@ import {
   validateToken,
   verifyModioApiKey,
   verifyNexusApiKey,
-} from "$lib/api/commands";
-import { tokenStore } from "$lib/stores/token";
+} from "#lib/api/commands.js";
+import { tokenStore } from "#lib/stores/token.js";
 
 export { validateToken };
 

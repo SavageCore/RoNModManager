@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "adwavecss/dist/styles.css";
-@import "$lib/components/toast.css";
+@import "#lib/components/toast.css";
 
 /* Tailwind v4 theme: Rajdhani display faces for headings and buttons,
    system sans for body, system mono for code/log views. */

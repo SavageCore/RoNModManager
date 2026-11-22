@@ -18,14 +18,23 @@ const metainfoPath =
   "packaging/flatpak/uk.savagecore.ronmodmanager.metainfo.xml";
 const directories: string[] = [];
 
+// git exports GIT_DIR and friends to hooks and other subprocesses. Inherited
+// from a git-invoking parent (the pre-push hook runs this suite) they make
+// every `git` call here act on that repo instead of the throwaway fixture -
+// `git init` flips its core.bare and `git commit` writes to its branch.
+const GIT_ENV_KEYS = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_PREFIX",
+];
+
 function run(directory: string, command: string, args: string[]) {
-  // Never inherit the caller's Git environment: GIT_DIR/GIT_WORK_TREE make
-  // git ignore cwd, so a hook running with them set would execute these
-  // fixture commands against the real repo instead of the temp dir.
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined && !key.startsWith("GIT_")) env[key] = value;
-  }
+  const env = { ...process.env };
+  for (const key of GIT_ENV_KEYS) delete env[key];
   return execFileSync(command, args, {
     cwd: directory,
     encoding: "utf8",

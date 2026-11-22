@@ -1,4 +1,4 @@
-import type { ThemeMode } from "$lib/types";
+import type { ThemeMode } from "#lib/types/index.js";
 
 const DARK_QUERY = "(prefers-color-scheme: dark)";
 const SKELETON_LIGHT_THEME = "ron-light";

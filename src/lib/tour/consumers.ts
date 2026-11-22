@@ -1,4 +1,4 @@
-import type { AddModTourCommand } from "$lib/stores/tourUi";
+import type { AddModTourCommand } from "#lib/stores/tourUi.js";
 
 export type AddModCommandTarget = {
   setTab: (tab: "link" | "file") => void;

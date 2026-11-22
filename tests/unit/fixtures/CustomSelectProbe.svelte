@@ -1,6 +1,6 @@
 <script lang="ts">
-  import CustomSelect from "$lib/components/CustomSelect.svelte";
-  import type { DropdownOption } from "$lib/components/CustomSelect.svelte";
+  import CustomSelect from "#lib/components/CustomSelect.svelte";
+  import type { DropdownOption } from "#lib/components/CustomSelect.svelte";
 
   export let options: DropdownOption[] = [];
   export let initial = "system";

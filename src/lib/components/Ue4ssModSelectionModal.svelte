@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
-  import type { Ue4ssModFolder } from "$lib/api/commands";
+  import type { Ue4ssModFolder } from "#lib/api/commands.js";
   import ModalShell from "./ModalShell.svelte";
 
   export let isVisible = true;

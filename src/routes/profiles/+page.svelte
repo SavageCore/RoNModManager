@@ -1,17 +1,17 @@
 <script lang="ts">
-  import * as commands from "$lib/api/commands";
-  import { toastStore } from "$lib/stores/toast";
-  import type { Profile } from "$lib/types";
+  import * as commands from "#lib/api/commands.js";
+  import { toastStore } from "#lib/stores/toast.js";
+  import type { Profile } from "#lib/types/index.js";
   import { get } from "svelte/store";
   import { onMount } from "svelte";
-  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
-  import { escapeHtml } from "$lib/utils/escapeHtml";
-  import { registerTourActions } from "$lib/tour/registry";
+  import ConfirmModal from "#lib/components/ConfirmModal.svelte";
+  import { escapeHtml } from "#lib/utils/escapeHtml.js";
+  import { registerTourActions } from "#lib/tour/registry.js";
   import {
     incognitoMode,
     DUMMY_PROFILES,
     wizardScreenshotMode,
-  } from "$lib/stores/incognitoMode";
+  } from "#lib/stores/incognitoMode.js";
   import {
     CircleDot,
     Copy,
@@ -22,8 +22,8 @@
     Power,
     Trash2,
   } from "@lucide/svelte";
-  import CustomMenu from "$lib/components/CustomMenu.svelte";
-  import type { MenuItem } from "$lib/components/CustomMenu.svelte";
+  import CustomMenu from "#lib/components/CustomMenu.svelte";
+  import type { MenuItem } from "#lib/components/CustomMenu.svelte";
 
   $: effectiveProfiles =
     $incognitoMode && !$wizardScreenshotMode ? DUMMY_PROFILES : profiles;
