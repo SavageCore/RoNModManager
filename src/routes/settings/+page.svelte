@@ -22,7 +22,7 @@
     isRunningInFlatpak,
     isIntroSkipApplied,
     logout,
-    revealInFileManager,
+    openDir,
     setGamePath,
     setModpackMeta,
     setSyncDetails,
@@ -884,8 +884,12 @@
           true,
         );
         // @ts-ignore
-        window.__OPEN_EXPORT_DIR = () => {
-          revealInFileManager(exportDir);
+        window.__OPEN_EXPORT_DIR = async () => {
+          try {
+            await openDir(exportDir);
+          } catch (error) {
+            toastStore.error(`Failed to open folder: ${String(error)}`);
+          }
           toastStore.remove(toastId);
         };
       } catch (error) {
